@@ -48,7 +48,8 @@
     .title {
       margin: 0;
       font-size: clamp(18px, 2.2vw, 22px);
-      font-weight: 700
+      font-weight: 700;
+      margin-right: 8px;
     }
 
     /* Toolbar: title + search + actions on one row; tags are full-width below */
