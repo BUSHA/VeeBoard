@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0" />
+  <title>VeeBoard</title>
+
+  <link rel="stylesheet" href="styles.css">
+
+  <link rel="apple-touch-icon" sizes="180x180" href="../favicon/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="../favicon/favicon-16x16.png">
+  <link rel="manifest" href="../favicon/site.webmanifest">
+
+  <script src="script.js" defer></script>
+
+</head>
+
+<body>
+  <header class="app-header">
+    <div class="toolbar" role="toolbar" aria-label="Toolbar">
+      <h1 class="title">VeeBoard</h1>
+      <input id="search" class="search" type="search" placeholder="Search by title or tags…" aria-label="Search" />
+      <div class="actions">
+        <button id="addColumnBtn" class="btn" title="Add column">+ Column</button>
+        <button id="exportBtn" class="btn" title="Export JSON">Export</button>
+        <label class="btn file-btn" title="Import JSON">Import<input id="importInput" type="file"
+            accept="application/json" hidden></label>
+        <button id="themeToggle" class="btn" title="Dark/Light theme">☼</button>
+      </div>
+      <div id="tagFilters" class="tag-filters" role="group" aria-label="Tag filter"></div>
+    </div>
+  </header>
+
+  <main id="board" class="board" aria-label="Board"></main>
+
+  <template id="columnTemplate">
+    <section class="column" role="list" aria-label="Column">
+      <header class="column-header">
+        <button class="drag-handle" aria-label="Drag column" title="Drag to reorder">⠿</button>
+        <h2 class="column-title" tabindex="0"></h2>
+        <div class="column-actions">
+          <button class="btn btn-rename" title="Rename column">✎</button>
+          <button class="btn btn-del-col" title="Delete column">✕</button>
+        </div>
+      </header>
+      <div class="cards" role="list"></div>
+      <button class="btn btn-add-card" title="Add card">+ New card</button>
+    </section>
+  </template>
+
+  <template id="cardTemplate">
+    <article class="card" role="listitem" tabindex="0" aria-grabbed="false">
+      <header class="card-top">
+        <button class="card-grip" title="Drag card" aria-label="Drag">⠿</button>
+        <h3 class="card-title"></h3>
+        <button class="btn btn-del-card" title="Delete card" aria-label="Delete">✕</button>
+      </header>
+      <p class="card-desc"></p>
+      <div class="card-meta">
+        <time class="card-due" title="Due"></time>
+        <div class="tags"></div>
+      </div>
+    </article>
+  </template>
+
+  <!-- Card editor dialog (used for both create & edit) -->
+  <dialog id="editor" aria-label="Edit card">
+    <form method="dialog" class="editor-form">
+      <h3 id="editorTitle">Edit card</h3>
+      <label>Title
+        <input id="eTitle" required maxlength="160" />
+      </label>
+      <label>Description
+        <textarea id="eDesc" rows="4"></textarea>
+      </label>
+      <label>Tags (comma-separated)
+        <input id="eTags" placeholder="ui, bug, research" />
+      </label>
+      <label>Due date
+        <input id="eDue" type="date" />
+      </label>
+      <div class="editor-actions">
+        <button value="cancel" class="btn secondary" formnovalidate>Cancel</button>
+        <button id="eSave" value="default" class="btn primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Column create dialog -->
+  <dialog id="colDialog" aria-label="Create column">
+    <form method="dialog" class="editor-form">
+      <h3>Create column</h3>
+      <label>Name
+        <input id="colName" required maxlength="120" />
+      </label>
+      <div class="editor-actions">
+        <button value="cancel" class="btn secondary" formnovalidate>Cancel</button>
+        <button id="colCreate" value="default" class="btn primary">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Rename column dialog -->
+  <dialog id="renameDialog" aria-label="Rename column">
+    <form method="dialog" class="editor-form">
+      <h3>Rename column</h3>
+      <label>Title
+        <input id="renameInput" required maxlength="160" />
+      </label>
+      <div class="editor-actions">
+        <button value="cancel" class="btn secondary" formnovalidate>Cancel</button>
+        <button id="renameOk" value="default" class="btn primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Confirm dialog (delete) -->
+  <dialog id="confirmDialog" aria-label="Confirm action">
+    <form method="dialog" class="editor-form">
+      <h3 id="confirmTitle">Confirm</h3>
+      <p id="confirmText" style="margin:4px 0 0"></p>
+      <div class="editor-actions">
+        <button value="cancel" class="btn secondary" formnovalidate>Cancel</button>
+        <button id="confirmOk" value="default" class="btn primary">Delete</button>
+      </div>
+    </form>
+  </dialog>
+
+</body>
+
+</html>

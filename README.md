@@ -1,7 +1,10 @@
 # VeeBoard
 
-VeeBoard is a minimal Trello-like Kanban board built with **HTML + CSS + JavaScript**.  
-No frameworks, no backend — works entirely in the browser with **localStorage** persistence.  
+VeeBoard is a minimal Trello-like Kanban board built with **HTML + CSS + JavaScript**.
+No frameworks, no backend — works entirely in the browser with **localStorage** persistence.
+
+![Vibecode alert](vibealert.png "Vibecode alert!")
+### Created with Ai, may contain glitches
 
 ## Features
 

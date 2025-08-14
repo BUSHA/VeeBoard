@@ -1,0 +1,500 @@
+    :root {
+      --bg: #f7f8fa;
+      --panel: #fff;
+      --text: #1f2430;
+      --muted: #6b7280;
+      --primary: #3b82f6;
+      --border: #e5e7eb;
+      --shadow: 0 6px 20px rgba(0, 0, 0, .08);
+      --radius: 14px;
+      --radius-sm: 10px;
+      --stripe-mix: 4%;
+    }
+
+    html[data-theme="dark"] {
+      --bg: #0f1216;
+      --panel: #161a21;
+      --text: #e5e7eb;
+      --muted: #9aa3b2;
+      --primary: #60a5fa;
+      --border: #242935;
+      --shadow: 0 8px 24px rgba(0, 0, 0, .45);
+    }
+
+    * {
+      box-sizing: border-box
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif
+    }
+
+    .app-header {
+      top: 0;
+      z-index: 5;
+      backdrop-filter: saturate(1.2) blur(6px);
+      background: color-mix(in srgb, var(--bg) 75%, transparent);
+      border-bottom: 1px solid var(--border);
+      padding: 12px clamp(12px, 2vw, 24px);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap
+    }
+
+    .title {
+      margin: 0;
+      font-size: clamp(18px, 2.2vw, 22px);
+      font-weight: 700
+    }
+
+    /* Toolbar: title + search + actions on one row; tags are full-width below */
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex: 1;
+      flex-wrap: wrap
+    }
+
+    .search {
+      flex: 1 1 320px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--text);
+      outline: none
+    }
+
+    .search:focus {
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent)
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: nowrap
+    }
+
+    .btn {
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      cursor: pointer;
+      box-shadow: var(--shadow)
+    }
+
+    .btn:hover {
+      transform: translateY(-1px)
+    }
+
+    .btn:focus-visible {
+      outline: 2px solid var(--primary)
+    }
+
+    .btn.primary {
+      background: var(--primary);
+      color: #fff;
+      border-color: transparent
+    }
+
+    .btn.secondary {
+      background: transparent
+    }
+
+    .file-btn {
+      font-size: 0.89em;
+      text-align: center;
+    }
+
+    #themeToggle {
+      min-width: 40px;
+    }
+
+    /* Tags: full-width row, wrap to new lines */
+    .tag-filters {
+      order: 2;
+      flex: 0 0 100%;
+      width: 100%;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      padding-top: 6px;
+      margin-top: 4px
+    }
+
+    .tag-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px dashed var(--border);
+      background: var(--panel);
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none
+    }
+
+    .tag-chip.active {
+      border-style: solid;
+      color: var(--text)
+    }
+
+    .tag-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%
+    }
+
+    .board {
+      padding: 16px;
+      padding-bottom: 24px;
+      ;
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      overflow-x: auto;
+      scroll-snap-type: x proximity;
+      scroll-padding-left: 16px;
+    }
+
+    .board::-webkit-scrollbar {
+      display: none;
+    }
+
+    .column {
+      min-width: min(340px, 92vw);
+      max-width: 420px;
+      scroll-snap-align: start;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 12px
+    }
+
+    .column-header {
+      display: flex;
+      align-items: center;
+      gap: 8px
+    }
+
+    .drag-handle {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: transparent;
+      cursor: grab;
+      padding: 6px 8px;
+      user-select: none;
+      color: var(--muted);
+      touch-action: none;
+    }
+
+    .drag-handle:active {
+      cursor: grabbing
+    }
+
+    .column-title {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 700;
+      outline: none
+    }
+
+    .column-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 6px
+    }
+
+    .cards {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 20px
+    }
+
+    .btn-add-card {
+      align-self: stretch
+    }
+
+    .btn-del-card,
+    .btn-del-col,
+    .btn-rename {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      font-size: 16px;
+      line-height: 1;
+      box-shadow: none;
+      transition: color .2s ease
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      outline: none;
+      transition: transform .12s ease, box-shadow .2s ease;
+      touch-action: none;
+      cursor: pointer;
+    }
+
+    .card:focus-visible {
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent)
+    }
+
+    .card.dragging {
+      opacity: .86;
+      transform: rotate(.6deg) scale(1.02)
+    }
+
+    .card.placeholder {
+      border: 2px dashed var(--primary);
+      min-height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: .7
+    }
+
+    .card-top {
+      display: flex;
+      align-items: center;
+      gap: 8px
+    }
+
+    .card-title {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 700;
+      flex: 1
+    }
+
+    .card-desc {
+      margin: .35rem 0 .25rem;
+      color: var(--muted);
+      font-size: 13px
+    }
+
+    .card-meta {
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-start;
+      gap: 8px;
+      flex-direction: column;
+    }
+
+    .card-due {
+      font-variant-numeric: tabular-nums;
+      font-size: 12px;
+      color: var(--muted)
+    }
+
+    .tags {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid var(--border);
+      background: color-mix(in srgb, var(--panel), var(--primary) 8%)
+    }
+
+    .tag .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%
+    }
+
+    /* Card drag grip */
+    .card-grip {
+      width: 16px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--muted);
+      cursor: grab;
+      touch-action: none;
+      user-select: none;
+      padding: 0px;
+    }
+
+    .card-grip:active {
+      cursor: grabbing
+    }
+
+    /* Dialogs */
+    dialog::backdrop {
+      background: rgba(0, 0, 0, .35);
+      backdrop-filter: blur(4px);
+    }
+
+    #editor,
+    #colDialog,
+    #confirmDialog,
+    #renameDialog {
+      border: none;
+      padding: 0;
+      background: transparent
+    }
+
+    .editor-form {
+      width: min(680px, 90vw);
+      max-height: 90dvh;
+      /* keep inside viewport */
+      overflow: auto;
+      background: linear-gradient(180deg, color-mix(in srgb, var(--panel), #fff 6%), var(--panel));
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      padding: clamp(16px, 5vw, 24px);
+      display: flex;
+      flex-direction: column;
+      gap: 14px
+    }
+
+    .editor-form h3 {
+      margin: 0 0 4px;
+      font-size: 18px;
+      font-weight: 800
+    }
+
+    .editor-form label {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-weight: 600;
+      color: var(--muted)
+    }
+
+    .editor-form input,
+    .editor-form textarea {
+      font: inherit;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      outline: none;
+      width: 100%
+    }
+
+    .editor-form textarea {
+      resize: vertical;
+      min-height: 96px
+    }
+
+    .editor-form input:focus,
+    .editor-form textarea:focus {
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent)
+    }
+
+    .editor-actions {
+      margin-top: 6px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px
+    }
+
+    .editor-actions .btn {
+      width: 100%
+    }
+
+    /* Disable text selection while dragging */
+    body.dragging-ui,
+    body.dragging-ui * {
+      user-select: none;
+      -webkit-user-select: none;
+      -ms-user-select: none
+    }
+
+    /* Column placeholder for DnD */
+    .column-placeholder {
+      background: repeating-linear-gradient(45deg,
+          color-mix(in srgb, var(--panel), #000 var(--stripe-mix)),
+          color-mix(in srgb, var(--panel), #000 var(--stripe-mix)) 6px,
+          transparent 6px,
+          transparent 12px);
+      border: 2px dashed var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--muted);
+      opacity: 0.8;
+      content: "Drop here";
+    }
+
+    .column-placeholder::after {
+      content: "Drop here";
+    }
+
+    /* Mobile header & dialogs */
+    @media (max-width:700px) {
+      .search {
+        flex: 1 1 100%
+      }
+
+      .actions {
+        order: 2;
+        flex: 0 0 100%;
+        flex-wrap: wrap
+      }
+
+      .actions .btn {
+        flex: 1 1 calc(50% - 8px)
+      }
+
+      .tag-filters {
+        order: 3
+      }
+    }
+
+    @media (max-width:420px) {
+      .editor-actions {
+        grid-template-columns: 1fr !important
+      }
+    }
+
+    @media (min-width:900px) {
+      .board {
+        padding: 24px
+      }
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px
+    }
