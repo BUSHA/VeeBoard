@@ -363,7 +363,8 @@
     #editor,
     #colDialog,
     #confirmDialog,
-    #renameDialog {
+    #renameDialog,
+    #importChoice {
       border: none;
       padding: 0;
       background: transparent

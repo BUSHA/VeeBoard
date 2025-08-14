@@ -131,6 +131,19 @@
     </form>
   </dialog>
 
+  <!-- Import choice dialog -->
+  <dialog id="importChoice" aria-label="Import options">
+    <form method="dialog" class="editor-form">
+      <h3>Import options</h3>
+      <p>How should we apply the imported JSON?</p>
+      <div class="editor-actions" style="    grid-template-columns: 1fr 1fr 1fr;">
+        <button value="cancel" class="btn secondary">Cancel</button>
+        <button id="importReplace" class="btn" value="replace">Replace</button>
+        <button id="importMerge" class="btn primary" value="merge">Merge</button>
+      </div>
+    </form>
+  </dialog>
+
 </body>
 
 </html>

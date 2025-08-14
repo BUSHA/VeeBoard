@@ -330,6 +330,23 @@ function showConfirm(message) {
   })
 }
 
+// Import choice dialog (Merge / Replace)
+function askImportChoice() {
+  return new Promise((resolve) => {
+    const dlg = qs("#importChoice")
+    dlg.returnValue = "cancel"
+    dlg.showModal()
+    const onClose = () => {
+      dlg.removeEventListener("close", onClose)
+      resolve(dlg.returnValue)
+    }
+    dlg.addEventListener("close", onClose)
+    dlg.addEventListener("click", (e) => {
+      if (e.target === dlg) dlg.close("cancel")
+    })
+  })
+}
+
 // ===== Search =====
 qs("#search").addEventListener("input", (e) => {
   searchQuery = e.target.value.toLowerCase()
@@ -376,23 +393,83 @@ function exportJSON() {
   })
   const a = document.createElement("a")
   a.href = URL.createObjectURL(blob)
-  a.download = "vee-board.json"
+  const d = new Date()
+  const pad = (n) => String(n).padStart(2, "0")
+  const ts =
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`
+  a.download = `veeboard_backup_${ts}.json`
   a.click()
   URL.revokeObjectURL(a.href)
 }
 async function importJSON(e) {
-  const file = e.target.files?.[0]
+  const file = e.target.files && e.target.files[0]
   if (!file) return
+
   try {
     const text = await file.text()
-    const data = JSON.parse(text)
-    validateState(data)
-    state = data
+    const incoming = JSON.parse(text)
+
+    if (!incoming || !Array.isArray(incoming.columns)) {
+      alert("Invalid file format: expected { columns: [...] }")
+      return
+    }
+
+    const choice = await askImportChoice() // 'merge' | 'replace' | 'cancel'
+    if (choice === "cancel") return
+
+    if (choice === "replace") {
+      state = incoming
+      saveState()
+      if (typeof render === "function") render()
+      else location.reload()
+      return
+    }
+
+    const byId = new Map(state.columns.map((c) => [c.id, c]))
+    const byTitle = new Map(
+      state.columns.map((c) => [String(c.title).trim(), c])
+    )
+
+    for (const incCol of incoming.columns) {
+      const titleKey = String(incCol.title).trim()
+      let existing = byId.get(incCol.id) || byTitle.get(titleKey)
+
+      if (!existing) {
+        state.columns.push(incCol)
+        byId.set(incCol.id, incCol)
+        byTitle.set(titleKey, incCol)
+        continue
+      }
+
+      const existingCardsById = new Set((existing.cards || []).map((c) => c.id))
+      for (const card of incCol.cards || []) {
+        if (!existingCardsById.has(card.id)) {
+          existing.cards = existing.cards || []
+          existing.cards.push(card)
+          existingCardsById.add(card.id)
+        }
+      }
+    }
+
+    if (incoming.tags && Array.isArray(incoming.tags)) {
+      const have = new Set((state.tags || []).map((t) => t.id ?? t))
+      for (const t of incoming.tags) {
+        const key = t.id ?? t
+        if (!have.has(key)) {
+          state.tags = state.tags || []
+          state.tags.push(t)
+          have.add(key)
+        }
+      }
+    }
+
     saveState()
-    renderAll()
+    if (typeof render === "function") render()
+    else location.reload()
   } catch (err) {
     console.error(err)
-    alert("Import error. Check JSON format.")
+    alert("JSON import failed: " + (err && err.message ? err.message : err))
   } finally {
     e.target.value = ""
   }
