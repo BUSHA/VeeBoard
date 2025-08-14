@@ -24,7 +24,7 @@ No frameworks, no backend — works entirely in the browser with **localStorage*
 
 ## Demo
 
-Live demo: **[Demo Link](#)** 
+**[Live demo](https://busha.github.io/VeeBoard)** 
 
 ---
 
