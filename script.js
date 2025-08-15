@@ -319,17 +319,28 @@ function showConfirm(message) {
     confirmText.textContent = message
     confirmDialog.returnValue = "cancel"
     confirmDialog.showModal()
+
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault()
+        confirmDialog.returnValue = "cancel"
+        confirmDialog.close()
+      }
+    }
+
     const onClose = () => {
       confirmDialog.removeEventListener("close", onClose)
+      confirmDialog.removeEventListener("keydown", onKeyDown)
       resolve(confirmDialog.returnValue !== "cancel")
     }
+
+    confirmDialog.addEventListener("keydown", onKeyDown)
     confirmDialog.addEventListener("close", onClose)
     confirmDialog.addEventListener("click", (e) => {
       if (e.target === confirmDialog) confirmDialog.close()
     })
   })
 }
-
 // Import choice dialog (Merge / Replace)
 function askImportChoice() {
   return new Promise((resolve) => {
@@ -869,3 +880,19 @@ function endColDrag() {
   colDrag = null
   document.body.classList.remove("dragging-ui")
 }
+// Enable Enter to trigger primary button in dialogs
+function enableEnterSaves(dialogSelector, buttonSelector) {
+  const dlg = qs(dialogSelector)
+  const btn = qs(buttonSelector)
+  dlg.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault()
+      btn.click()
+    }
+  })
+}
+
+enableEnterSaves("#editor", "#eSave")
+enableEnterSaves("#colDialog", "#colCreate")
+enableEnterSaves("#renameDialog", "#renameOk")
+enableEnterSaves("#confirmDialog", "#confirmOk")
