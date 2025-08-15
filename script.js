@@ -1,924 +1,1009 @@
-// ===== State =====
-const STORAGE_KEY = "vee-board-state-v1"
-const THEME_KEY = "vee-board-theme"
-const qs = (s, el = document) => el.querySelector(s)
-const qsa = (s, el = document) => [...el.querySelectorAll(s)]
-const uid = () => Math.random().toString(36).slice(2, 10)
+// ============================================================================
+//  VeeBoard Refactored
+// ============================================================================
+//  Modules:
+//  - Utils: Helper functions (qs, qsa, uid, etc.)
+//  - Store: State management (data and persistence)
+//  - UI:    DOM manipulation and rendering
+//  - Dnd:   Drag and Drop logic for cards and columns
+//  - App:   Main application controller (initialization, event handling)
+// ============================================================================
 
-let state = loadState() ?? demoState()
-let activeTagFilters = new Set()
-let searchQuery = ""
-
-const board = qs("#board")
-const columnTpl = qs("#columnTemplate")
-const cardTpl = qs("#cardTemplate")
-const editor = qs("#editor")
-const editorTitle = qs("#editorTitle")
-const eTitle = qs("#eTitle")
-const eDesc = qs("#eDesc")
-const eTags = qs("#eTags")
-const eDue = qs("#eDue")
-const colDialog = qs("#colDialog")
-const colName = qs("#colName")
-const confirmDialog = qs("#confirmDialog")
-const confirmText = qs("#confirmText")
-const renameDialog = qs("#renameDialog")
-const renameInput = qs("#renameInput")
-const renameOk = qs("#renameOk")
-
-let editCtx = null // {colId, cardId|null, isNew:boolean}
-let justDragged = false // suppress click after drag
-
-// ===== Scroll lock for dialogs =====
-function lockScroll() {
-  const y = window.scrollY || 0
-  document.documentElement.dataset.scrollY = String(y)
-  document.documentElement.classList.add("modal-open")
-  document.body.classList.add("modal-open")
-  document.body.style.top = `-${y}px`
-}
-function unlockScroll() {
-  const y = parseInt(document.documentElement.dataset.scrollY || "0", 10)
-  document.documentElement.classList.remove("modal-open")
-  document.body.classList.remove("modal-open")
-  document.body.style.top = ""
-  window.scrollTo(0, y)
-}
-function openDialog(dlg) {
-  lockScroll()
-  dlg.showModal()
-  // універсально знімаємо блок після закриття
-  const onClose = () => {
-    dlg.removeEventListener("close", onClose)
-    unlockScroll()
-  }
-  dlg.addEventListener("close", onClose)
+/**
+ * @module Utils
+ * General helper functions.
+ */
+const Utils = {
+  qs: (selector, scope = document) => scope.querySelector(selector),
+  qsa: (selector, scope = document) => [...scope.querySelectorAll(selector)],
+  uid: () => Math.random().toString(36).slice(2, 10),
+  colorFromString: (str) => {
+    let hash = 0
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash * 31 + str.charCodeAt(i)) % 360
+    }
+    return `hsl(${hash}, 70%, 50%)`
+  },
+  isoPlusDays: (n) => {
+    const d = new Date()
+    d.setDate(d.getDate() + n)
+    d.setHours(0, 0, 0, 0)
+    return d.toISOString()
+  },
 }
 
-renderAll()
-setupToolbar()
-applyTheme(loadTheme())
+/**
+ * @module Store
+ * Manages the application state and persistence to LocalStorage.
+ */
+const Store = {
+  STORAGE_KEY: "vee-board-state-v1",
+  state: {
+    columns: [],
+  },
 
-function renderAll() {
-  board.innerHTML = ""
-  ensureTagFiltersFromState()
-  for (const col of state.columns) {
-    board.append(renderColumn(col))
-  }
+  loadState() {
+    try {
+      const rawState = localStorage.getItem(this.STORAGE_KEY)
+      if (rawState) {
+        const data = JSON.parse(rawState)
+        this.validateState(data)
+        this.state = data
+      } else {
+        this.state = this.getDemoState()
+      }
+    } catch {
+      this.state = this.getDemoState()
+    }
+    return this.state
+  },
+
+  saveState() {
+    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state))
+  },
+
+  findColumn(colId) {
+    return this.state.columns.find((c) => c.id === colId)
+  },
+
+  findCard(cardId) {
+    for (const col of this.state.columns) {
+      const card = col.cards.find((c) => c.id === cardId)
+      if (card) return { card, col }
+    }
+    return { card: null, col: null }
+  },
+
+  addColumn(title) {
+    const newColumn = { id: Utils.uid(), title, cards: [] }
+    this.state.columns.push(newColumn)
+    this.saveState()
+    return newColumn
+  },
+
+  renameColumn(colId, newTitle) {
+    const col = this.findColumn(colId)
+    if (col) {
+      col.title = newTitle
+      this.saveState()
+    }
+  },
+
+  deleteColumn(colId) {
+    this.state.columns = this.state.columns.filter((c) => c.id !== colId)
+    this.saveState()
+  },
+
+  addCard(colId, cardData) {
+    const col = this.findColumn(colId)
+    if (col) {
+      const newCard = {
+        id: Utils.uid(),
+        title: cardData.title,
+        description: cardData.description || "",
+        tags: cardData.tags || [],
+        due: cardData.due || "",
+      }
+      col.cards.push(newCard)
+      this.saveState()
+      return newCard
+    }
+  },
+
+  updateCard(cardId, cardData) {
+    const { card } = this.findCard(cardId)
+    if (card) {
+      card.title = cardData.title
+      card.description = cardData.description
+      card.tags = cardData.tags
+      card.due = cardData.due
+      this.saveState()
+      return card
+    }
+  },
+
+  deleteCard(cardId) {
+    let colToUpdate = null
+    for (const col of this.state.columns) {
+      const cardIndex = col.cards.findIndex((c) => c.id === cardId)
+      if (cardIndex !== -1) {
+        col.cards.splice(cardIndex, 1)
+        colToUpdate = col
+        break
+      }
+    }
+    if (colToUpdate) this.saveState()
+  },
+
+  moveCard(cardId, fromColId, toColId, toIndex) {
+    const fromCol = this.findColumn(fromColId)
+    const toCol = this.findColumn(toColId)
+    if (!fromCol || !toCol) return
+
+    const cardIndex = fromCol.cards.findIndex((c) => c.id === cardId)
+    if (cardIndex === -1) return
+
+    const [card] = fromCol.cards.splice(cardIndex, 1)
+
+    if (toIndex < 0 || toIndex > toCol.cards.length) {
+      toCol.cards.push(card)
+    } else {
+      toCol.cards.splice(toIndex, 0, card)
+    }
+
+    this.saveState()
+  },
+
+  reorderColumns(columnOrder) {
+    this.state.columns.sort(
+      (a, b) => columnOrder.indexOf(a.id) - columnOrder.indexOf(b.id)
+    )
+    this.saveState()
+  },
+
+  // ... (rest of the store logic: validation, demo state, import/export)
+  validateState(data) {
+    if (!data || !Array.isArray(data.columns)) throw new Error("Bad state")
+    for (const c of data.columns) {
+      if (
+        typeof c.id !== "string" ||
+        typeof c.title !== "string" ||
+        !Array.isArray(c.cards)
+      )
+        throw new Error("Bad column")
+      for (const k of c.cards) {
+        if (typeof k.id !== "string" || typeof k.title !== "string")
+          throw new Error("Bad card")
+      }
+    }
+  },
+
+  getDemoState() {
+    return {
+      columns: [
+        {
+          id: Utils.uid(),
+          title: "To do",
+          cards: [
+            {
+              id: Utils.uid(),
+              title: "Card design",
+              description: "Pick colors, spacing, shadows.",
+              tags: ["ui", "design"],
+              due: Utils.isoPlusDays(2),
+            },
+            {
+              id: Utils.uid(),
+              title: "Search/filter",
+              description: "Live filtering.",
+              tags: ["feature"],
+              due: Utils.isoPlusDays(4),
+            },
+          ],
+        },
+        {
+          id: Utils.uid(),
+          title: "In progress",
+          cards: [
+            {
+              id: Utils.uid(),
+              title: "Drag & drop",
+              description: "Pointer Events for mouse & touch.",
+              tags: ["dnd", "ux"],
+              due: Utils.isoPlusDays(1),
+            },
+          ],
+        },
+        {
+          id: Utils.uid(),
+          title: "Done",
+          cards: [
+            {
+              id: Utils.uid(),
+              title: "Dark theme",
+              description: "Toggle + persistence.",
+              tags: ["theme"],
+              due: Utils.isoPlusDays(-1),
+            },
+            {
+              id: Utils.uid(),
+              title: "Import/Export",
+              description: "JSON files",
+              tags: ["storage"],
+              due: "",
+            },
+          ],
+        },
+      ],
+    }
+  },
 }
 
-function renderColumn(col) {
-  const node = columnTpl.content.firstElementChild.cloneNode(true)
-  node.dataset.id = col.id
-  const titleEl = qs(".column-title", node)
-  titleEl.textContent = col.title
+/**
+ * @module UI
+ * Handles all direct DOM manipulation and rendering.
+ */
+const UI = {
+  // Element selectors
+  board: Utils.qs("#board"),
+  columnTpl: Utils.qs("#columnTemplate"),
+  cardTpl: Utils.qs("#cardTemplate"),
+  // Dialogs
+  editor: Utils.qs("#editor"),
+  colDialog: Utils.qs("#colDialog"),
+  renameDialog: Utils.qs("#renameDialog"),
+  confirmDialog: Utils.qs("#confirmDialog"),
+  importChoiceDialog: Utils.qs("#importChoice"),
+  // Templates
+  columnTemplate: Utils.qs("#columnTemplate"),
+  cardTemplate: Utils.qs("#cardTemplate"),
 
-  titleEl.addEventListener("dblclick", () => renameColumn(col.id))
-  qs(".btn-rename", node).addEventListener("click", () => renameColumn(col.id))
-  qs(".btn-del-col", node).addEventListener("click", async () => {
-    const ok = await showConfirm(
+  // State for filtering
+  activeTagFilters: new Set(),
+  searchQuery: "",
+
+  // --- Card Rendering ---
+  createCardElement(card) {
+    const node = this.cardTemplate.content.firstElementChild.cloneNode(true)
+    node.dataset.id = card.id
+
+    this.updateCardElement(node, card)
+
+    const grip = node.querySelector(".card-grip")
+    grip.addEventListener("pointerdown", Dnd.startCardPotentialDrag)
+
+    return node
+  },
+
+  updateCardElement(node, card) {
+    Utils.qs(".card-title", node).textContent = card.title
+    Utils.qs(".card-desc", node).textContent = card.description || ""
+
+    const dueEl = Utils.qs(".card-due", node)
+    if (card.due) {
+      const d = new Date(card.due)
+      dueEl.textContent = d.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      })
+      dueEl.dateTime = d.toISOString()
+    } else {
+      dueEl.textContent = ""
+    }
+
+    const tagsBox = Utils.qs(".tags", node)
+    tagsBox.innerHTML = ""
+    ;(card.tags || []).forEach((t) => tagsBox.append(this.createTagBadge(t)))
+  },
+
+  createTagBadge(tag) {
+    const el = document.createElement("span")
+    el.className = "tag"
+    const dot = document.createElement("span")
+    dot.className = "dot"
+    dot.style.background = Utils.colorFromString(tag)
+    el.append(dot, document.createTextNode(tag))
+    return el
+  },
+
+  // --- Column Rendering ---
+  createColumnElement(column) {
+    const node = this.columnTemplate.content.firstElementChild.cloneNode(true)
+    node.dataset.id = column.id
+    Utils.qs(".column-title", node).textContent = column.title
+
+    const cardsList = Utils.qs(".cards", node)
+    for (const card of column.cards) {
+      cardsList.append(this.createCardElement(card))
+    }
+
+    Utils.qs(".drag-handle", node).addEventListener("pointerdown", (e) =>
+      Dnd.startColumnDrag(e, node)
+    )
+
+    return node
+  },
+
+  // --- Board Rendering ---
+  renderBoard() {
+    this.board.innerHTML = ""
+    Store.state.columns.forEach((col) => {
+      this.board.append(this.createColumnElement(col))
+    })
+    this.updateTagFilters()
+    this.applyFilters()
+  },
+
+  // --- Targeted DOM Updates ---
+  addColumn(column) {
+    this.board.append(this.createColumnElement(column))
+  },
+
+  renameColumn(colId, newTitle) {
+    const colEl = Utils.qs(`.column[data-id="${colId}"]`)
+    if (colEl) {
+      Utils.qs(".column-title", colEl).textContent = newTitle
+    }
+  },
+
+  deleteColumn(colId) {
+    const colEl = Utils.qs(`.column[data-id="${colId}"]`)
+    if (colEl) colEl.remove()
+  },
+
+  addCard(colId, card) {
+    const colEl = Utils.qs(`.column[data-id="${colId}"]`)
+    if (colEl) {
+      const cardEl = this.createCardElement(card)
+      Utils.qs(".cards", colEl).append(cardEl)
+      this.applyFiltersToCard(cardEl)
+    }
+    this.updateTagFilters()
+  },
+
+  updateCard(card) {
+    const cardEl = Utils.qs(`.card[data-id="${card.id}"]`)
+    if (cardEl) {
+      this.updateCardElement(cardEl, card)
+      this.applyFiltersToCard(cardEl)
+    }
+    this.updateTagFilters()
+  },
+
+  deleteCard(cardId) {
+    const cardEl = Utils.qs(`.card[data-id="${cardId}"]`)
+    if (cardEl) cardEl.remove()
+    this.updateTagFilters()
+  },
+
+  // --- Dialogs ---
+  showCardEditor(card, colId) {
+    document.body.classList.add("dialog-open")
+    const form = Utils.qs("#editorForm")
+    form.dataset.colId = colId
+    form.dataset.cardId = card ? card.id : ""
+
+    Utils.qs("#editorTitle").textContent = card ? "Edit card" : "Create card"
+    form.elements.title.value = card ? card.title : ""
+    form.elements.description.value = card ? card.description || "" : ""
+    form.elements.tags.value = card ? (card.tags || []).join(", ") : ""
+    form.elements.due.value = card
+      ? card.due
+        ? new Date(card.due).toISOString().slice(0, 10)
+        : ""
+      : ""
+
+    this.editor.showModal()
+  },
+
+  showColumnDialog() {
+    const form = Utils.qs("#colForm")
+    form.reset()
+    this.colDialog.showModal()
+  },
+
+  showRenameDialog(colId, currentTitle) {
+    document.body.classList.add("dialog-open")
+    const form = Utils.qs("#renameForm")
+    form.dataset.colId = colId
+    form.elements.title.value = currentTitle
+    this.renameDialog.showModal()
+  },
+
+  showConfirm(message) {
+    document.body.classList.add("dialog-open")
+    return new Promise((resolve) => {
+      Utils.qs("#confirmText").textContent = message
+      const form = Utils.qs("#confirmForm")
+
+      const closeHandler = () => {
+        this.confirmDialog.removeEventListener("close", closeHandler)
+        resolve(this.confirmDialog.returnValue === "default")
+      }
+      this.confirmDialog.addEventListener("close", closeHandler)
+
+      this.confirmDialog.showModal()
+    })
+  },
+
+  showImportChoice() {
+    document.body.classList.add("dialog-open")
+    return new Promise((resolve) => {
+      const closeHandler = () => {
+        this.importChoiceDialog.removeEventListener("close", closeHandler)
+        resolve(this.importChoiceDialog.returnValue)
+      }
+      this.importChoiceDialog.addEventListener("close", closeHandler)
+      this.importChoiceDialog.showModal()
+    })
+  },
+
+  // --- Filtering & Searching ---
+  updateTagFilters() {
+    const box = Utils.qs("#tagFilters")
+    const allTags = new Set()
+    Store.state.columns.forEach((c) =>
+      c.cards.forEach((k) => (k.tags || []).forEach((t) => allTags.add(t)))
+    )
+
+    box.innerHTML = ""
+    ;[...allTags].sort().forEach((tag) => {
+      const chip = document.createElement("button")
+      chip.className = "tag-chip"
+      chip.dataset.tag = tag
+      chip.innerHTML = `<span class="tag-dot" style="background:${Utils.colorFromString(
+        tag
+      )}"></span> ${tag}`
+      chip.setAttribute(
+        "aria-pressed",
+        this.activeTagFilters.has(tag) ? "true" : "false"
+      )
+      if (this.activeTagFilters.has(tag)) chip.classList.add("active")
+      box.appendChild(chip)
+    })
+  },
+
+  toggleTagFilter(tag) {
+    if (this.activeTagFilters.has(tag)) {
+      this.activeTagFilters.delete(tag)
+    } else {
+      this.activeTagFilters.add(tag)
+    }
+    const chip = Utils.qs(`.tag-chip[data-tag="${tag}"]`)
+    if (chip) {
+      chip.classList.toggle("active")
+      chip.setAttribute(
+        "aria-pressed",
+        this.activeTagFilters.has(tag) ? "true" : "false"
+      )
+    }
+    this.applyFilters()
+  },
+
+  setSearchQuery(query) {
+    this.searchQuery = query.toLowerCase()
+    this.applyFilters()
+  },
+
+  applyFilters() {
+    Utils.qsa(".card").forEach((cardEl) => this.applyFiltersToCard(cardEl))
+  },
+
+  applyFiltersToCard(cardEl) {
+    const { card } = Store.findCard(cardEl.dataset.id)
+    if (!card) return
+
+    const searchMatch =
+      !this.searchQuery ||
+      card.title.toLowerCase().includes(this.searchQuery) ||
+      card.description.toLowerCase().includes(this.searchQuery) ||
+      card.tags.join(" ").toLowerCase().includes(this.searchQuery)
+
+    const tagsMatch =
+      this.activeTagFilters.size === 0 ||
+      [...this.activeTagFilters].every((filterTag) =>
+        card.tags.includes(filterTag)
+      )
+
+    cardEl.style.display = searchMatch && tagsMatch ? "" : "none"
+  },
+}
+
+/**
+ * @module Dnd
+ * Drag and Drop functionality.
+ */
+const Dnd = {
+  cardDrag: null,
+  colDrag: null,
+
+  // --- Card DnD ---
+  startCardPotentialDrag(e) {
+    if (e.pointerType === "mouse" && e.button !== 0) return
+
+    const cardEl = e.currentTarget.closest(".card")
+    const rect = cardEl.getBoundingClientRect()
+
+    Dnd.cardDrag = {
+      pointerId: e.pointerId,
+      cardEl,
+      startX: e.clientX,
+      startY: e.clientY,
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top,
+      started: false,
+      timerId: null,
+    }
+
+    cardEl.setPointerCapture(e.pointerId)
+
+    if (e.pointerType !== "mouse") {
+      Dnd.cardDrag.timerId = setTimeout(() => {
+        if (Dnd.cardDrag && !Dnd.cardDrag.started) {
+          Dnd.beginCardDrag(e)
+        }
+      }, 300)
+    }
+
+    document.addEventListener("pointermove", Dnd.onCardPotentialMove)
+    document.addEventListener("pointerup", Dnd.onCardDragEnd)
+    document.addEventListener("pointercancel", Dnd.onCardDragEnd)
+  },
+
+  onCardPotentialMove(e) {
+    if (!Dnd.cardDrag || e.pointerId !== Dnd.cardDrag.pointerId) return
+
+    const dx = e.clientX - Dnd.cardDrag.startX
+    const dy = e.clientY - Dnd.cardDrag.startY
+    const dist = Math.hypot(dx, dy)
+    const threshold = e.pointerType === "mouse" ? 6 : 8
+
+    if (dist > threshold && !Dnd.cardDrag.started) {
+      clearTimeout(Dnd.cardDrag.timerId)
+      Dnd.beginCardDrag(e)
+    }
+
+    if (Dnd.cardDrag.started) {
+      e.preventDefault()
+      Dnd.onCardPointerMove(e)
+    }
+  },
+
+  beginCardDrag(e) {
+    Dnd.cardDrag.started = true
+    document.body.classList.add("dragging-ui")
+
+    const { cardEl, offsetX, offsetY } = Dnd.cardDrag
+    const ghost = cardEl.cloneNode(true)
+    const rect = cardEl.getBoundingClientRect()
+
+    ghost.classList.add("card-ghost")
+    Object.assign(ghost.style, {
+      left: `${rect.left}px`,
+      top: `${rect.top}px`,
+      width: `${rect.width}px`,
+    })
+    document.body.appendChild(ghost)
+
+    const placeholder = document.createElement("div")
+    placeholder.className = "card placeholder"
+    placeholder.style.height = `${rect.height}px`
+
+    cardEl.classList.add("dragging")
+    cardEl.after(placeholder)
+
+    Dnd.cardDrag.ghost = ghost
+    Dnd.cardDrag.placeholder = placeholder
+
+    Dnd.positionGhost(e.clientX, e.clientY)
+  },
+
+  onCardPointerMove(e) {
+    if (!Dnd.cardDrag || !Dnd.cardDrag.started) return
+    Dnd.positionGhost(e.clientX, e.clientY)
+
+    const el = document.elementFromPoint(e.clientX, e.clientY)
+    const list = el ? el.closest(".cards") : null
+    if (!list) return
+
+    const siblings = Utils.qsa(".card:not(.dragging)", list)
+    let placed = false
+    for (const s of siblings) {
+      const r = s.getBoundingClientRect()
+      if (e.clientY < r.top + r.height / 2) {
+        list.insertBefore(Dnd.cardDrag.placeholder, s)
+        placed = true
+        break
+      }
+    }
+    if (!placed) list.appendChild(Dnd.cardDrag.placeholder)
+  },
+
+  onCardDragEnd(e) {
+    if (!Dnd.cardDrag || e.pointerId !== Dnd.cardDrag.pointerId) return
+    clearTimeout(Dnd.cardDrag.timerId)
+
+    if (Dnd.cardDrag.started) {
+      const { cardEl, ghost, placeholder } = Dnd.cardDrag
+      const toList = placeholder.closest(".cards")
+
+      if (toList) {
+        const fromColId = cardEl.closest(".column").dataset.id
+        const toColId = toList.closest(".column").dataset.id
+        const cardId = cardEl.dataset.id
+        const toIndex = [...toList.children].indexOf(placeholder)
+
+        // Commit change to store
+        Store.moveCard(cardId, fromColId, toColId, toIndex)
+
+        // Move element in DOM
+        toList.insertBefore(cardEl, placeholder)
+      }
+
+      cardEl.classList.remove("dragging")
+      ghost.remove()
+      placeholder.remove()
+
+      document.body.classList.remove("dragging-ui")
+    }
+
+    document.removeEventListener("pointermove", Dnd.onCardPotentialMove)
+    document.removeEventListener("pointerup", Dnd.onCardDragEnd)
+    document.removeEventListener("pointercancel", Dnd.onCardDragEnd)
+
+    Dnd.cardDrag = null
+  },
+
+  positionGhost(x, y) {
+    if (!Dnd.cardDrag.ghost) return
+    Dnd.cardDrag.ghost.style.left = `${x - Dnd.cardDrag.offsetX}px`
+    Dnd.cardDrag.ghost.style.top = `${y - Dnd.cardDrag.offsetY}px`
+  },
+
+  // --- Column DnD ---
+  startColumnDrag(e, colEl) {
+    if (e.button !== 0) return
+    e.preventDefault()
+    document.body.classList.add("dragging-ui")
+
+    const rect = colEl.getBoundingClientRect()
+    if (e.pointerType !== "touch") colEl.setPointerCapture(e.pointerId)
+
+    const ghost = colEl.cloneNode(true)
+    Object.assign(ghost.style, {
+      position: "fixed",
+      left: `${rect.left}px`,
+      top: `${rect.top}px`,
+      width: `${rect.width}px`,
+      pointerEvents: "none",
+      opacity: ".95",
+      transform: "scale(1.02)",
+      transform: "rotate(1deg)",
+      zIndex: 9999,
+    })
+    ghost.classList.add("dragging")
+    document.body.appendChild(ghost)
+
+    const ph = document.createElement("section")
+    ph.className = "column column-placeholder"
+    ph.style.minWidth = `${rect.width}px`
+    ph.style.height = `${rect.height}px`
+
+    UI.board.replaceChild(ph, colEl)
+
+    Dnd.colDrag = {
+      pointerId: e.pointerId,
+      ghost,
+      placeholder: ph,
+      srcEl: colEl,
+      offsetX: e.clientX - rect.left,
+    }
+
+    document.addEventListener("pointermove", Dnd.onColMove)
+    document.addEventListener("pointerup", Dnd.endColDrag)
+    document.addEventListener("pointercancel", Dnd.endColDrag)
+  },
+
+  onColMove(e) {
+    if (!Dnd.colDrag) return
+    const { ghost, placeholder, offsetX } = Dnd.colDrag
+    const x = e.clientX - offsetX
+    ghost.style.left = `${x}px`
+
+    const items = Utils.qsa(".column:not(.column-placeholder)", UI.board)
+    const ghostCenter = x + ghost.getBoundingClientRect().width / 2
+
+    let target = null
+    for (const el of items) {
+      const r = el.getBoundingClientRect()
+      const center = r.left + r.width / 2
+      if (ghostCenter < center) {
+        target = el
+        break
+      }
+    }
+
+    if (target) UI.board.insertBefore(placeholder, target)
+    else UI.board.appendChild(placeholder)
+  },
+
+  endColDrag() {
+    if (!Dnd.colDrag) return
+    const { ghost, placeholder, srcEl } = Dnd.colDrag
+
+    ghost.remove()
+    UI.board.replaceChild(srcEl, placeholder)
+
+    const order = Utils.qsa(".column", UI.board).map((el) => el.dataset.id)
+    Store.reorderColumns(order)
+
+    document.removeEventListener("pointermove", Dnd.onColMove)
+    document.removeEventListener("pointerup", Dnd.endColDrag)
+    document.removeEventListener("pointercancel", Dnd.endColDrag)
+    Dnd.colDrag = null
+    document.body.classList.remove("dragging-ui")
+  },
+}
+
+/**
+ * @module App
+ * Main application controller. Initializes the app and handles events.
+ */
+const App = {
+  init() {
+    this.setupEventListeners()
+    this.loadTheme()
+    Store.loadState()
+    UI.renderBoard()
+  },
+
+  setupEventListeners() {
+    // --- Event Delegation for Board Actions ---
+    UI.board.addEventListener("click", (e) => {
+      const target = e.target
+      const actionEl = target.closest("[data-action]")
+      if (!actionEl) return
+
+      const action = actionEl.dataset.action
+      const colEl = target.closest(".column")
+      const cardEl = target.closest(".card")
+      const colId = colEl ? colEl.dataset.id : null
+      const cardId = cardEl ? cardEl.dataset.id : null
+
+      switch (action) {
+        case "add-card":
+          UI.showCardEditor(null, colId)
+          break
+        case "edit-card":
+          // prevent clicks on buttons inside the card from opening the editor
+          if (target.closest("button")) return
+          const { card } = Store.findCard(cardId)
+          UI.showCardEditor(card, colId)
+          break
+        case "delete-card":
+          this.handleDeleteCard(cardId)
+          break
+        case "rename-column":
+        case "rename-column-title":
+          const col = Store.findColumn(colId)
+          UI.showRenameDialog(col.id, col.title)
+          break
+        case "delete-column":
+          this.handleDeleteColumn(colId)
+          break
+      }
+    })
+
+    // --- Form Submissions ---
+    Utils.qs("#editorForm").addEventListener(
+      "submit",
+      this.handleSaveCard.bind(this)
+    )
+    Utils.qs("#colForm").addEventListener(
+      "submit",
+      this.handleAddColumn.bind(this)
+    )
+    Utils.qs("#renameForm").addEventListener(
+      "submit",
+      this.handleRenameColumn.bind(this)
+    )
+
+    // --- Header & Global Actions ---
+    Utils.qs("#addColumnBtn").addEventListener("click", () =>
+      UI.showColumnDialog()
+    )
+    Utils.qs("#search").addEventListener("input", (e) =>
+      UI.setSearchQuery(e.target.value)
+    )
+    Utils.qs("#tagFilters").addEventListener("click", (e) => {
+      const chip = e.target.closest(".tag-chip")
+      if (chip) UI.toggleTagFilter(chip.dataset.tag)
+    })
+
+    // --- Theme ---
+    Utils.qs("#themeToggle").addEventListener(
+      "click",
+      this.toggleTheme.bind(this)
+    )
+
+    // --- Import / Export ---
+    Utils.qs("#exportBtn").addEventListener("click", this.exportJSON.bind(this))
+    Utils.qs("#importInput").addEventListener(
+      "change",
+      this.importJSON.bind(this)
+    )
+
+    // --- Dialog Cancel Buttons ---
+
+    // --- Body scroll lock for dialogs ---
+    Utils.qsa("dialog").forEach((dialog) => {
+      dialog.addEventListener("close", () => {
+        document.body.classList.remove("dialog-open")
+      })
+    })
+
+    // --- Closing dialogs on backdrop click ---
+    Utils.qsa("dialog").forEach((dialog) => {
+      dialog.addEventListener("click", (e) => {
+        if (e.target === dialog) {
+          dialog.close("cancel")
+        }
+      })
+    })
+    Utils.qsa('dialog .btn.secondary[value="cancel"]').forEach((btn) => {
+      btn.addEventListener("click", () => btn.closest("dialog").close())
+    })
+  },
+
+  // --- Action Handlers ---
+  handleAddColumn(e) {
+    e.preventDefault()
+    const form = e.target
+    const title = form.elements.title.value.trim()
+    if (title) {
+      const newColumn = Store.addColumn(title)
+      UI.addColumn(newColumn)
+    }
+    form.closest("dialog").close()
+  },
+
+  handleRenameColumn(e) {
+    e.preventDefault()
+    const form = e.target
+    const colId = form.dataset.colId
+    const newTitle = form.elements.title.value.trim()
+    if (newTitle) {
+      Store.renameColumn(colId, newTitle)
+      UI.renameColumn(colId, newTitle)
+    }
+    form.closest("dialog").close()
+  },
+
+  async handleDeleteColumn(colId) {
+    const col = Store.findColumn(colId)
+    const ok = await UI.showConfirm(
       `Delete column “${col.title}” with all its cards?`
     )
-    if (!ok) return
-    deleteColumn(col.id)
-  })
-  qs(".btn-add-card", node).addEventListener("click", () =>
-    openCreateCard(col.id)
-  )
-  qs(".drag-handle", node).addEventListener("pointerdown", (e) =>
-    startColumnDrag(e, node)
-  )
-
-  const list = qs(".cards", node)
-  for (const card of col.cards) {
-    list.append(renderCard(col, card))
-  }
-  return node
-}
-
-function renderCard(col, card) {
-  if (!matchSearchAndTags(card)) return document.createComment("filtered")
-  const node = cardTpl.content.firstElementChild.cloneNode(true)
-  node.dataset.id = card.id
-  qs(".card-title", node).textContent = card.title
-  qs(".card-desc", node).textContent = card.description || ""
-  const dueEl = qs(".card-due", node)
-  if (card.due) {
-    const d = new Date(card.due)
-    dueEl.textContent = d.toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    })
-    dueEl.dateTime = d.toISOString()
-  } else {
-    dueEl.textContent = ""
-  }
-  const tagsBox = qs(".tags", node)
-  ;(card.tags || []).forEach((t) => tagsBox.append(tagBadge(t)))
-
-  // Open editor on click on the card (except grip and buttons)
-  node.addEventListener("click", (e) => {
-    if (e.target.closest(".card-grip") || e.target.closest(".btn")) return
-    if (justDragged) return
-    openEditCard(col.id, card.id)
-  })
-
-  // Delete button
-  const delBtn = qs(".btn-del-card", node)
-  delBtn.addEventListener("click", (ev) => {
-    ev.stopPropagation()
-    onDeleteCard(col.id, card.id)
-  })
-
-  // Start DnD only from the grip
-  const grip = node.querySelector(".card-grip")
-  grip.addEventListener("pointerdown", startCardPotentialDrag)
-
-  // Keyboard
-  node.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault()
-      openEditCard(col.id, card.id)
+    if (ok) {
+      Store.deleteColumn(colId)
+      UI.deleteColumn(colId)
     }
-    if (e.key === "Delete") {
-      e.preventDefault()
-      onDeleteCard(col.id, card.id)
-    }
-  })
+  },
 
-  return node
-}
+  handleSaveCard(e) {
+    e.preventDefault()
+    const form = e.target
+    const colId = form.dataset.colId
+    const cardId = form.dataset.cardId
+    const title = form.elements.title.value.trim()
 
-function onDeleteCard(colId, cardId) {
-  showConfirm("Delete this card?").then((ok) => {
-    if (!ok) return
-    deleteCard(colId, cardId)
-  })
-}
+    if (!title) return
 
-function tagBadge(tag) {
-  const el = document.createElement("span")
-  el.className = "tag"
-  const dot = document.createElement("span")
-  dot.className = "dot"
-  dot.style.background = colorFromString(tag)
-  el.append(dot, document.createTextNode(tag))
-  return el
-}
-
-function ensureTagFiltersFromState() {
-  const box = qs("#tagFilters")
-  const tags = new Set()
-  for (const c of state.columns)
-    for (const k of c.cards) for (const t of k.tags || []) tags.add(t)
-  box.innerHTML = ""
-  ;[...tags].sort().forEach((tag) => {
-    const chip = document.createElement("button")
-    chip.className = "tag-chip"
-    chip.innerHTML = `<span class="tag-dot" style="background:${colorFromString(
-      tag
-    )}"></span> ${tag}`
-    chip.setAttribute("aria-pressed", "false")
-    chip.addEventListener("click", () => {
-      if (activeTagFilters.has(tag)) {
-        activeTagFilters.delete(tag)
-        chip.classList.remove("active")
-        chip.setAttribute("aria-pressed", "false")
-      } else {
-        activeTagFilters.add(tag)
-        chip.classList.add("active")
-        chip.setAttribute("aria-pressed", "true")
-      }
-      rerenderFiltered()
-    })
-    box.appendChild(chip)
-  })
-}
-
-function rerenderFiltered() {
-  for (const colEl of qsa(".column")) {
-    const col = state.columns.find((c) => c.id === colEl.dataset.id)
-    const list = qs(".cards", colEl)
-    list.innerHTML = ""
-    for (const card of col.cards) list.append(renderCard(col, card))
-  }
-}
-
-// ===== Columns =====
-function addColumnByName(name) {
-  state.columns.push({ id: uid(), title: name, cards: [] })
-  saveState()
-  renderAll()
-}
-function renameColumn(colId) {
-  const col = state.columns.find((c) => c.id === colId)
-  renameDialog.dataset.colId = colId
-  renameInput.value = col.title
-  openDialog(renameDialog)
-}
-renameOk.addEventListener("click", () => {
-  const id = renameDialog.dataset.colId
-  const col = state.columns.find((c) => c.id === id)
-  const t = renameInput.value.trim()
-  if (!t) {
-    renameInput.focus()
-    return
-  }
-  col.title = t
-  saveState()
-  renderAll()
-  renameDialog.close()
-})
-renameDialog.addEventListener("click", (e) => {
-  if (e.target === renameDialog) renameDialog.close()
-})
-
-function deleteColumn(colId) {
-  state.columns = state.columns.filter((c) => c.id !== colId)
-  saveState()
-  renderAll()
-}
-
-// ===== Cards =====
-function addCard(colId, card) {
-  const col = state.columns.find((c) => c.id === colId)
-  col.cards.push(card)
-  saveState()
-  renderAll()
-}
-function deleteCard(colId, cardId) {
-  const col = state.columns.find((c) => c.id === colId)
-  col.cards = col.cards.filter((x) => x.id !== cardId)
-  saveState()
-  renderAll()
-}
-
-function openCreateCard(colId) {
-  editCtx = { colId, cardId: null, isNew: true }
-  editorTitle.textContent = "Create card"
-  eTitle.value = ""
-  eDesc.value = ""
-  eTags.value = ""
-  eDue.value = ""
-  openDialog(editor)
-}
-function openEditCard(colId, cardId) {
-  const col = state.columns.find((c) => c.id === colId)
-  const card = col.cards.find((x) => x.id === cardId)
-  editCtx = { colId, cardId, isNew: false }
-  editorTitle.textContent = "Edit card"
-  eTitle.value = card.title
-  eDesc.value = card.description || ""
-  eTags.value = (card.tags || []).join(", ")
-  eDue.value = card.due ? new Date(card.due).toISOString().slice(0, 10) : ""
-  openDialog(editor)
-}
-
-qs("#eSave").addEventListener("click", () => {
-  if (!editCtx) return
-  const { colId, cardId, isNew } = editCtx
-  const col = state.columns.find((c) => c.id === colId)
-  if (isNew) {
-    const card = {
-      id: uid(),
-      title: eTitle.value.trim(),
-      description: eDesc.value.trim(),
-      tags: eTags.value
+    const cardData = {
+      title,
+      description: form.elements.description.value.trim(),
+      tags: form.elements.tags.value
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean),
-      due: eDue.value ? new Date(eDue.value + "T00:00:00").toISOString() : "",
-    }
-    if (!card.title) {
-      return
-    }
-    addCard(colId, card)
-  } else {
-    const card = col.cards.find((x) => x.id === cardId)
-    card.title = eTitle.value.trim()
-    if (!card.title) {
-      alert("Title cannot be empty")
-      return
-    }
-    card.description = eDesc.value.trim()
-    card.tags = eTags.value
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-    card.due = eDue.value
-      ? new Date(eDue.value + "T00:00:00").toISOString()
-      : ""
-    saveState()
-    renderAll()
-  }
-  editor.close()
-})
-editor.addEventListener("close", () => {
-  editCtx = null
-})
-editor.addEventListener("click", (e) => {
-  if (e.target === editor) editor.close()
-})
-
-// Column create dialog open
-qs("#addColumnBtn").addEventListener("click", () => {
-  colName.value = ""
-  openDialog(colDialog)
-})
-qs("#colCreate").addEventListener("click", () => {
-  const name = colName.value.trim()
-  if (!name) {
-    colName.focus()
-    return
-  }
-  addColumnByName(name)
-  colDialog.close()
-})
-colDialog.addEventListener("click", (e) => {
-  if (e.target === colDialog) colDialog.close()
-})
-
-// Confirm helper
-function showConfirm(message) {
-  return new Promise((resolve) => {
-    confirmText.textContent = message
-    confirmDialog.returnValue = "cancel"
-    openDialog(confirmDialog)
-
-    const onKeyDown = (e) => {
-      if (e.key === "Escape") {
-        e.preventDefault()
-        confirmDialog.returnValue = "cancel"
-        confirmDialog.close()
-      }
+      due: form.elements.due.value
+        ? new Date(form.elements.due.value + "T00:00:00").toISOString()
+        : "",
     }
 
-    const onClose = () => {
-      confirmDialog.removeEventListener("close", onClose)
-      confirmDialog.removeEventListener("keydown", onKeyDown)
-      resolve(confirmDialog.returnValue !== "cancel")
+    if (cardId) {
+      // Editing existing card
+      const updatedCard = Store.updateCard(cardId, cardData)
+      UI.updateCard(updatedCard)
+    } else {
+      // Creating new card
+      const newCard = Store.addCard(colId, cardData)
+      UI.addCard(colId, newCard)
     }
+    form.closest("dialog").close()
+  },
 
-    confirmDialog.addEventListener("keydown", onKeyDown)
-    confirmDialog.addEventListener("close", onClose)
-    confirmDialog.addEventListener("click", (e) => {
-      if (e.target === confirmDialog) confirmDialog.close()
-    })
-  })
-}
-// Import choice dialog (Merge / Replace)
-function askImportChoice() {
-  return new Promise((resolve) => {
-    const dlg = qs("#importChoice")
-    dlg.returnValue = "cancel"
-    openDialog(dlg)
-    const onClose = () => {
-      dlg.removeEventListener("close", onClose)
-      resolve(dlg.returnValue)
+  async handleDeleteCard(cardId) {
+    const ok = await UI.showConfirm("Delete this card?")
+    if (ok) {
+      Store.deleteCard(cardId)
+      UI.deleteCard(cardId)
     }
-    dlg.addEventListener("close", onClose)
-    dlg.addEventListener("click", (e) => {
-      if (e.target === dlg) dlg.close("cancel")
-    })
-  })
-}
+  },
 
-// ===== Search =====
-qs("#search").addEventListener("input", (e) => {
-  searchQuery = e.target.value.toLowerCase()
-  rerenderFiltered()
-})
-function matchSearchAndTags(card) {
-  const tags = (card.tags || []).map((t) => t.toLowerCase())
-  if (activeTagFilters.size) {
-    for (const t of activeTagFilters)
-      if (!tags.includes(t.toLowerCase())) return false
-  }
-  if (!searchQuery) return true
-  const txt = (
-    card.title +
-    " " +
-    (card.description || "") +
-    " " +
-    tags.join(" ")
-  ).toLowerCase()
-  return txt.includes(searchQuery)
-}
+  // --- Theme ---
+  THEME_KEY: "vee-board-theme",
+  loadTheme() {
+    const theme = localStorage.getItem(this.THEME_KEY) || "light"
+    this.applyTheme(theme)
+  },
+  applyTheme(theme) {
+    document.documentElement.setAttribute("data-theme", theme)
+    const themeBtn = Utils.qs("#themeToggle")
+    themeBtn.textContent = theme === "light" ? "☾" : "☼"
+    localStorage.setItem(this.THEME_KEY, theme)
+  },
+  toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute("data-theme")
+    const nextTheme = currentTheme === "dark" ? "light" : "dark"
+    this.applyTheme(nextTheme)
+  },
 
-// ===== Theme / Import-Export =====
-function setupToolbar() {
-  const themeBtn = qs("#themeToggle")
+  // --- Import/Export ---
+  exportJSON() {
+    const stateString = JSON.stringify(Store.state, null, 2)
+    const blob = new Blob([stateString], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `veeboard_backup_${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  },
 
-  themeBtn.addEventListener("click", () => {
-    const next = loadTheme() === "dark" ? "light" : "dark"
-    applyTheme(next)
-    saveTheme(next)
-    themeBtn.textContent = next === "light" ? "☾" : "☼"
-  })
+  async importJSON(e) {
+    const file = e.target.files && e.target.files[0]
+    if (!file) return
 
-  themeBtn.textContent = loadTheme() === "light" ? "☾" : "☼"
+    try {
+      const text = await file.text()
+      const incomingState = JSON.parse(text)
+      Store.validateState(incomingState) // throws if invalid
 
-  qs("#exportBtn").addEventListener("click", exportJSON)
-  qs("#importInput").addEventListener("change", importJSON)
-}
-function exportJSON() {
-  const blob = new Blob([JSON.stringify(state, null, 2)], {
-    type: "application/json",
-  })
-  const a = document.createElement("a")
-  a.href = URL.createObjectURL(blob)
-  const d = new Date()
-  const pad = (n) => String(n).padStart(2, "0")
-  const ts =
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
-    `_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`
-  a.download = `veeboard_backup_${ts}.json`
-  a.click()
-  URL.revokeObjectURL(a.href)
-}
-async function importJSON(e) {
-  const file = e.target.files && e.target.files[0]
-  if (!file) return
+      const choice = await UI.showImportChoice()
+      if (choice === "cancel" || !choice) return
 
-  try {
-    const text = await file.text()
-    const incoming = JSON.parse(text)
-
-    if (!incoming || !Array.isArray(incoming.columns)) {
-      alert("Invalid file format: expected { columns: [...] }")
-      return
-    }
-
-    const choice = await askImportChoice() // 'merge' | 'replace' | 'cancel'
-    if (choice === "cancel") return
-
-    if (choice === "replace") {
-      state = incoming
-      saveState()
-      if (typeof render === "function") render()
-      else location.reload()
-      return
-    }
-
-    const byId = new Map(state.columns.map((c) => [c.id, c]))
-    const byTitle = new Map(
-      state.columns.map((c) => [String(c.title).trim(), c])
-    )
-
-    for (const incCol of incoming.columns) {
-      const titleKey = String(incCol.title).trim()
-      let existing = byId.get(incCol.id) || byTitle.get(titleKey)
-
-      if (!existing) {
-        state.columns.push(incCol)
-        byId.set(incCol.id, incCol)
-        byTitle.set(titleKey, incCol)
-        continue
+      if (choice === "replace") {
+        Store.state = incomingState
+      } else if (choice === "merge") {
+        // A simple merge strategy
+        const existingColIds = new Set(Store.state.columns.map((c) => c.id))
+        incomingState.columns.forEach((incCol) => {
+          if (!existingColIds.has(incCol.id)) {
+            Store.state.columns.push(incCol)
+          } else {
+            const existingCol = Store.findColumn(incCol.id)
+            const existingCardIds = new Set(existingCol.cards.map((c) => c.id))
+            incCol.cards.forEach((incCard) => {
+              if (!existingCardIds.has(incCard.id)) {
+                existingCol.cards.push(incCard)
+              }
+            })
+          }
+        })
       }
 
-      const existingCardsById = new Set((existing.cards || []).map((c) => c.id))
-      for (const card of incCol.cards || []) {
-        if (!existingCardsById.has(card.id)) {
-          existing.cards = existing.cards || []
-          existing.cards.push(card)
-          existingCardsById.add(card.id)
-        }
-      }
+      Store.saveState()
+      UI.renderBoard()
+    } catch (err) {
+      console.error(err)
+      alert("JSON import failed: " + err.message)
+    } finally {
+      e.target.value = "" // Reset input
     }
-
-    if (incoming.tags && Array.isArray(incoming.tags)) {
-      const have = new Set((state.tags || []).map((t) => t.id ?? t))
-      for (const t of incoming.tags) {
-        const key = t.id ?? t
-        if (!have.has(key)) {
-          state.tags = state.tags || []
-          state.tags.push(t)
-          have.add(key)
-        }
-      }
-    }
-
-    saveState()
-    if (typeof render === "function") render()
-    else location.reload()
-  } catch (err) {
-    console.error(err)
-    alert("JSON import failed: " + (err && err.message ? err.message : err))
-  } finally {
-    e.target.value = ""
-  }
-}
-function applyTheme(t) {
-  document.documentElement.setAttribute("data-theme", t)
-}
-function saveTheme(t) {
-  localStorage.setItem(THEME_KEY, t)
-}
-function loadTheme() {
-  return localStorage.getItem(THEME_KEY) || "light"
+  },
 }
 
-// ===== LocalStorage =====
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-}
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return null
-    const data = JSON.parse(raw)
-    validateState(data)
-    return data
-  } catch {
-    return null
-  }
-}
-function validateState(data) {
-  if (!data || !Array.isArray(data.columns)) throw new Error("Bad state")
-  for (const c of data.columns) {
-    if (
-      typeof c.id !== "string" ||
-      typeof c.title !== "string" ||
-      !Array.isArray(c.cards)
-    )
-      throw new Error("Bad column")
-    for (const k of c.cards) {
-      if (typeof k.id !== "string" || typeof k.title !== "string")
-        throw new Error("Bad card")
-    }
-  }
-}
-
-// ===== Demo data =====
-function demoState() {
-  const colTodo = { id: uid(), title: "To do", cards: [] }
-  const colDoing = { id: uid(), title: "In progress", cards: [] }
-  const colDone = { id: uid(), title: "Done", cards: [] }
-  colTodo.cards.push(
-    {
-      id: uid(),
-      title: "Card design",
-      description: "Pick colors, spacing, shadows.",
-      tags: ["ui", "design"],
-      due: isoPlusDays(2),
-    },
-    {
-      id: uid(),
-      title: "Search/filter",
-      description: "Live filtering.",
-      tags: ["feature"],
-      due: isoPlusDays(4),
-    },
-    {
-      id: uid(),
-      title: "Persist state",
-      description: "LocalStorage",
-      tags: ["storage"],
-      due: "",
-    }
-  )
-  colDoing.cards.push({
-    id: uid(),
-    title: "Drag & drop",
-    description: "Pointer Events for mouse & touch.",
-    tags: ["dnd", "ux"],
-    due: isoPlusDays(1),
-  })
-  colDone.cards.push(
-    {
-      id: uid(),
-      title: "Dark theme",
-      description: "Toggle + persistence.",
-      tags: ["theme"],
-      due: isoPlusDays(-1),
-    },
-    {
-      id: uid(),
-      title: "Import/Export",
-      description: "JSON files",
-      tags: ["storage"],
-      due: "",
-    }
-  )
-  return { columns: [colTodo, colDoing, colDone] }
-}
-function isoPlusDays(n) {
-  const d = new Date()
-  d.setDate(d.getDate() + n)
-  d.setHours(0, 0, 0, 0)
-  return d.toISOString()
-}
-
-// ===== Utils =====
-function colorFromString(s) {
-  let h = 0
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360
-  return `hsl(${h} 70% 50%)`
-}
-
-// ===== Card DnD with threshold & long-press =====
-let drag = null // {pointerId, cardEl, fromColId, ghost, placeholder, offsetX, offsetY}
-let pdrag = null // potential drag
-const INTERACTIVE_SELECTOR =
-  'button, .btn, a, input, textarea, select, [contenteditable="true"]'
-
-function startCardPotentialDrag(e) {
-  if (e.pointerType === "mouse" && e.button !== 0) return
-  // Start only from grip
-  if (!e.target.closest(".card-grip")) return
-
-  const cardEl = e.currentTarget.closest(".card") || e.target.closest(".card")
-  const rect = cardEl.getBoundingClientRect()
-  pdrag = {
-    pointerId: e.pointerId,
-    cardEl,
-    startX: e.clientX,
-    startY: e.clientY,
-    started: false,
-    offsetX: e.clientX - rect.left,
-    offsetY: e.clientY - rect.top,
-    timerId: null,
-  }
-  cardEl.setPointerCapture(e.pointerId)
-  if (e.pointerType !== "mouse") {
-    pdrag.timerId = setTimeout(() => {
-      if (pdrag && !pdrag.started) {
-        beginDrag(e, cardEl, pdrag.offsetX, pdrag.offsetY)
-        pdrag.started = true
-      }
-    }, 300)
-  }
-  document.addEventListener("pointermove", onPotentialMove)
-  document.addEventListener("pointerup", cancelPotentialOrEnd)
-  document.addEventListener("pointercancel", cancelPotentialOrEnd)
-}
-
-function onPotentialMove(e) {
-  if (!pdrag || e.pointerId !== pdrag.pointerId) return
-  const dx = e.clientX - pdrag.startX,
-    dy = e.clientY - pdrag.startY
-  const dist = Math.hypot(dx, dy)
-  const threshold = e.pointerType === "mouse" ? 6 : 8
-  if (dist > threshold && !pdrag.started) {
-    clearTimeout(pdrag.timerId)
-    beginDrag(e, pdrag.cardEl, pdrag.offsetX, pdrag.offsetY)
-    pdrag.started = true
-  }
-  if (drag) {
-    e.preventDefault()
-    onPointerMove(e)
-  }
-}
-
-function cancelPotentialOrEnd(e) {
-  if (pdrag && e.pointerId === pdrag.pointerId) {
-    clearTimeout(pdrag.timerId)
-    pdrag = null
-  }
-  if (drag) endDrag(e)
-}
-
-function beginDrag(e, cardEl, offsetX, offsetY) {
-  e.preventDefault()
-  document.body.classList.add("dragging-ui")
-  const fromColEl = cardEl.closest(".column")
-  drag = {
-    pointerId: e.pointerId,
-    cardEl,
-    fromColId: fromColEl.dataset.id,
-    ghost: createGhost(cardEl),
-    placeholder: createPlaceholder(),
-    offsetX,
-    offsetY,
-  }
-  cardEl.classList.add("dragging")
-  cardEl.after(drag.placeholder)
-  document.addEventListener("pointermove", onPointerMove)
-  document.addEventListener("pointerup", endDrag)
-  document.addEventListener("pointercancel", endDrag)
-}
-
-function onPointerMove(e) {
-  if (!drag) return
-  positionGhost(e.clientX - drag.offsetX, e.clientY - drag.offsetY)
-  const el = document.elementFromPoint(e.clientX, e.clientY)
-  const list = el && el.closest ? el.closest(".cards") : null
-  if (!list) return
-  const siblings = [...list.children].filter(
-    (n) => !n.classList.contains("placeholder")
-  )
-  let placed = false
-  for (const s of siblings) {
-    const r = s.getBoundingClientRect()
-    if (e.clientY < r.top + r.height / 2) {
-      list.insertBefore(drag.placeholder, s)
-      placed = true
-      break
-    }
-  }
-  if (!placed) list.appendChild(drag.placeholder)
-}
-
-function endDrag(e) {
-  if (!drag) return
-  const { cardEl, ghost, placeholder, fromColId } = drag
-  const toList = placeholder.closest(".cards")
-  if (toList) {
-    const toColId = toList.closest(".column").dataset.id
-    commitMove(
-      cardEl,
-      fromColId,
-      toColId,
-      indexOfPlaceholder(toList, placeholder)
-    )
-  }
-  cardEl.classList.remove("dragging")
-  ghost.remove()
-  placeholder.remove()
-  drag = null
-
-  document.removeEventListener("pointermove", onPointerMove)
-  document.removeEventListener("pointerup", endDrag)
-  document.removeEventListener("pointercancel", endDrag)
-
-  document.body.classList.remove("dragging-ui")
-  justDragged = true
-  setTimeout(() => (justDragged = false), 0)
-}
-
-function createGhost(cardEl) {
-  const r = cardEl.getBoundingClientRect()
-  const g = cardEl.cloneNode(true)
-  Object.assign(g.style, {
-    position: "fixed",
-    left: r.left + "px",
-    top: r.top + "px",
-    width: r.width + "px",
-    pointerEvents: "none",
-    opacity: ".9",
-    transform: "rotate(2deg)",
-    zIndex: 9999,
-  })
-  // g.classList.add("dragging")
-  document.body.appendChild(g)
-  return g
-}
-function positionGhost(x, y) {
-  if (!drag) return
-  Object.assign(drag.ghost.style, { left: x + "px", top: y + "px" })
-}
-function createPlaceholder() {
-  const p = document.createElement("div")
-  p.className = "card placeholder"
-  p.textContent = "Drop here"
-  return p
-}
-function indexOfPlaceholder(list, ph) {
-  return [...list.children].indexOf(ph)
-}
-function commitMove(cardEl, fromColId, toColId, toIndex) {
-  const fromCol = state.columns.find((c) => c.id === fromColId)
-  const cardId = cardEl.dataset.id
-  const card = fromCol.cards.find((c) => c.id === cardId)
-  fromCol.cards = fromCol.cards.filter((c) => c.id !== cardId)
-  const toCol = state.columns.find((c) => c.id === toColId)
-  if (toIndex < 0 || toIndex > toCol.cards.length) toIndex = toCol.cards.length
-  toCol.cards.splice(toIndex, 0, card)
-  saveState()
-  renderAll()
-}
-
-// ===== Column DnD: ghost + placeholder =====
-let colDrag = null // {pointerId, ghost, placeholder, srcEl, startX, offsetX}
-// Auto-scroll state for horizontal dragging near screen edges
-let colAuto = { raf: 0, vx: 0 }
-function stopColAutoScroll() {
-  if (colAuto.raf) cancelAnimationFrame(colAuto.raf)
-  colAuto.raf = 0
-  colAuto.vx = 0
-}
-function runColAutoScroll() {
-  if (!colDrag || colAuto.vx === 0) {
-    colAuto.raf = 0
-    return
-  }
-  // Scroll the board horizontally
-  board.scrollLeft += colAuto.vx
-  colAuto.raf = requestAnimationFrame(runColAutoScroll)
-}
-function updateColAutoScroll(clientX) {
-  const vw = document.documentElement.clientWidth
-  const edge = 48 // px from edges to start autoscroll
-  const maxSpeed = 24 // px per frame at the extreme edge
-  let vx = 0
-  if (clientX < edge) {
-    vx = -Math.ceil(((edge - clientX) / edge) * maxSpeed)
-  } else if (clientX > vw - edge) {
-    vx = Math.ceil(((clientX - (vw - edge)) / edge) * maxSpeed)
-  }
-  if (vx !== colAuto.vx) {
-    colAuto.vx = vx
-    if (vx !== 0 && !colAuto.raf) {
-      colAuto.raf = requestAnimationFrame(runColAutoScroll)
-    }
-    if (vx === 0 && colAuto.raf) {
-      stopColAutoScroll()
-    }
-  }
-}
-function startColumnDrag(e, colEl) {
-  if (e.button !== 0) return
-  e.preventDefault()
-  document.body.classList.add("dragging-ui")
-  const rect = colEl.getBoundingClientRect()
-  if (e.pointerType !== "touch") colEl.setPointerCapture(e.pointerId)
-  const ghost = colEl.cloneNode(true)
-  Object.assign(ghost.style, {
-    position: "fixed",
-    left: rect.left + "px",
-    top: rect.top + "px",
-    width: rect.width + "px",
-    pointerEvents: "none",
-    opacity: ".95",
-    transform: "scale(1.02)",
-    zIndex: 9999,
-  })
-  ghost.classList.add("dragging")
-  document.body.appendChild(ghost)
-  const ph = document.createElement("section")
-  ph.className = "column column-placeholder"
-  ph.style.minWidth = rect.width + "px"
-  ph.style.height = rect.height + "px"
-  // Put placeholder exactly where the column was
-  board.replaceChild(ph, colEl)
-  colDrag = {
-    pointerId: e.pointerId,
-    ghost,
-    placeholder: ph,
-    srcEl: colEl,
-    startX: e.clientX,
-    offsetX: e.clientX - rect.left,
-  }
-  document.addEventListener("pointermove", onColMove)
-  document.addEventListener("pointerup", endColDrag)
-  document.addEventListener("pointercancel", endColDrag)
-  stopColAutoScroll()
-}
-function onColMove(e) {
-  if (!colDrag) return
-  const { ghost, placeholder, offsetX } = colDrag
-  const x = e.clientX - offsetX
-  ghost.style.left = x + "px"
-  updateColAutoScroll(e.clientX)
-  const items = [...board.querySelectorAll(".column")].filter(
-    (el) => el !== colDrag.srcEl && el !== placeholder
-  )
-  const ghostCenter = x + ghost.getBoundingClientRect().width / 2
-  let target = null
-  for (const el of items) {
-    const r = el.getBoundingClientRect()
-    const center = r.left + r.width / 2
-    if (ghostCenter < center) {
-      target = el
-      break
-    }
-  }
-  if (target) board.insertBefore(placeholder, target)
-  else board.appendChild(placeholder)
-}
-function endColDrag() {
-  if (!colDrag) return
-  stopColAutoScroll()
-  const { ghost, placeholder, srcEl } = colDrag
-  ghost.remove()
-  // Return the column to the exact placeholder position
-  board.replaceChild(srcEl, placeholder)
-  srcEl.style.visibility = ""
-  const order = [...board.querySelectorAll(".column")].map(
-    (el) => el.dataset.id
-  )
-  state.columns.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
-  saveState()
-  document.removeEventListener("pointermove", onColMove)
-  document.removeEventListener("pointerup", endColDrag)
-  document.removeEventListener("pointercancel", endColDrag)
-  colDrag = null
-  document.body.classList.remove("dragging-ui")
-}
-// Enable Enter to trigger primary button in dialogs
-function enableEnterSaves(dialogSelector, buttonSelector) {
-  const dlg = qs(dialogSelector)
-  const btn = qs(buttonSelector)
-  dlg.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      btn.click()
-    }
-  })
-}
-
-enableEnterSaves("#editor", "#eSave")
-enableEnterSaves("#colDialog", "#colCreate")
-enableEnterSaves("#renameDialog", "#renameOk")
-enableEnterSaves("#confirmDialog", "#confirmOk")
+// Initialize the application
+App.init()
