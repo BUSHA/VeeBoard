@@ -373,7 +373,6 @@ function matchSearchAndTags(card) {
 function setupToolbar() {
   const themeBtn = qs("#themeToggle")
 
-  // При кліку перемикаємо тему та іконку
   themeBtn.addEventListener("click", () => {
     const next = loadTheme() === "dark" ? "light" : "dark"
     applyTheme(next)
@@ -381,7 +380,6 @@ function setupToolbar() {
     themeBtn.textContent = next === "light" ? "☾" : "☼"
   })
 
-  // Встановлюємо правильну іконку при завантаженні
   themeBtn.textContent = loadTheme() === "light" ? "☾" : "☼"
 
   qs("#exportBtn").addEventListener("click", exportJSON)
@@ -725,7 +723,7 @@ function createGhost(cardEl) {
     transform: "rotate(2deg)",
     zIndex: 9999,
   })
-  g.classList.add("dragging")
+  // g.classList.add("dragging")
   document.body.appendChild(g)
   return g
 }

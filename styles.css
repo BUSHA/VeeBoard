@@ -259,13 +259,18 @@
       cursor: pointer;
     }
 
+    .card:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--shadow);
+    }
+
     .card:focus-visible {
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent)
     }
 
     .card.dragging {
-      opacity: .86;
-      transform: rotate(.6deg) scale(1.02)
+      display: none;
+      /* transform: rotate(.6deg) scale(1.02) */
     }
 
     .card.placeholder {
@@ -453,7 +458,7 @@
       align-items: center;
       justify-content: center;
       font-size: 14px;
-      font-weight: 600;
+      font-weight: 400;
       color: var(--muted);
       opacity: 0.8;
       content: "Drop here";
