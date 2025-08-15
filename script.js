@@ -29,6 +29,32 @@ const renameOk = qs("#renameOk")
 let editCtx = null // {colId, cardId|null, isNew:boolean}
 let justDragged = false // suppress click after drag
 
+// ===== Scroll lock for dialogs =====
+function lockScroll() {
+  const y = window.scrollY || 0
+  document.documentElement.dataset.scrollY = String(y)
+  document.documentElement.classList.add("modal-open")
+  document.body.classList.add("modal-open")
+  document.body.style.top = `-${y}px`
+}
+function unlockScroll() {
+  const y = parseInt(document.documentElement.dataset.scrollY || "0", 10)
+  document.documentElement.classList.remove("modal-open")
+  document.body.classList.remove("modal-open")
+  document.body.style.top = ""
+  window.scrollTo(0, y)
+}
+function openDialog(dlg) {
+  lockScroll()
+  dlg.showModal()
+  // універсально знімаємо блок після закриття
+  const onClose = () => {
+    dlg.removeEventListener("close", onClose)
+    unlockScroll()
+  }
+  dlg.addEventListener("close", onClose)
+}
+
 renderAll()
 setupToolbar()
 applyTheme(loadTheme())
@@ -189,7 +215,7 @@ function renameColumn(colId) {
   const col = state.columns.find((c) => c.id === colId)
   renameDialog.dataset.colId = colId
   renameInput.value = col.title
-  renameDialog.showModal()
+  openDialog(renameDialog)
 }
 renameOk.addEventListener("click", () => {
   const id = renameDialog.dataset.colId
@@ -235,7 +261,7 @@ function openCreateCard(colId) {
   eDesc.value = ""
   eTags.value = ""
   eDue.value = ""
-  editor.showModal()
+  openDialog(editor)
 }
 function openEditCard(colId, cardId) {
   const col = state.columns.find((c) => c.id === colId)
@@ -246,7 +272,7 @@ function openEditCard(colId, cardId) {
   eDesc.value = card.description || ""
   eTags.value = (card.tags || []).join(", ")
   eDue.value = card.due ? new Date(card.due).toISOString().slice(0, 10) : ""
-  editor.showModal()
+  openDialog(editor)
 }
 
 qs("#eSave").addEventListener("click", () => {
@@ -298,7 +324,7 @@ editor.addEventListener("click", (e) => {
 // Column create dialog open
 qs("#addColumnBtn").addEventListener("click", () => {
   colName.value = ""
-  colDialog.showModal()
+  openDialog(colDialog)
 })
 qs("#colCreate").addEventListener("click", () => {
   const name = colName.value.trim()
@@ -318,7 +344,7 @@ function showConfirm(message) {
   return new Promise((resolve) => {
     confirmText.textContent = message
     confirmDialog.returnValue = "cancel"
-    confirmDialog.showModal()
+    openDialog(confirmDialog)
 
     const onKeyDown = (e) => {
       if (e.key === "Escape") {
@@ -346,7 +372,7 @@ function askImportChoice() {
   return new Promise((resolve) => {
     const dlg = qs("#importChoice")
     dlg.returnValue = "cancel"
-    dlg.showModal()
+    openDialog(dlg)
     const onClose = () => {
       dlg.removeEventListener("close", onClose)
       resolve(dlg.returnValue)

@@ -388,7 +388,8 @@
       padding: clamp(16px, 5vw, 24px);
       display: flex;
       flex-direction: column;
-      gap: 14px
+      gap: 14px;
+      overscroll-behavior: contain;
     }
 
     .editor-form h3 {
@@ -466,6 +467,18 @@
 
     .column-placeholder::after {
       content: "Drop here";
+    }
+
+    /* Lock page scroll when any dialog is open */
+    html.modal-open,
+    body.modal-open {
+      overflow: hidden;
+    }
+
+    body.modal-open {
+      position: fixed;
+      /* запобігає стрибку на iOS */
+      width: 100%;
     }
 
     /* Mobile header & dialogs */
