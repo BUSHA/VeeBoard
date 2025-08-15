@@ -9,7 +9,7 @@ No frameworks, no backend — works entirely in the browser with **localStorage*
 
 ## Features
 
-- **Columns & Cards** — Create, rename, reorder, and delete columns. Add, edit, move, and delete cards.
+- **Columns & Cards** — Create, rename, reorder, and delete columns. Add, edit, move, archive and delete cards.
 - **Drag & Drop** — Move cards and columns using native HTML5 drag-and-drop.
 - **Card Editor** — Simple popup form for editing title, description, due date, and tags.
 - **Tag Filtering** — Clickable tags to filter visible cards. Tags automatically colorized.

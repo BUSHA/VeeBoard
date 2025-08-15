@@ -27,6 +27,7 @@
       <input id="search" class="search" type="search" placeholder="Search by title or tags…" aria-label="Search" />
       <div class="actions">
         <button id="addColumnBtn" class="btn" title="Add column">+ Column</button>
+        <button id="toggleArchiveBtn" class="btn" title="Show/Hide Archive">Archive</button>
         <button id="exportBtn" class="btn" title="Export JSON">Export</button>
         <label class="btn file-btn" title="Import JSON">Import<input id="importInput" type="file"
             accept="application/json" hidden></label>
@@ -42,7 +43,7 @@
     <section class="column" role="list" aria-label="Column">
       <header class="column-header">
         <button class="drag-handle" aria-label="Drag column" title="Drag to reorder">⠿</button>
-        <h2 class="column-title" tabindex="0" data-action="rename-column-title"></h2>
+        <h2 class="column-title" tabindex="0"></h2>
         <div class="column-actions">
           <button class="btn btn-rename" title="Rename column" data-action="rename-column">✎</button>
           <button class="btn btn-del-col" title="Delete column" data-action="delete-column">✕</button>
@@ -118,11 +119,12 @@
 
   <dialog id="confirmDialog" aria-label="Confirm action">
     <form id="confirmForm" method="dialog" class="editor-form">
-      <h3 id="confirmTitle">Confirm</h3>
+      <h3 id="confirmTitle">Delete card?</h3>
       <p id="confirmText" style="margin:4px 0 0"></p>
-      <div class="editor-actions">
+      <div class="editor-actions" style="grid-template-columns: 1fr 1fr 1fr;">
         <button type="button" value="cancel" class="btn secondary" formnovalidate>Cancel</button>
-        <button id="confirmOk" value="default" class="btn primary">Delete</button>
+        <button id="confirmOk" value="delete" class="btn error">Delete</button>
+        <button value="archive" class="btn primary">Archive</button>
       </div>
     </form>
   </dialog>

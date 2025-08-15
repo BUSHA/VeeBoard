@@ -8,6 +8,7 @@
   --muted: #6b7280;
   --primary: #3b82f6;
   --border: #e5e7eb;
+  --error: #ef4444;
   --shadow: 0 6px 20px rgba(0, 0, 0, .08);
   --radius: 14px;
   --radius-sm: 10px;
@@ -33,6 +34,11 @@ body {
   background: var(--bg);
   color: var(--text);
   font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif
+}
+
+/* Utility class to prevent body scrolling when a dialog is open */
+body.dialog-open {
+  overflow: hidden;
 }
 
 /* =================================
@@ -109,6 +115,10 @@ body {
   background: var(--primary);
   color: #fff;
   border-color: transparent
+}
+
+.btn.error {
+  color: var(--error);
 }
 
 .btn.secondary {
@@ -261,6 +271,19 @@ body {
   transition: color .2s ease
 }
 
+/* --- Archive Column Specific Styles --- */
+.column--archive {
+  background: repeating-linear-gradient(135deg, var(--panel), var(--panel) 10px, var(--bg) 10px, var(--bg) 20px);
+  border-style: dashed;
+  display: none;
+  /* Hidden by default */
+}
+
+.board--archive-visible .column--archive {
+  display: flex;
+  /* Show when board has the class */
+}
+
 /* =================================
    Cards
    ================================= */
@@ -273,11 +296,6 @@ body {
   transition: transform .12s ease, box-shadow .2s ease;
   touch-action: none;
   cursor: pointer;
-}
-
-.card:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow);
 }
 
 .card:focus-visible {
@@ -407,6 +425,10 @@ body.dragging-ui * {
   opacity: 0.8;
 }
 
+.column-placeholder::after {
+  content: "Drop here";
+}
+
 /* =================================
    Dialogs
    ================================= */
@@ -483,10 +505,6 @@ dialog {
 
 .editor-actions .btn {
   width: 100%
-}
-
-body.dialog-open {
-  overflow: hidden;
 }
 
 /* =================================

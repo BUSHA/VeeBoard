@@ -55,6 +55,17 @@ const Store = {
     } catch {
       this.state = this.getDemoState()
     }
+
+    // Ensure archive column exists for backward compatibility
+    if (!this.state.columns.some((c) => c.isArchive)) {
+      this.state.columns.push({
+        id: "archive",
+        title: "Archive",
+        cards: [],
+        isArchive: true,
+      })
+    }
+
     return this.state
   },
 
@@ -76,22 +87,27 @@ const Store = {
 
   addColumn(title) {
     const newColumn = { id: Utils.uid(), title, cards: [] }
-    this.state.columns.push(newColumn)
+    // Add new column before the archive column
+    const archiveIndex = this.state.columns.findIndex((c) => c.isArchive)
+    this.state.columns.splice(archiveIndex, 0, newColumn)
     this.saveState()
     return newColumn
   },
 
   renameColumn(colId, newTitle) {
     const col = this.findColumn(colId)
-    if (col) {
+    if (col && !col.isArchive) {
       col.title = newTitle
       this.saveState()
     }
   },
 
   deleteColumn(colId) {
-    this.state.columns = this.state.columns.filter((c) => c.id !== colId)
-    this.saveState()
+    const col = this.findColumn(colId)
+    if (col && !col.isArchive) {
+      this.state.columns = this.state.columns.filter((c) => c.id !== colId)
+      this.saveState()
+    }
   },
 
   addCard(colId, cardData) {
@@ -161,7 +177,6 @@ const Store = {
     this.saveState()
   },
 
-  // ... (rest of the store logic: validation, demo state, import/export)
   validateState(data) {
     if (!data || !Array.isArray(data.columns)) throw new Error("Bad state")
     for (const c of data.columns) {
@@ -262,6 +277,11 @@ const UI = {
   activeTagFilters: new Set(),
   searchQuery: "",
 
+  showDialog(dialog) {
+    document.body.classList.add("dialog-open")
+    dialog.showModal()
+  },
+
   // --- Card Rendering ---
   createCardElement(card) {
     const node = this.cardTemplate.content.firstElementChild.cloneNode(true)
@@ -313,14 +333,23 @@ const UI = {
     node.dataset.id = column.id
     Utils.qs(".column-title", node).textContent = column.title
 
+    if (column.isArchive) {
+      node.classList.add("column--archive")
+      Utils.qs(".column-actions", node).remove()
+      Utils.qs('[data-action="add-card"]', node).remove()
+      Utils.qs(".drag-handle", node).remove()
+    }
+
     const cardsList = Utils.qs(".cards", node)
     for (const card of column.cards) {
       cardsList.append(this.createCardElement(card))
     }
 
-    Utils.qs(".drag-handle", node).addEventListener("pointerdown", (e) =>
-      Dnd.startColumnDrag(e, node)
-    )
+    if (!column.isArchive) {
+      Utils.qs(".drag-handle", node).addEventListener("pointerdown", (e) =>
+        Dnd.startColumnDrag(e, node)
+      )
+    }
 
     return node
   },
@@ -335,9 +364,32 @@ const UI = {
     this.applyFilters()
   },
 
+  toggleArchiveVisibility() {
+    this.board.classList.toggle("board--archive-visible")
+
+    if (this.board.classList.contains("board--archive-visible")) {
+      const archiveColumn = this.board.querySelector(".column--archive")
+      if (archiveColumn) {
+        setTimeout(() => {
+          archiveColumn.scrollIntoView({
+            behavior: "smooth",
+            inline: "end",
+            block: "nearest",
+          })
+        }, 50)
+      }
+    } else {
+      this.board.scrollTo({
+        left: 0,
+        behavior: "smooth",
+      })
+    }
+  },
+
   // --- Targeted DOM Updates ---
   addColumn(column) {
-    this.board.append(this.createColumnElement(column))
+    const archiveCol = this.board.querySelector(".column--archive")
+    this.board.insertBefore(this.createColumnElement(column), archiveCol)
   },
 
   renameColumn(colId, newTitle) {
@@ -379,7 +431,6 @@ const UI = {
 
   // --- Dialogs ---
   showCardEditor(card, colId) {
-    document.body.classList.add("dialog-open")
     const form = Utils.qs("#editorForm")
     form.dataset.colId = colId
     form.dataset.cardId = card ? card.id : ""
@@ -394,48 +445,65 @@ const UI = {
         : ""
       : ""
 
-    this.editor.showModal()
+    this.showDialog(this.editor)
   },
 
   showColumnDialog() {
     const form = Utils.qs("#colForm")
     form.reset()
-    this.colDialog.showModal()
+    this.showDialog(this.colDialog)
   },
 
   showRenameDialog(colId, currentTitle) {
-    document.body.classList.add("dialog-open")
     const form = Utils.qs("#renameForm")
     form.dataset.colId = colId
     form.elements.title.value = currentTitle
-    this.renameDialog.showModal()
+    this.showDialog(this.renameDialog)
   },
 
-  showConfirm(message) {
-    document.body.classList.add("dialog-open")
+  showConfirm(message, context = {}) {
     return new Promise((resolve) => {
-      Utils.qs("#confirmText").textContent = message
-      const form = Utils.qs("#confirmForm")
+      const dialog = this.confirmDialog
+      const titleEl = dialog.querySelector("#confirmTitle")
+      const archiveButton = dialog.querySelector('button[value="archive"]')
+      const deleteButton = dialog.querySelector("#confirmOk")
+      const actionsContainer = deleteButton.parentElement
+
+      const showArchive = context.showArchiveButton !== false
+      const title = context.title || "Manage Card"
+      const deleteText = context.deleteText || "Delete"
+
+      titleEl.textContent = title
+      deleteButton.textContent = deleteText
+
+      if (showArchive) {
+        archiveButton.style.display = ""
+        actionsContainer.style.gridTemplateColumns = "1fr 1fr 1fr"
+      } else {
+        archiveButton.style.display = "none"
+        actionsContainer.style.gridTemplateColumns = "1fr 1fr"
+      }
+
+      Utils.qs("#confirmText", dialog).textContent = message
 
       const closeHandler = () => {
-        this.confirmDialog.removeEventListener("close", closeHandler)
-        resolve(this.confirmDialog.returnValue === "default")
+        dialog.removeEventListener("close", closeHandler)
+        resolve(dialog.returnValue)
       }
-      this.confirmDialog.addEventListener("close", closeHandler)
+      dialog.addEventListener("close", closeHandler)
 
-      this.confirmDialog.showModal()
+      this.showDialog(dialog)
     })
   },
 
   showImportChoice() {
-    document.body.classList.add("dialog-open")
     return new Promise((resolve) => {
       const closeHandler = () => {
         this.importChoiceDialog.removeEventListener("close", closeHandler)
         resolve(this.importChoiceDialog.returnValue)
       }
       this.importChoiceDialog.addEventListener("close", closeHandler)
-      this.importChoiceDialog.showModal()
+      this.showDialog(this.importChoiceDialog)
     })
   },
 
@@ -443,9 +511,12 @@ const UI = {
   updateTagFilters() {
     const box = Utils.qs("#tagFilters")
     const allTags = new Set()
-    Store.state.columns.forEach((c) =>
-      c.cards.forEach((k) => (k.tags || []).forEach((t) => allTags.add(t)))
-    )
+
+    Store.state.columns
+      .filter((c) => !c.isArchive)
+      .forEach((c) =>
+        c.cards.forEach((k) => (k.tags || []).forEach((t) => allTags.add(t)))
+      )
 
     box.innerHTML = ""
     ;[...allTags].sort().forEach((tag) => {
@@ -491,8 +562,13 @@ const UI = {
   },
 
   applyFiltersToCard(cardEl) {
-    const { card } = Store.findCard(cardEl.dataset.id)
+    const { card, col } = Store.findCard(cardEl.dataset.id)
     if (!card) return
+
+    if (col.isArchive) {
+      cardEl.style.display = ""
+      return
+    }
 
     const searchMatch =
       !this.searchQuery ||
@@ -574,7 +650,7 @@ const Dnd = {
     Dnd.cardDrag.started = true
     document.body.classList.add("dragging-ui")
 
-    const { cardEl, offsetX, offsetY } = Dnd.cardDrag
+    const { cardEl } = Dnd.cardDrag
     const ghost = cardEl.cloneNode(true)
     const rect = cardEl.getBoundingClientRect()
 
@@ -634,10 +710,9 @@ const Dnd = {
         const cardId = cardEl.dataset.id
         const toIndex = [...toList.children].indexOf(placeholder)
 
-        // Commit change to store
         Store.moveCard(cardId, fromColId, toColId, toIndex)
+        UI.updateTagFilters()
 
-        // Move element in DOM
         toList.insertBefore(cardEl, placeholder)
       }
 
@@ -663,7 +738,7 @@ const Dnd = {
 
   // --- Column DnD ---
   startColumnDrag(e, colEl) {
-    if (e.button !== 0) return
+    if (e.button !== 0 || colEl.classList.contains("column--archive")) return
     e.preventDefault()
     document.body.classList.add("dragging-ui")
 
@@ -679,7 +754,6 @@ const Dnd = {
       pointerEvents: "none",
       opacity: ".95",
       transform: "scale(1.02)",
-      transform: "rotate(1deg)",
       zIndex: 9999,
     })
     ghost.classList.add("dragging")
@@ -711,7 +785,10 @@ const Dnd = {
     const x = e.clientX - offsetX
     ghost.style.left = `${x}px`
 
-    const items = Utils.qsa(".column:not(.column-placeholder)", UI.board)
+    const items = Utils.qsa(
+      ".column:not(.column-placeholder):not(.column--archive)",
+      UI.board
+    )
     const ghostCenter = x + ghost.getBoundingClientRect().width / 2
 
     let target = null
@@ -725,7 +802,10 @@ const Dnd = {
     }
 
     if (target) UI.board.insertBefore(placeholder, target)
-    else UI.board.appendChild(placeholder)
+    else {
+      const archiveCol = UI.board.querySelector(".column--archive")
+      UI.board.insertBefore(placeholder, archiveCol)
+    }
   },
 
   endColDrag() {
@@ -776,16 +856,14 @@ const App = {
           UI.showCardEditor(null, colId)
           break
         case "edit-card":
-          // prevent clicks on buttons inside the card from opening the editor
           if (target.closest("button")) return
           const { card } = Store.findCard(cardId)
           UI.showCardEditor(card, colId)
           break
         case "delete-card":
-          this.handleDeleteCard(cardId)
+          this.promptDeleteOrArchive(cardId)
           break
         case "rename-column":
-        case "rename-column-title":
           const col = Store.findColumn(colId)
           UI.showRenameDialog(col.id, col.title)
           break
@@ -813,6 +891,9 @@ const App = {
     Utils.qs("#addColumnBtn").addEventListener("click", () =>
       UI.showColumnDialog()
     )
+    Utils.qs("#toggleArchiveBtn").addEventListener("click", () =>
+      UI.toggleArchiveVisibility()
+    )
     Utils.qs("#search").addEventListener("input", (e) =>
       UI.setSearchQuery(e.target.value)
     )
@@ -834,25 +915,20 @@ const App = {
       this.importJSON.bind(this)
     )
 
-    // --- Dialog Cancel Buttons ---
-
-    // --- Body scroll lock for dialogs ---
+    // --- Dialogs ---
     Utils.qsa("dialog").forEach((dialog) => {
+      dialog.addEventListener("click", (e) => {
+        if (e.target === dialog) dialog.close("cancel")
+      })
       dialog.addEventListener("close", () => {
         document.body.classList.remove("dialog-open")
       })
     })
 
-    // --- Closing dialogs on backdrop click ---
-    Utils.qsa("dialog").forEach((dialog) => {
-      dialog.addEventListener("click", (e) => {
-        if (e.target === dialog) {
-          dialog.close("cancel")
-        }
-      })
-    })
     Utils.qsa('dialog .btn.secondary[value="cancel"]').forEach((btn) => {
-      btn.addEventListener("click", () => btn.closest("dialog").close())
+      btn.addEventListener("click", () => {
+        btn.closest("dialog").close()
+      })
     })
   },
 
@@ -882,10 +958,17 @@ const App = {
 
   async handleDeleteColumn(colId) {
     const col = Store.findColumn(colId)
-    const ok = await UI.showConfirm(
-      `Delete column “${col.title}” with all its cards?`
+    const context = {
+      title: "Delete column?",
+      deleteText: "Delete",
+      showArchiveButton: false,
+    }
+    const choice = await UI.showConfirm(
+      `Delete column “${col.title}” with all its cards?`,
+      context
     )
-    if (ok) {
+
+    if (choice === "delete") {
       Store.deleteColumn(colId)
       UI.deleteColumn(colId)
     }
@@ -913,20 +996,46 @@ const App = {
     }
 
     if (cardId) {
-      // Editing existing card
       const updatedCard = Store.updateCard(cardId, cardData)
       UI.updateCard(updatedCard)
     } else {
-      // Creating new card
       const newCard = Store.addCard(colId, cardData)
       UI.addCard(colId, newCard)
     }
     form.closest("dialog").close()
   },
 
-  async handleDeleteCard(cardId) {
-    const ok = await UI.showConfirm("Delete this card?")
-    if (ok) {
+  async promptDeleteOrArchive(cardId) {
+    const { card, col } = Store.findCard(cardId)
+    if (!card) return
+
+    const context = col.isArchive
+      ? {
+          title: "Archived Card",
+          deleteText: "Delete Permanently",
+          showArchiveButton: false,
+        }
+      : {
+          title: "Delete or archive card?",
+          deleteText: "Delete",
+          showArchiveButton: true,
+        }
+
+    const choice = await UI.showConfirm(
+      `Do you want to archive “${card.title}” card or permanently delete it?`,
+      context
+    )
+
+    if (choice === "archive") {
+      const archiveCol = Store.state.columns.find((c) => c.isArchive)
+      if (col.id !== archiveCol.id) {
+        Store.moveCard(cardId, col.id, archiveCol.id, -1)
+        const cardEl = UI.board.querySelector(`.card[data-id="${cardId}"]`)
+        const archiveColEl = UI.board.querySelector(".column--archive .cards")
+        if (cardEl && archiveColEl) archiveColEl.append(cardEl)
+        UI.updateTagFilters()
+      }
+    } else if (choice === "delete") {
       Store.deleteCard(cardId)
       UI.deleteCard(cardId)
     }
@@ -969,7 +1078,7 @@ const App = {
     try {
       const text = await file.text()
       const incomingState = JSON.parse(text)
-      Store.validateState(incomingState) // throws if invalid
+      Store.validateState(incomingState)
 
       const choice = await UI.showImportChoice()
       if (choice === "cancel" || !choice) return
@@ -977,7 +1086,6 @@ const App = {
       if (choice === "replace") {
         Store.state = incomingState
       } else if (choice === "merge") {
-        // A simple merge strategy
         const existingColIds = new Set(Store.state.columns.map((c) => c.id))
         incomingState.columns.forEach((incCol) => {
           if (!existingColIds.has(incCol.id)) {
@@ -1000,7 +1108,7 @@ const App = {
       console.error(err)
       alert("JSON import failed: " + err.message)
     } finally {
-      e.target.value = "" // Reset input
+      e.target.value = ""
     }
   },
 }
