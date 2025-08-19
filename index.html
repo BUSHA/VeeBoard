@@ -24,18 +24,25 @@
     <div class="toolbar" role="toolbar" aria-label="Toolbar">
       <img src="favicon/favicon-96x96.png" width="24px" alt="VeeBoard logo" class="logo" />
       <h1 class="title">VeeBoard</h1>
-      <input id="search" class="search" type="search" placeholder="Search by title or tags…" aria-label="Search" />
-      <div class="actions">
-        <button id="addColumnBtn" class="btn" title="Add column">+ Column</button>
-        <button id="toggleArchiveBtn" class="btn" title="Show/Hide Archive">Archive</button>
-        <button id="exportBtn" class="btn" title="Export JSON">Export</button>
-        <label class="btn file-btn" title="Import JSON">Import<input id="importInput" type="file"
-            accept="application/json" hidden></label>
+      <div class="toolbar-actions">
+        <input id="search" class="search" type="search" placeholder="Search by title or tags…" aria-label="Search" />
         <button id="themeToggle" class="btn" title="Dark/Light theme">☼</button>
+        <div class="actions">
+          <div class="dropdown-menu">
+            <button id="menuBtn" class="btn" title="More options">☰</button>
+            <div id="menuContent" class="dropdown-content">
+              <button id="addColumnBtn" class="btn" title="Add column">Add column</button>
+              <button id="toggleArchiveBtn" class="btn" title="Show/Hide Archive">Show Archive</button>
+              <button id="exportBtn" class="btn" title="Export JSON">Save backup</button>
+              <label class="btn file-btn" title="Import JSON">Import backup<input id="importInput" type="file"
+                  accept="application/json" hidden></label>
+            </div>
+          </div>
+        </div>
       </div>
-      <div id="tagFilters" class="tag-filters" role="group" aria-label="Tag filter"></div>
     </div>
   </header>
+  <div id="tagFilters" class="tag-filters" role="group" aria-label="Tag filter"></div>
 
   <main id="board" class="board" aria-label="Board"></main>
 

@@ -282,6 +282,10 @@ const UI = {
   // Templates
   columnTemplate: Utils.qs("#columnTemplate"),
   cardTemplate: Utils.qs("#cardTemplate"),
+  // Menu
+  menuBtn: Utils.qs("#menuBtn"),
+  menuContent: Utils.qs("#menuContent"),
+  toggleArchiveBtn: Utils.qs("#toggleArchiveBtn"),
 
   // State for filtering
   activeTagFilters: new Set(),
@@ -401,7 +405,15 @@ const UI = {
   toggleArchiveVisibility() {
     this.board.classList.toggle("board--archive-visible")
 
-    if (this.board.classList.contains("board--archive-visible")) {
+    const isVisible = this.board.classList.contains("board--archive-visible")
+
+    if (isVisible) {
+      this.toggleArchiveBtn.innerHTML = "Hide Archive"
+    } else {
+      this.toggleArchiveBtn.innerHTML = "Show Archive"
+    }
+
+    if (isVisible) {
       const archiveColumn = this.board.querySelector(".column--archive")
       if (archiveColumn) {
         setTimeout(() => {
@@ -941,6 +953,22 @@ const App = {
     Utils.qs("#tagFilters").addEventListener("click", (e) => {
       const chip = e.target.closest(".tag-chip")
       if (chip) UI.toggleTagFilter(chip.dataset.tag)
+    })
+
+    // --- Dropdown Menu ---
+    UI.menuBtn.addEventListener("click", (e) => {
+      e.stopPropagation() // Prevent the window click listener from firing immediately
+      UI.menuContent.classList.toggle("show")
+    })
+
+    // Close menu if clicking outside of it
+    window.addEventListener("click", (e) => {
+      if (
+        !UI.menuBtn.contains(e.target) &&
+        UI.menuContent.classList.contains("show")
+      ) {
+        UI.menuContent.classList.remove("show")
+      }
     })
 
     // --- Theme ---
