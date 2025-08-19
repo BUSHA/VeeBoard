@@ -511,6 +511,12 @@ dialog {
   width: 100%
 }
 
+.editor-form-row {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+}
+
 /* =================================
    Due Date Badges
    ================================= */
@@ -523,10 +529,9 @@ dialog {
 
 /* Style for badges indicating a task is due soon (e.g., < 48 hours) */
 .due-badge--soon {
-  border: 2px solid #ff7e03;
+  border: 1px solid #ff7e03;
   color: #ff7e03;
   padding: 2px 8px;
-  font-weight: 600;
   border-radius: 16px;
 }
 
@@ -624,11 +629,11 @@ dialog {
   }
 }
 
-@media (max-width:420px) {
+/* @media (max-width:420px) {
   .editor-actions {
     grid-template-columns: 1fr !important
   }
-}
+} */
 
 @media (min-width:900px) {
   .board {
@@ -639,4 +644,8 @@ dialog {
 :focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px
+}
+
+.editor-form-row {
+  flex-direction: column;
 }

@@ -78,12 +78,14 @@
       <label>Description
         <textarea name="description" rows="4"></textarea>
       </label>
-      <label>Tags (comma-separated)
-        <input name="tags" placeholder="ui, bug, research" />
-      </label>
-      <label>Due date
-        <input name="due" type="date" />
-      </label>
+      <div class="editor-form-row">
+        <label style="flex:2">Tags (comma-separated)
+          <input name="tags" placeholder="ui, bug, research" />
+        </label>
+        <label style="flex:1">Due date
+          <input name="due" type="date" />
+        </label>
+      </div>
       <div class="editor-actions">
         <button type="button" value="cancel" class="btn secondary" formnovalidate>Cancel</button>
         <button value="default" class="btn primary">Save</button>
@@ -106,7 +108,7 @@
 
   <dialog id="renameDialog" aria-label="Rename column">
     <form id="renameForm" method="dialog" class="editor-form">
-      <h3>Rename column</h3>
+      <h3>Column settings</h3>
       <label>Title
         <input name="title" required maxlength="160" />
       </label>
@@ -114,7 +116,7 @@
         <label class="toggle-switch">
           <input name="isDoneColumn" type="checkbox" />
           <span class="slider"></span>
-          <span class="label-text">Mark as 'Done' column</span>
+          <span class="label-text">Mark as column for completed cards</span>
         </label>
       </div>
       <div class="editor-actions">
