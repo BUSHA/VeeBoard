@@ -7,8 +7,10 @@
   --text: #1f2430;
   --muted: #6b7280;
   --primary: #3b82f6;
+  --primary-light: #f4f9ff;
   --border: #e5e7eb;
   --error: #ef4444;
+  --alert: #f08a00;
   --shadow: 0 6px 20px rgba(0, 0, 0, .08);
   --radius: 14px;
   --radius-sm: 10px;
@@ -21,7 +23,10 @@ html[data-theme="dark"] {
   --text: #e5e7eb;
   --muted: #9aa3b2;
   --primary: #60a5fa;
+  --primary-light: #1e293b;
   --border: #242935;
+  --error: #812b2b;
+  --alert: #da8a4d;
   --shadow: 0 8px 24px rgba(0, 0, 0, .45);
 }
 
@@ -95,16 +100,17 @@ body.dialog-open {
 
 .btn {
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: 24px;
   border: 1px solid var(--border);
   background: var(--panel);
   color: var(--text);
   cursor: pointer;
-  box-shadow: var(--shadow)
+  /* box-shadow: var(--shadow) */
 }
 
-.btn:hover {
-  transform: translateY(-1px)
+.btn:hover, .btn.secondary:hover {
+  transform: translateY(-1px);
+  /* background: var(--primary-light); */
 }
 
 .btn:focus-visible {
@@ -119,6 +125,9 @@ body.dialog-open {
 
 .btn.error {
   color: var(--error);
+  background-color: var(--error);
+  color: white;
+  border: none;
 }
 
 .btn.secondary {
@@ -529,15 +538,15 @@ dialog {
 
 /* Style for badges indicating a task is due soon (e.g., < 48 hours) */
 .due-badge--soon {
-  border: 1px solid #ff7e03;
-  color: #ff7e03;
+  border: 1px solid var(--alert);
+  color: var(--alert);
   padding: 2px 8px;
   border-radius: 16px;
 }
 
 /* Style for badges indicating a task is overdue */
 .due-badge--overdue {
-  background-color: #f64646;
+  background-color: var(--error);
   font-weight: 600;
 
   color: white;
