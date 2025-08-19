@@ -110,6 +110,13 @@
       <label>Title
         <input name="title" required maxlength="160" />
       </label>
+      <div class="checkbox-wrapper">
+        <label class="toggle-switch">
+          <input name="isDoneColumn" type="checkbox" />
+          <span class="slider"></span>
+          <span class="label-text">Mark as 'Done' column</span>
+        </label>
+      </div>
       <div class="editor-actions">
         <button type="button" value="cancel" class="btn secondary" formnovalidate>Cancel</button>
         <button value="default" class="btn primary">Save</button>
@@ -136,11 +143,3 @@
       <div class="editor-actions" style="grid-template-columns: 1fr 1fr 1fr;">
         <button type="button" value="cancel" class="btn secondary">Cancel</button>
         <button class="btn" value="replace">Replace</button>
-        <button class="btn primary" value="merge">Merge</button>
-      </div>
-    </form>
-  </dialog>
-
-</body>
-
-</html>

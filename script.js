@@ -86,7 +86,7 @@ const Store = {
   },
 
   addColumn(title) {
-    const newColumn = { id: Utils.uid(), title, cards: [] }
+    const newColumn = { id: Utils.uid(), title, cards: [], isDone: false }
     // Add new column before the archive column
     const archiveIndex = this.state.columns.findIndex((c) => c.isArchive)
     this.state.columns.splice(archiveIndex, 0, newColumn)
@@ -94,10 +94,19 @@ const Store = {
     return newColumn
   },
 
-  renameColumn(colId, newTitle) {
+  updateColumn(colId, { title, isDone }) {
     const col = this.findColumn(colId)
     if (col && !col.isArchive) {
-      col.title = newTitle
+      col.title = title
+
+      // Rule: Only one column can be the "Done" column.
+      if (isDone) {
+        this.state.columns.forEach((c) => {
+          c.isDone = false
+        })
+      }
+      col.isDone = isDone
+
       this.saveState()
     }
   },
@@ -232,6 +241,7 @@ const Store = {
         {
           id: Utils.uid(),
           title: "Done",
+          isDone: true,
           cards: [
             {
               id: Utils.uid(),
@@ -283,11 +293,11 @@ const UI = {
   },
 
   // --- Card Rendering ---
-  createCardElement(card) {
+  createCardElement(card, column) {
     const node = this.cardTemplate.content.firstElementChild.cloneNode(true)
     node.dataset.id = card.id
 
-    this.updateCardElement(node, card)
+    this.updateCardElement(node, card, column)
 
     const grip = node.querySelector(".card-grip")
     grip.addEventListener("pointerdown", Dnd.startCardPotentialDrag)
@@ -295,19 +305,43 @@ const UI = {
     return node
   },
 
-  updateCardElement(node, card) {
+  updateCardElement(node, card, column) {
     Utils.qs(".card-title", node).textContent = card.title
     Utils.qs(".card-desc", node).textContent = card.description || ""
 
     const dueEl = Utils.qs(".card-due", node)
+
+    // --- CHANGES HERE ---
+    // First, reset all custom classes
+    dueEl.classList.remove("due-badge", "due-badge--soon", "due-badge--overdue")
+
     if (card.due) {
       const d = new Date(card.due)
-      dueEl.textContent = d.toLocaleDateString(undefined, {
+      const formattedDate = d.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
         year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
       })
+      // Always set the formatted date first
+      dueEl.textContent = formattedDate
       dueEl.dateTime = d.toISOString()
+
+      const now = new Date()
+      const hoursLeft = (d.getTime() - now.getTime()) / (1000 * 60 * 60)
+
+      const isCompletedColumn = column.isDone || column.isArchive
+
+      // Add classes only if the card is NOT in a completed column
+      if (!isCompletedColumn) {
+        if (hoursLeft < 0) {
+          // Overdue cards
+          dueEl.textContent = `${formattedDate} (Overdue)`
+          dueEl.classList.add("due-badge", "due-badge--overdue")
+        } else if (hoursLeft < 48) {
+          // Cards that are due soon
+          dueEl.classList.add("due-badge", "due-badge--soon")
+        }
+      }
     } else {
       dueEl.textContent = ""
     }
@@ -342,7 +376,7 @@ const UI = {
 
     const cardsList = Utils.qs(".cards", node)
     for (const card of column.cards) {
-      cardsList.append(this.createCardElement(card))
+      cardsList.append(this.createCardElement(card, column))
     }
 
     if (!column.isArchive) {
@@ -397,6 +431,8 @@ const UI = {
     if (colEl) {
       Utils.qs(".column-title", colEl).textContent = newTitle
     }
+    // Re-render all cards to reflect potential 'isDone' status change
+    this.renderBoard()
   },
 
   deleteColumn(colId) {
@@ -406,8 +442,9 @@ const UI = {
 
   addCard(colId, card) {
     const colEl = Utils.qs(`.column[data-id="${colId}"]`)
-    if (colEl) {
-      const cardEl = this.createCardElement(card)
+    const colData = Store.findColumn(colId)
+    if (colEl && colData) {
+      const cardEl = this.createCardElement(card, colData)
       Utils.qs(".cards", colEl).append(cardEl)
       this.applyFiltersToCard(cardEl)
     }
@@ -416,8 +453,9 @@ const UI = {
 
   updateCard(card) {
     const cardEl = Utils.qs(`.card[data-id="${card.id}"]`)
-    if (cardEl) {
-      this.updateCardElement(cardEl, card)
+    const { col } = Store.findCard(card.id)
+    if (cardEl && col) {
+      this.updateCardElement(cardEl, card, col)
       this.applyFiltersToCard(cardEl)
     }
     this.updateTagFilters()
@@ -439,11 +477,8 @@ const UI = {
     form.elements.title.value = card ? card.title : ""
     form.elements.description.value = card ? card.description || "" : ""
     form.elements.tags.value = card ? (card.tags || []).join(", ") : ""
-    form.elements.due.value = card
-      ? card.due
-        ? new Date(card.due).toISOString().slice(0, 10)
-        : ""
-      : ""
+    // BUGFIX: Use slice on the ISO string to avoid timezone issues
+    form.elements.due.value = card?.due?.slice(0, 10) || ""
 
     this.showDialog(this.editor)
   },
@@ -454,10 +489,11 @@ const UI = {
     this.showDialog(this.colDialog)
   },
 
-  showRenameDialog(colId, currentTitle) {
+  showRenameDialog(col, currentTitle) {
     const form = Utils.qs("#renameForm")
-    form.dataset.colId = colId
+    form.dataset.colId = col.id
     form.elements.title.value = currentTitle
+    form.elements.isDoneColumn.checked = col.isDone || false
     this.showDialog(this.renameDialog)
   },
 
@@ -563,7 +599,7 @@ const UI = {
 
   applyFiltersToCard(cardEl) {
     const { card, col } = Store.findCard(cardEl.dataset.id)
-    if (!card) return
+    if (!card || !col) return
 
     if (col.isArchive) {
       cardEl.style.display = ""
@@ -714,6 +750,11 @@ const Dnd = {
         UI.updateTagFilters()
 
         toList.insertBefore(cardEl, placeholder)
+
+        const { card, col } = Store.findCard(cardId)
+        if (card && col) {
+          UI.updateCardElement(cardEl, card, col)
+        }
       }
 
       cardEl.classList.remove("dragging")
@@ -865,7 +906,7 @@ const App = {
           break
         case "rename-column":
           const col = Store.findColumn(colId)
-          UI.showRenameDialog(col.id, col.title)
+          UI.showRenameDialog(col, col.title)
           break
         case "delete-column":
           this.handleDeleteColumn(colId)
@@ -949,9 +990,13 @@ const App = {
     const form = e.target
     const colId = form.dataset.colId
     const newTitle = form.elements.title.value.trim()
+    const isDone = form.elements.isDoneColumn.checked
+
     if (newTitle) {
-      Store.renameColumn(colId, newTitle)
-      UI.renameColumn(colId, newTitle)
+      Store.updateColumn(colId, { title: newTitle, isDone })
+      // Re-render the entire board to ensure all cards reflect the potential change
+      // in the "Done" column status, which affects their "overdue" state.
+      UI.renderBoard()
     }
     form.closest("dialog").close()
   },
@@ -991,7 +1036,7 @@ const App = {
         .map((s) => s.trim())
         .filter(Boolean),
       due: form.elements.due.value
-        ? new Date(form.elements.due.value + "T00:00:00").toISOString()
+        ? new Date(form.elements.due.value).toISOString()
         : "",
     }
 
@@ -1011,8 +1056,8 @@ const App = {
 
     const context = col.isArchive
       ? {
-          title: "Archived Card",
-          deleteText: "Delete Permanently",
+          title: "Archived card",
+          deleteText: "Delete permanently",
           showArchiveButton: false,
         }
       : {
