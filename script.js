@@ -1139,7 +1139,10 @@ const App = {
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `veeboard_backup_${new Date().toISOString().slice(0, 10)}.json`
+    const now = new Date()
+    const dateStr = now.toISOString().slice(0, 10)
+    const timeStr = now.toTimeString().slice(0, 6).replace(/:/g, "-")
+    a.download = `veeboard_backup_${dateStr}_${timeStr}.json`
     a.click()
     URL.revokeObjectURL(url)
   },
