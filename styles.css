@@ -367,6 +367,7 @@ body.dialog-open {
   transition: transform .12s ease, box-shadow .2s ease;
   touch-action: none;
   cursor: pointer;
+  word-wrap: break-word;
 }
 
 .card:focus-visible {
@@ -394,7 +395,9 @@ body.dialog-open {
 .card-desc {
   margin: .35rem 0 .25rem;
   color: var(--muted);
-  font-size: 13px
+  font-size: 13px;
+  max-height: 112px;
+  overflow: hidden;
 }
 
 .card-meta {
