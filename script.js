@@ -128,6 +128,7 @@ const Store = {
         description: cardData.description || "",
         tags: cardData.tags || [],
         due: cardData.due || "",
+        reminder: cardData.reminder,
       }
       col.cards.push(newCard)
       this.saveState()
@@ -142,6 +143,7 @@ const Store = {
       card.description = cardData.description
       card.tags = cardData.tags
       card.due = cardData.due
+      card.reminder = cardData.reminder // >>> MODIFIED
       this.saveState()
       return card
     }
@@ -325,6 +327,8 @@ const UI = {
         month: "short",
         day: "numeric",
         year: "numeric",
+        hour: "2-digit", // >>> MODIFIED
+        minute: "2-digit", // >>> MODIFIED
       })
       // Always set the formatted date first
       dueEl.textContent = formattedDate
@@ -489,10 +493,26 @@ const UI = {
     form.elements.title.value = card ? card.title : ""
     form.elements.description.value = card ? card.description || "" : ""
     form.elements.tags.value = card ? (card.tags || []).join(", ") : ""
-    // BUGFIX: Use slice on the ISO string to avoid timezone issues
-    form.elements.due.value = card?.due?.slice(0, 10) || ""
+
+    if (card?.due) {
+      const dateObj = new Date(card.due)
+      const localDate = new Date(
+        dateObj.getTime() - dateObj.getTimezoneOffset() * 60000
+      )
+      form.elements.due.value = localDate.toISOString().slice(0, 16)
+    } else {
+      form.elements.due.value = ""
+    }
+    if (card && card.reminder) {
+      form.elements.reminderEnabled.checked = card.reminder.enabled
+      form.elements.reminderOffset.value = card.reminder.offset
+    } else {
+      form.elements.reminderEnabled.checked = false
+      form.elements.reminderOffset.value = "30" // Default value
+    }
 
     this.showDialog(this.editor)
+    this.toggleReminderOffsetVisibility(form)
   },
 
   showColumnDialog() {
@@ -631,6 +651,21 @@ const UI = {
       )
 
     cardEl.style.display = searchMatch && tagsMatch ? "" : "none"
+  },
+
+  toggleReminderOffsetVisibility(form) {
+    const checkbox = form.elements.reminderEnabled
+    const select = form.elements.reminderOffset
+    const afterLabel = form.querySelector("#afterLabel")
+    if (checkbox && select) {
+      if (checkbox.checked) {
+        select.classList.remove("hidden")
+        afterLabel.classList.remove("hidden")
+      } else {
+        select.classList.add("hidden")
+        afterLabel.classList.add("hidden")
+      }
+    }
   },
 }
 
@@ -885,10 +920,34 @@ const Dnd = {
  */
 const App = {
   init() {
+    this.registerServiceWorker()
     this.setupEventListeners()
     this.loadTheme()
     Store.loadState()
     UI.renderBoard()
+  },
+
+  registerServiceWorker() {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register("/service-worker.js")
+        .then((registration) => {
+          console.log("Service Worker has been registered:", registration)
+        })
+        .catch((error) => {
+          console.log("Service Worker registration error:", error)
+        })
+    }
+  },
+
+  requestNotificationPermission() {
+    if ("Notification" in window && Notification.permission !== "granted") {
+      Notification.requestPermission().then((permission) => {
+        if (permission === "granted") {
+          console.log("Authorization for notification received.")
+        }
+      })
+    }
   },
 
   setupEventListeners() {
@@ -931,6 +990,23 @@ const App = {
       "submit",
       this.handleSaveCard.bind(this)
     )
+
+    Utils.qs("#editorForm").addEventListener("change", (e) => {
+      const form = e.currentTarget
+
+      if (e.target.name === "reminderEnabled") {
+        UI.toggleReminderOffsetVisibility(form)
+
+        if (e.target.checked) {
+          if (
+            "Notification" in window &&
+            Notification.permission === "default"
+          ) {
+            Notification.requestPermission()
+          }
+        }
+      }
+    })
     Utils.qs("#colForm").addEventListener(
       "submit",
       this.handleAddColumn.bind(this)
@@ -1056,6 +1132,7 @@ const App = {
 
     if (!title) return
 
+    //Get reminder data from form
     const cardData = {
       title,
       description: form.elements.description.value.trim(),
@@ -1066,15 +1143,43 @@ const App = {
       due: form.elements.due.value
         ? new Date(form.elements.due.value).toISOString()
         : "",
+      reminder: {
+        enabled: form.elements.reminderEnabled.checked,
+        offset: parseInt(form.elements.reminderOffset.value, 10),
+      },
     }
 
+    let savedCard
     if (cardId) {
-      const updatedCard = Store.updateCard(cardId, cardData)
-      UI.updateCard(updatedCard)
+      savedCard = Store.updateCard(cardId, cardData)
+      UI.updateCard(savedCard)
     } else {
-      const newCard = Store.addCard(colId, cardData)
-      UI.addCard(colId, newCard)
+      savedCard = Store.addCard(colId, cardData)
+      UI.addCard(colId, savedCard)
     }
+
+    //Send message to Service Worker to schedule notification
+    if (savedCard && savedCard.reminder.enabled && savedCard.due) {
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.ready
+          .then((registration) => {
+            registration.active.postMessage({
+              action: "scheduleNotification",
+              payload: {
+                title: `VeeBoard: ${savedCard.title}`,
+                body: `This task is due in ${savedCard.reminder.offset} minutes.`,
+                due: savedCard.due,
+                offsetMinutes: savedCard.reminder.offset,
+                cardId: savedCard.id,
+              },
+            })
+          })
+          .catch((err) => {
+            console.error("Service Worker not ready:", err)
+          })
+      }
+    }
+
     form.closest("dialog").close()
   },
 
@@ -1141,7 +1246,7 @@ const App = {
     a.href = url
     const now = new Date()
     const dateStr = now.toISOString().slice(0, 10)
-    const timeStr = now.toTimeString().slice(0, 6).replace(/:/g, "-")
+    const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, "-")
     a.download = `veeboard_backup_${dateStr}_${timeStr}.json`
     a.click()
     URL.revokeObjectURL(url)

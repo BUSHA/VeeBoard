@@ -411,6 +411,8 @@ body.dialog-open {
   font-size: 12px;
   color: var(--muted);
   align-self: flex-end;
+  margin-top: 4px;
+
 }
 
 .tags {
@@ -561,7 +563,8 @@ dialog {
   border-radius: 12px;
   padding: 10px 12px;
   outline: none;
-  width: 100%
+  width: 100%;
+  font-weight: 400;
 }
 
 .editor-form textarea {
@@ -613,7 +616,6 @@ dialog {
 .due-badge--overdue {
   background-color: var(--error);
   font-weight: 600;
-
   color: white;
 }
 
@@ -630,9 +632,11 @@ dialog {
 .editor-form .toggle-switch {
   display: flex;
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   cursor: pointer;
+  min-height: 35px;
 }
 
 .label-text {
@@ -678,6 +682,10 @@ dialog {
 
 .toggle-switch input:checked+.slider:before {
   transform: translateX(20px);
+}
+
+.hidden {
+  display: none;
 }
 
 /* =================================

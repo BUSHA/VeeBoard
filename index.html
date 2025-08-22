@@ -90,9 +90,24 @@
           <input name="tags" placeholder="ui, bug, research" />
         </label>
         <label style="flex:1">Due date
-          <input name="due" type="date" />
+          <input name="due" type="datetime-local" />
         </label>
       </div>
+        <label class="toggle-switch">
+          <input name="reminderEnabled" type="checkbox" />
+          <span class="slider"></span>
+          <span class="label-text">Set a reminder</span>
+          <div>
+          <select name="reminderOffset" class="hidden" style="padding: 8px; border-radius: 8px; border: 1px solid var(--border);">
+            <option value="1">1m</option>
+            <option value="5">5m</option>
+            <option value="15">15m</option>
+            <option value="30" selected>30m</option>
+            <option value="60">1h</option>
+          </select>
+          <span id="afterLabel" style="margin-left: 10px;" class="label-text hidden"> before the due date</span>
+          </div>
+        </label>
       <div class="editor-actions">
         <button type="button" value="cancel" class="btn secondary" formnovalidate>Cancel</button>
         <button value="default" class="btn primary">Save</button>
