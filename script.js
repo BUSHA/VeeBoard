@@ -930,7 +930,7 @@ const App = {
   registerServiceWorker() {
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker
-        .register("/service-worker.js")
+        .register("service-worker.js")
         .then((registration) => {
           console.log("Service Worker has been registered:", registration)
         })
