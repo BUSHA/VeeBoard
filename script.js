@@ -228,7 +228,7 @@ const Store = {
             },
             {
               id: Utils.uid(),
-              title: "Drag & Drop",
+              title: "Drag & drop",
               description:
                 "Try dragging this card to another column using <br>the grip icon <b>⋮⋮</b> at the top left of the card.",
               tags: ["guide", "welcome"],
@@ -236,7 +236,7 @@ const Store = {
             },
             {
               id: Utils.uid(),
-              title: "Rich Text & Links",
+              title: "Rich text & links",
               description: `The description supports basic rich text hotkeys, like <b>bold</b> or <i>italic</i> text. You can also create <a href="https://github.com/busha/VeeBoard" target="_blank">links</a> by selecting text and pasting a URL. Try removing the link – select it and press <b>Cmd/Ctrl + K</b>.`,
               tags: ["feature", "editor"],
               due: createFutureDate(4, 18, 0),
@@ -245,11 +245,11 @@ const Store = {
         },
         {
           id: Utils.uid(),
-          title: "In Progress",
+          title: "In progress",
           cards: [
             {
               id: Utils.uid(),
-              title: "Due Date Reminders",
+              title: "Due date reminders",
               description:
                 "This card is due soon and has a reminder set for 15 minutes before its due time. The app will send a browser notification 🔔 even if the tab is closed.",
               tags: ["notifications", "ux", "feature"],
@@ -258,7 +258,7 @@ const Store = {
             },
             {
               id: Utils.uid(),
-              title: "Handle Overdue Cards",
+              title: "Handle overdue cards",
               description:
                 "This card was due yesterday and is now marked as <b>overdue</b>. This status is ignored for cards in the 'Done' column.",
               tags: ["ui", "ux", "design"],
@@ -273,7 +273,7 @@ const Store = {
           cards: [
             {
               id: Utils.uid(),
-              title: "Dark Theme Toggle",
+              title: "Dark theme toggle",
               description:
                 "A classic feature. Check it out using the ☾ / ☼ button in the top right!",
               tags: ["theme"],
