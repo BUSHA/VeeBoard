@@ -526,24 +526,40 @@ dialog {
 .editor-form {
   width: min(680px, 90vw);
   max-height: 90dvh;
-  /* keep inside viewport */
   overflow: auto;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--panel), #fff 6%), var(--panel));
+  background: var(--panel);
+  /* Спрощуємо фон для коректної роботи градієнтів */
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 16px;
   box-shadow: var(--shadow);
-  padding: clamp(16px, 5vw, 24px);
+  /* Прибираємо вертикальні відступи, щоб елементи прилипали до країв */
+  padding: 0 clamp(16px, 5vw, 24px);
   display: flex;
   flex-direction: column;
-  gap: 14px
+  gap: 14px;
 }
 
 .editor-form h3 {
-  margin: 0 0 4px;
+  margin: 0px;
   font-size: 18px;
   font-weight: 800;
   text-align: center;
+  position: sticky;
+  padding: clamp(12px, 5vw, 8px) 0 12px;
+  top: 0;
+  background: var(--panel);
+}
+
+.editor-form h3::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 20px;
+  background: linear-gradient(to bottom, var(--panel), transparent);
+  pointer-events: none;
 }
 
 .editor-form label {
@@ -578,10 +594,29 @@ dialog {
 }
 
 .editor-actions {
+  position: sticky;
+  bottom: 0;
+  background-color: var(--panel);
+  padding-top: 12px;
+  padding-bottom: clamp(16px, 5vw, 24px);
+  z-index: 10;
+  /* Видаляємо попередні стилі, які тепер не потрібні */
   margin-top: 6px;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px
+  gap: 12px;
+}
+
+/* Градієнт "згасання" НАД кнопками */
+.editor-actions::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  height: 12px;
+  background: linear-gradient(to top, var(--panel), transparent);
+  pointer-events: none;
 }
 
 .editor-actions .btn {
@@ -636,7 +671,7 @@ dialog {
   align-items: center;
   gap: 12px;
   cursor: pointer;
-  min-height: 35px;
+  /* min-height: 35px; */
 }
 
 .label-text {
