@@ -1330,7 +1330,7 @@ const App = {
     a.href = url
     const now = new Date()
     const dateStr = now.toISOString().slice(0, 10)
-    const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, "-")
+    const timeStr = now.toTimeString().slice(0, 5).replace(/:/g, "-")
     a.download = `veeboard_backup_${dateStr}_${timeStr}.json`
     a.click()
     URL.revokeObjectURL(url)
