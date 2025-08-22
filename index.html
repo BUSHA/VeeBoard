@@ -15,6 +15,7 @@
   <meta name="apple-mobile-web-app-title" content="VeeBoard" />
   <link rel="manifest" href="favicon/site.webmanifest" />
 
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <script src="script.js" defer></script>
 
 </head>
@@ -83,8 +84,14 @@
         <input name="title" required maxlength="160" />
       </label>
       <label>Description
-        <textarea name="description" rows="4"></textarea>
+        <div id="descriptionEditor" class="content-editor" contenteditable="true" role="textbox"></div>
       </label>
+      <div class="hotkey-hints">
+        <span><kbd>Cmd/Ctrl</kbd> + <kbd>B</kbd> - bold,</span>
+        <span><kbd>Cmd/Ctrl</kbd> + <kbd>I</kbd> - italic,</span>
+        <span><kbd>Cmd/Ctrl</kbd> + <kbd>V</kbd> - add link,</span>
+        <span><kbd>Cmd/Ctrl</kbd> + <kbd>K</kbd> - remove link</span>
+      </div>
       <div class="editor-form-row">
         <label style="flex:2">Tags (comma-separated)
           <input name="tags" placeholder="ui, bug, research" />
@@ -93,12 +100,13 @@
           <input name="due" type="datetime-local" />
         </label>
       </div>
-        <label class="toggle-switch">
-          <input name="reminderEnabled" type="checkbox" />
-          <span class="slider"></span>
-          <span class="label-text">Set a reminder</span>
-          <div>
-          <select name="reminderOffset" class="hidden" style="padding: 8px; border-radius: 8px; border: 1px solid var(--border);">
+      <label class="toggle-switch">
+        <input name="reminderEnabled" type="checkbox" />
+        <span class="slider"></span>
+        <span class="label-text">Set a reminder</span>
+        <div>
+          <select name="reminderOffset" class="hidden"
+            style="padding: 8px; border-radius: 8px; border: 1px solid var(--border);">
             <option value="1">1m</option>
             <option value="5">5m</option>
             <option value="15">15m</option>
@@ -106,8 +114,8 @@
             <option value="60">1h</option>
           </select>
           <span id="afterLabel" style="margin-left: 10px;" class="label-text hidden"> before the due date</span>
-          </div>
-        </label>
+        </div>
+      </label>
       <div class="editor-actions">
         <button type="button" value="cancel" class="btn secondary" formnovalidate>Cancel</button>
         <button value="default" class="btn primary">Save</button>

@@ -1,5 +1,5 @@
 // ============================================================================
-//  VeeBoard Refactored
+//  VeeBoard
 // ============================================================================
 //  Modules:
 //  - Utils: Helper functions (qs, qsa, uid, etc.)
@@ -205,38 +205,64 @@ const Store = {
   },
 
   getDemoState() {
+    const createFutureDate = (days, hours, minutes) => {
+      const d = new Date()
+      d.setDate(d.getDate() + days)
+      d.setHours(hours, minutes, 0, 0)
+      return d.toISOString()
+    }
+
     return {
       columns: [
         {
           id: Utils.uid(),
-          title: "To do",
+          title: "Change the column title here ––––>",
           cards: [
             {
               id: Utils.uid(),
-              title: "Card design",
-              description: "Pick colors, spacing, shadows.",
-              tags: ["ui", "design"],
-              due: Utils.isoPlusDays(2),
+              title: "Welcome to VeeBoard! 👋",
+              description:
+                "This is a demo board to showcase features. You can find the source code on <a href='https://github.com/busha/VeeBoard' target='_blank'>GitHub</a>.",
+              tags: ["guide", "welcome"],
+              due: "",
             },
             {
               id: Utils.uid(),
-              title: "Search/filter",
-              description: "Live filtering.",
-              tags: ["feature"],
-              due: Utils.isoPlusDays(4),
+              title: "Drag & Drop",
+              description:
+                "Try dragging this card to another column using <br>the grip icon <b>⋮⋮</b> at the top left of the card.",
+              tags: ["guide", "welcome"],
+              due: "",
+            },
+            {
+              id: Utils.uid(),
+              title: "Rich Text & Links",
+              description: `The description supports basic rich text hotkeys, like <b>bold</b> or <i>italic</i> text. You can also create <a href="https://github.com/busha/VeeBoard" target="_blank">links</a> by selecting text and pasting a URL. Try removing the link – select it and press <b>Cmd/Ctrl + K</b>.`,
+              tags: ["feature", "editor"],
+              due: createFutureDate(4, 18, 0),
             },
           ],
         },
         {
           id: Utils.uid(),
-          title: "In progress",
+          title: "In Progress",
           cards: [
             {
               id: Utils.uid(),
-              title: "Drag & drop",
-              description: "Pointer Events for mouse & touch.",
-              tags: ["dnd", "ux"],
-              due: Utils.isoPlusDays(1),
+              title: "Due Date Reminders",
+              description:
+                "This card is due soon and has a reminder set for 15 minutes before its due time. The app will send a browser notification 🔔 even if the tab is closed.",
+              tags: ["notifications", "ux", "feature"],
+              due: createFutureDate(1, 10, 0),
+              reminder: { enabled: true, offset: 15 },
+            },
+            {
+              id: Utils.uid(),
+              title: "Handle Overdue Cards",
+              description:
+                "This card was due yesterday and is now marked as <b>overdue</b>. This status is ignored for cards in the 'Done' column.",
+              tags: ["ui", "ux", "design"],
+              due: Utils.isoPlusDays(-1),
             },
           ],
         },
@@ -247,16 +273,26 @@ const Store = {
           cards: [
             {
               id: Utils.uid(),
-              title: "Dark theme",
-              description: "Toggle + persistence.",
+              title: "Dark Theme Toggle",
+              description:
+                "A classic feature. Check it out using the ☾ / ☼ button in the top right!",
               tags: ["theme"],
-              due: Utils.isoPlusDays(-1),
+              due: "",
             },
+          ],
+        },
+        {
+          id: Utils.uid(),
+          title: "Archive",
+          isDone: false,
+          isArchive: true,
+          cards: [
             {
               id: Utils.uid(),
-              title: "Import/Export",
-              description: "JSON files",
-              tags: ["storage"],
+              title: `"Archive" column`,
+              description:
+                "You don't have to delete outdated cards right away, who knows when you'll need them!",
+              tags: ["theme"],
               due: "",
             },
           ],
@@ -265,6 +301,12 @@ const Store = {
     }
   },
 }
+DOMPurify.addHook("afterSanitizeAttributes", function (node) {
+  if ("target" in node) {
+    node.setAttribute("target", "_blank")
+    node.setAttribute("rel", "noopener noreferrer")
+  }
+})
 
 /**
  * @module UI
@@ -313,7 +355,10 @@ const UI = {
 
   updateCardElement(node, card, column) {
     Utils.qs(".card-title", node).textContent = card.title
-    Utils.qs(".card-desc", node).textContent = card.description || ""
+    const sanitizedHtml = DOMPurify.sanitize(card.description || "", {
+      ADD_ATTR: ["target"],
+    })
+    Utils.qs(".card-desc", node).innerHTML = sanitizedHtml
 
     const dueEl = Utils.qs(".card-due", node)
 
@@ -327,8 +372,8 @@ const UI = {
         month: "short",
         day: "numeric",
         year: "numeric",
-        hour: "2-digit", // >>> MODIFIED
-        minute: "2-digit", // >>> MODIFIED
+        hour: "2-digit",
+        minute: "2-digit",
       })
       // Always set the formatted date first
       dueEl.textContent = formattedDate
@@ -491,7 +536,9 @@ const UI = {
 
     Utils.qs("#editorTitle").textContent = card ? "Edit card" : "Create card"
     form.elements.title.value = card ? card.title : ""
-    form.elements.description.value = card ? card.description || "" : ""
+    Utils.qs("#descriptionEditor", form).innerHTML = card
+      ? card.description || ""
+      : ""
     form.elements.tags.value = card ? (card.tags || []).join(", ") : ""
 
     if (card?.due) {
@@ -968,6 +1015,9 @@ const App = {
           UI.showCardEditor(null, colId)
           break
         case "edit-card":
+          if (target.closest("a")) {
+            return
+          }
           if (target.closest("button")) return
           const { card } = Store.findCard(cardId)
           UI.showCardEditor(card, colId)
@@ -1075,6 +1125,40 @@ const App = {
         btn.closest("dialog").close()
       })
     })
+
+    const descriptionEditor = Utils.qs("#descriptionEditor")
+
+    descriptionEditor.addEventListener("keydown", (e) => {
+      const isCtrlOrCmd = e.metaKey || e.ctrlKey
+
+      if (isCtrlOrCmd && e.key === "b") {
+        e.preventDefault()
+        document.execCommand("bold", false, null)
+      } else if (isCtrlOrCmd && e.key === "k") {
+        e.preventDefault()
+        document.execCommand("unlink", false, null)
+      }
+    })
+
+    descriptionEditor.addEventListener("paste", (e) => {
+      e.preventDefault()
+      const text = (e.clipboardData || window.clipboardData).getData("text")
+      try {
+        new URL(text)
+        const selection = window.getSelection()
+        if (selection.rangeCount > 0 && selection.toString().length > 0) {
+          document.execCommand("createLink", false, text)
+        } else {
+          document.execCommand(
+            "insertHTML",
+            false,
+            `<a href="${text}" target="_blank">${text}</a>`
+          )
+        }
+      } catch (_) {
+        document.execCommand("insertText", false, text)
+      }
+    })
   },
 
   // --- Action Handlers ---
@@ -1135,7 +1219,7 @@ const App = {
     //Get reminder data from form
     const cardData = {
       title,
-      description: form.elements.description.value.trim(),
+      description: Utils.qs("#descriptionEditor", form).innerHTML.trim(),
       tags: form.elements.tags.value
         .split(",")
         .map((s) => s.trim())

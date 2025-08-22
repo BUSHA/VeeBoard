@@ -396,8 +396,8 @@ body.dialog-open {
   margin: .35rem 0 .25rem;
   color: var(--muted);
   font-size: 13px;
-  max-height: 112px;
-  overflow: hidden;
+  max-height: 200px;
+  overflow: scroll;
 }
 
 .card-meta {
@@ -686,6 +686,54 @@ dialog {
 
 .hidden {
   display: none;
+}
+
+.content-editor {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  outline: none;
+  width: 100%;
+  min-height: 96px;
+  max-height: 200px;
+  resize: vertical;
+  overflow: auto;
+  font-weight: normal;
+  cursor: text;
+}
+
+.content-editor:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent);
+}
+
+.card-desc a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.card-desc a:hover {
+  text-decoration: underline;
+}
+
+.hotkey-hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.hotkey-hints kbd {
+  font-family: monospace;
+  background-color: var(--border);
+  padding: 4px 6px;
+  border-radius: 6px;
+  line-height: 1;
+  font-size: 10px;
+  font-weight: 600;
 }
 
 /* =================================
