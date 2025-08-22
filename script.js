@@ -560,6 +560,8 @@ const UI = {
 
     this.showDialog(this.editor)
     this.toggleReminderOffsetVisibility(form)
+    this.toggleReminderOffsetVisibility(form)
+    this.checkAndDisplayNotificationWarning(form)
   },
 
   showColumnDialog() {
@@ -712,6 +714,30 @@ const UI = {
         select.classList.add("hidden")
         afterLabel.classList.add("hidden")
       }
+    }
+  },
+  checkAndDisplayNotificationWarning(form) {
+    const warningEl = form.querySelector("#notification-permission-warning")
+    const checkbox = form.elements.reminderEnabled
+
+    if (!warningEl || !checkbox) return
+
+    if (!checkbox.checked) {
+      warningEl.classList.add("hidden")
+      return
+    }
+
+    if (Notification.permission === "denied") {
+      warningEl.textContent =
+        "⚠️ Notifications are blocked in your browser settings. To receive reminders, you need to enable them"
+      warningEl.classList.remove("hidden")
+    } else if (Notification.permission === "default") {
+      warningEl.textContent =
+        "To receive reminders, please enable browser notifications when prompted"
+      warningEl.classList.remove("hidden")
+    } else {
+      // 'granted'
+      warningEl.classList.add("hidden")
     }
   },
 }
@@ -1047,13 +1073,16 @@ const App = {
       if (e.target.name === "reminderEnabled") {
         UI.toggleReminderOffsetVisibility(form)
 
-        if (e.target.checked) {
-          if (
-            "Notification" in window &&
-            Notification.permission === "default"
-          ) {
-            Notification.requestPermission()
-          }
+        UI.checkAndDisplayNotificationWarning(form)
+
+        if (
+          e.target.checked &&
+          "Notification" in window &&
+          Notification.permission === "default"
+        ) {
+          Notification.requestPermission().then((permission) => {
+            UI.checkAndDisplayNotificationWarning(form)
+          })
         }
       }
     })

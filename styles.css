@@ -771,6 +771,21 @@ dialog {
   font-weight: 600;
 }
 
+.notification-warning {
+  font-size: 12px;
+  color: var(--alert);
+  background-color: color-mix(in srgb, var(--alert) 10%, transparent);
+  border: 1px solid var(--alert);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin: 4px 0 0;
+  width: 100%;
+}
+
+.notification-warning.hidden {
+  display: none;
+}
+
 /* =================================
    Responsive Media Queries
    ================================= */
