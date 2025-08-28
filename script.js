@@ -30,6 +30,31 @@ const Utils = {
     d.setHours(0, 0, 0, 0)
     return d.toISOString()
   },
+  // Return current UTC time in ISO 8601 format
+  nowIso: () => new Date().toISOString(),
+}
+
+/**
+ * @module Meta
+ * Client identity and monotonic sequence for conflict resolution in future syncs.
+ */
+const Meta = {
+  CLIENT_ID_KEY: "vee-board-client-id",
+  get clientId() {
+    let id = localStorage.getItem(this.CLIENT_ID_KEY)
+    if (!id) {
+      id = "c_" + Math.random().toString(36).slice(2, 10)
+      localStorage.setItem(this.CLIENT_ID_KEY, id)
+    }
+    return id
+  },
+  nextSeq() {
+    const key = "vee-board-seq"
+    const current = parseInt(localStorage.getItem(key) || "0", 10) || 0
+    const next = current + 1
+    localStorage.setItem(key, String(next))
+    return next
+  },
 }
 
 /**
@@ -129,6 +154,12 @@ const Store = {
         tags: cardData.tags || [],
         due: cardData.due || "",
         reminder: cardData.reminder,
+        createdAt: Utils.nowIso(), // when the card was created (UTC ISO)
+        lastChanged: Utils.nowIso(), // last modification timestamp (UTC ISO)
+        lastChangedBy: Meta.clientId, // stable client identifier
+        seq: Meta.nextSeq(), // per-client monotonic sequence
+        contentChangedAt: Utils.nowIso(), // content modification timestamp (UTC ISO)
+        positionChangedAt: Utils.nowIso(), // position (column/order) change timestamp (UTC ISO)
       }
       col.cards.push(newCard)
       this.saveState()
@@ -144,6 +175,11 @@ const Store = {
       card.tags = cardData.tags
       card.due = cardData.due
       card.reminder = cardData.reminder // >>> MODIFIED
+      // Update modification metadata
+      card.lastChanged = Utils.nowIso()
+      card.lastChangedBy = Meta.clientId
+      card.seq = Meta.nextSeq()
+      card.contentChangedAt = card.lastChanged
       this.saveState()
       return card
     }
@@ -171,6 +207,13 @@ const Store = {
     if (cardIndex === -1) return
 
     const [card] = fromCol.cards.splice(cardIndex, 1)
+    // Mark move as a modification for future sync/merge logic
+    if (card) {
+      card.lastChanged = Utils.nowIso()
+      card.lastChangedBy = Meta.clientId
+      card.seq = Meta.nextSeq()
+      card.positionChangedAt = card.lastChanged
+    }
 
     if (toIndex < 0 || toIndex > toCol.cards.length) {
       toCol.cards.push(card)
@@ -1468,19 +1511,129 @@ const App = {
       if (choice === "replace") {
         Store.state = incomingState
       } else if (choice === "merge") {
-        const existingColIds = new Set(Store.state.columns.map((c) => c.id))
+        // --- Smart merge v2: column de-dup by title, field-wise content merge, and position-aware moves ---
+
+        // Helpers
+        const timeVal = (t) => (t ? Date.parse(t) || 0 : 0)
+        const normTitle = (s) =>
+          (s || "").toLowerCase().trim().replace(/\s+/g, " ")
+
+        // Compare A vs B for content recency
+        const isContentANewer = (A, B) => {
+          const ta = Math.max(
+            timeVal(A.contentChangedAt),
+            timeVal(A.lastChanged),
+            timeVal(A.createdAt)
+          )
+          const tb = Math.max(
+            timeVal(B.contentChangedAt),
+            timeVal(B.lastChanged),
+            timeVal(B.createdAt)
+          )
+          if (ta !== tb) return ta > tb
+          const sa = Number.isFinite(A.seq) ? A.seq : -Infinity
+          const sb = Number.isFinite(B.seq) ? B.seq : -Infinity
+          if (sa !== sb) return sa > sb
+          const ca = A.lastChangedBy || ""
+          const cb = B.lastChangedBy || ""
+          return ca > cb
+        }
+        // Compare A vs B for position recency
+        const isPositionANewer = (A, B) => {
+          const ta = timeVal(A.positionChangedAt)
+          const tb = timeVal(B.positionChangedAt)
+          if (ta !== tb) return ta > tb
+          // Fall back to generic lastChanged if positionChangedAt missing
+          const fa = timeVal(A.lastChanged)
+          const fb = timeVal(B.lastChanged)
+          if (fa !== fb) return fa > fb
+          // Tie-breakers
+          const sa = Number.isFinite(A.seq) ? A.seq : -Infinity
+          const sb = Number.isFinite(B.seq) ? B.seq : -Infinity
+          if (sa !== sb) return sa > sb
+          const ca = A.lastChangedBy || ""
+          const cb = B.lastChangedBy || ""
+          return ca > cb
+        }
+
+        // 1) Build maps for existing columns by id and by normalized title
+        const existingById = new Map(Store.state.columns.map((c) => [c.id, c]))
+        const existingByTitle = new Map(
+          Store.state.columns.map((c) => [normTitle(c.title), c])
+        )
+
+        // 2) For each incoming column, decide its target column in current state
+        const columnById = new Map() // final working map id -> target column
         incomingState.columns.forEach((incCol) => {
-          if (!existingColIds.has(incCol.id)) {
-            Store.state.columns.push(incCol)
-          } else {
-            const existingCol = Store.findColumn(incCol.id)
-            const existingCardIds = new Set(existingCol.cards.map((c) => c.id))
-            incCol.cards.forEach((incCard) => {
-              if (!existingCardIds.has(incCard.id)) {
-                existingCol.cards.push(incCard)
-              }
-            })
+          let target = existingById.get(incCol.id)
+          if (!target) {
+            const byTitle = existingByTitle.get(normTitle(incCol.title))
+            if (byTitle) {
+              target = byTitle
+            }
           }
+          if (!target) {
+            // None matched -> add the column as-is
+            Store.state.columns.push(incCol)
+            existingById.set(incCol.id, incCol)
+            existingByTitle.set(normTitle(incCol.title), incCol)
+            target = incCol
+          }
+          columnById.set(target.id, target)
+        })
+
+        // 3) Merge cards per (resolved) column target
+        incomingState.columns.forEach((incCol) => {
+          // Resolve the actual target column again using id->col or title->col
+          let targetCol = existingById.get(incCol.id)
+          if (!targetCol) {
+            targetCol = existingByTitle.get(normTitle(incCol.title))
+          }
+          if (!targetCol) return // safety
+
+          incCol.cards.forEach((incCard) => {
+            // Try to find existing card anywhere in current state
+            const found = Store.findCard(incCard.id)
+            const exCard = found.card
+            const exCol = found.col
+
+            if (!exCard) {
+              // New card -> append into resolved target column
+              targetCol.cards.push(incCard)
+              return
+            }
+
+            // Update content if incoming newer
+            if (isContentANewer(incCard, exCard)) {
+              exCard.title = incCard.title
+              exCard.description = incCard.description
+              exCard.tags = Array.isArray(incCard.tags) ? incCard.tags : []
+              exCard.due = incCard.due || ""
+              exCard.reminder = incCard.reminder
+              // metadata copy without mutating timestamps on import
+              if (incCard.createdAt) exCard.createdAt = incCard.createdAt
+              if (incCard.lastChanged) exCard.lastChanged = incCard.lastChanged
+              if (typeof incCard.seq !== "undefined") exCard.seq = incCard.seq
+              if (incCard.lastChangedBy)
+                exCard.lastChangedBy = incCard.lastChangedBy
+              if (incCard.contentChangedAt)
+                exCard.contentChangedAt = incCard.contentChangedAt
+              if (incCard.positionChangedAt)
+                exCard.positionChangedAt = incCard.positionChangedAt
+            }
+
+            // Move if incoming position is newer and column differs
+            const shouldMove =
+              exCol &&
+              exCol.id !== targetCol.id &&
+              isPositionANewer(incCard, exCard)
+            if (shouldMove) {
+              // Remove from previous column
+              exCol.cards = exCol.cards.filter((c) => c.id !== exCard.id)
+              // Append to end of target column (stable policy)
+              targetCol.cards.push(exCard)
+            }
+          })
         })
       }
 
