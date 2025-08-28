@@ -273,7 +273,7 @@ const Store = {
               id: Utils.uid(),
               title: "Drag & drop",
               description:
-                "Try dragging this card to another column using <br>the grip icon <b>⋮⋮</b> at the top left of the card.",
+                "Try dragging this card to another column or reordering columns by dragging the grip icon <b>⠿</b> in the header.",
               tags: ["guide", "welcome"],
               due: "",
             },
