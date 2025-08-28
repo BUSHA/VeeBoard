@@ -749,6 +749,58 @@ const UI = {
 const Dnd = {
   cardDrag: null,
   colDrag: null,
+  autoScrollInterval: null,
+  lastPointerX: null,
+  lastPointerY: null,
+
+  // --- AutoScroll ---
+  startAutoScroll() {
+    if (this.autoScrollInterval) return
+    const edgeSize = 60 // activation zone near the viewport edge
+    const speed = 18 // px per tick
+    const tickMs = 30 // timer interval in milliseconds
+
+    this.autoScrollInterval = setInterval(() => {
+      // Do nothing if no drag is in progress
+      if (!this.cardDrag && !this.colDrag) return
+      if (this.lastPointerX == null || this.lastPointerY == null) return
+
+      const board = UI.board
+      const rect = board.getBoundingClientRect()
+
+      // --- Horizontal board scrolling ---
+      const atLeft = this.lastPointerX - rect.left
+      const atRight = rect.right - this.lastPointerX
+
+      // Check if there is room to scroll
+      const canScrollLeft = board.scrollLeft > 0
+      const canScrollRight =
+        board.scrollLeft < board.scrollWidth - board.clientWidth
+
+      if (atLeft < edgeSize && canScrollLeft) {
+        // Use scrollBy; it plays nicer with CSS scroll-snap
+        board.scrollBy({ left: -speed, behavior: "auto" })
+      } else if (atRight < edgeSize && canScrollRight) {
+        board.scrollBy({ left: speed, behavior: "auto" })
+      }
+
+      // --- Vertical window scrolling ---
+      const atTop = this.lastPointerY
+      const atBottom = window.innerHeight - this.lastPointerY
+      if (atTop < edgeSize) {
+        window.scrollBy(0, -speed)
+      } else if (atBottom < edgeSize) {
+        window.scrollBy(0, speed)
+      }
+    }, tickMs)
+  },
+
+  stopAutoScroll() {
+    if (this.autoScrollInterval) {
+      clearInterval(this.autoScrollInterval)
+      this.autoScrollInterval = null
+    }
+  },
 
   // --- Card DnD ---
   startCardPotentialDrag(e) {
@@ -785,6 +837,8 @@ const Dnd = {
 
   onCardPotentialMove(e) {
     if (!Dnd.cardDrag || e.pointerId !== Dnd.cardDrag.pointerId) return
+    Dnd.lastPointerX = e.clientX
+    Dnd.lastPointerY = e.clientY
 
     const dx = e.clientX - Dnd.cardDrag.startX
     const dy = e.clientY - Dnd.cardDrag.startY
@@ -829,10 +883,15 @@ const Dnd = {
     Dnd.cardDrag.placeholder = placeholder
 
     Dnd.positionGhost(e.clientX, e.clientY)
+    Dnd.lastPointerX = e.clientX
+    Dnd.lastPointerY = e.clientY
+    Dnd.startAutoScroll()
   },
 
   onCardPointerMove(e) {
     if (!Dnd.cardDrag || !Dnd.cardDrag.started) return
+    Dnd.lastPointerX = e.clientX
+    Dnd.lastPointerY = e.clientY
     Dnd.positionGhost(e.clientX, e.clientY)
 
     const el = document.elementFromPoint(e.clientX, e.clientY)
@@ -889,6 +948,9 @@ const Dnd = {
     document.removeEventListener("pointercancel", Dnd.onCardDragEnd)
 
     Dnd.cardDrag = null
+    Dnd.stopAutoScroll()
+    Dnd.lastPointerX = null
+    Dnd.lastPointerY = null
   },
 
   positionGhost(x, y) {
@@ -938,9 +1000,15 @@ const Dnd = {
     document.addEventListener("pointermove", Dnd.onColMove)
     document.addEventListener("pointerup", Dnd.endColDrag)
     document.addEventListener("pointercancel", Dnd.endColDrag)
+    Dnd.lastPointerX = e.clientX
+    Dnd.lastPointerY = e.clientY
+    Dnd.startAutoScroll()
   },
 
   onColMove(e) {
+    if (!Dnd.colDrag) return
+    Dnd.lastPointerX = e.clientX
+    Dnd.lastPointerY = e.clientY
     if (!Dnd.colDrag) return
     const { ghost, placeholder, offsetX } = Dnd.colDrag
     const x = e.clientX - offsetX
@@ -984,6 +1052,9 @@ const Dnd = {
     document.removeEventListener("pointercancel", Dnd.endColDrag)
     Dnd.colDrag = null
     document.body.classList.remove("dragging-ui")
+    Dnd.stopAutoScroll()
+    Dnd.lastPointerX = null
+    Dnd.lastPointerY = null
   },
 }
 
