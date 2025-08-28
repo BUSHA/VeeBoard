@@ -345,10 +345,10 @@ const UI = {
     const node = this.cardTemplate.content.firstElementChild.cloneNode(true)
     node.dataset.id = card.id
 
-    this.updateCardElement(node, card, column)
+    // Add pointerdown listener on the whole card for drag-and-drop
+    node.addEventListener("pointerdown", Dnd.startCardPotentialDrag)
 
-    const grip = node.querySelector(".card-grip")
-    grip.addEventListener("pointerdown", Dnd.startCardPotentialDrag)
+    this.updateCardElement(node, card, column)
 
     return node
   },
@@ -752,6 +752,8 @@ const Dnd = {
   autoScrollInterval: null,
   lastPointerX: null,
   lastPointerY: null,
+  // Suppress click after drag to prevent unwanted card editing
+  suppressClick: false,
 
   // --- AutoScroll ---
   startAutoScroll() {
@@ -806,6 +808,12 @@ const Dnd = {
   startCardPotentialDrag(e) {
     if (e.pointerType === "mouse" && e.button !== 0) return
 
+    // Prevent drag from interactive elements (links, buttons, inputs, tags, etc.)
+    const interactive = e.target.closest(
+      "a, button, input, textarea, select, .tag, .card-actions"
+    )
+    if (interactive) return
+
     const cardEl = e.currentTarget.closest(".card")
     const rect = cardEl.getBoundingClientRect()
 
@@ -858,6 +866,8 @@ const Dnd = {
 
   beginCardDrag(e) {
     Dnd.cardDrag.started = true
+    // Set flag to suppress click after drag
+    Dnd.suppressClick = true
     document.body.classList.add("dragging-ui")
 
     const { cardEl } = Dnd.cardDrag
@@ -951,6 +961,10 @@ const Dnd = {
     Dnd.stopAutoScroll()
     Dnd.lastPointerX = null
     Dnd.lastPointerY = null
+    // Re-enable click after short delay to prevent accidental card editor opening
+    setTimeout(() => {
+      Dnd.suppressClick = false
+    }, 120)
   },
 
   positionGhost(x, y) {
@@ -1097,6 +1111,9 @@ const App = {
   setupEventListeners() {
     // --- Event Delegation for Board Actions ---
     UI.board.addEventListener("click", (e) => {
+      // Prevent opening the editor after a drag
+      if (Dnd.suppressClick) return
+
       const target = e.target
       const actionEl = target.closest("[data-action]")
       if (!actionEl) return

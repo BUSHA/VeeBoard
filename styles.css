@@ -515,6 +515,7 @@ body.dialog-open {
   pointer-events: none;
   opacity: .9;
   transform: rotate(2deg);
+  box-shadow: var(--shadow);
   z-index: 9999;
 }
 
@@ -548,10 +549,6 @@ body.dragging-ui * {
   font-weight: 600;
   color: var(--muted);
   opacity: 0.8;
-}
-
-.column-placeholder::after {
-  content: "Drop here";
 }
 
 /* =================================
