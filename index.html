@@ -37,6 +37,7 @@
               <button id="exportBtn" class="btn" title="Export JSON">Save backup</button>
               <label class="btn file-btn" title="Import JSON">Import backup<input id="importInput" type="file"
                   accept="application/json" hidden></label>
+              <button id="dbSettingsBtn" class="btn" title="Database & Sync">Database & sync</button>
             </div>
           </div>
         </div>
@@ -166,6 +167,39 @@
         <button type="button" value="cancel" class="btn secondary" formnovalidate>Cancel</button>
         <button id="confirmOk" value="delete" class="btn error">Delete</button>
         <button value="archive" class="btn primary">Archive</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dbDialog" aria-label="Database & Sync">
+    <form id="dbForm" method="dialog" class="editor-form">
+      <h3>Database & Sync</h3>
+
+      <label class="toggle-switch">
+        <input id="useFirebaseToggle" type="checkbox" />
+        <span class="slider"></span>
+        <span class="label-text">Use Firebase instead of Local Storage</span>
+      </label>
+
+      <p id="firebaseHelp" class="label-text" style="margin:0;display:none;">
+        Paste your <code>firebaseConfig</code> object (JS or JSON). We’ll store it locally.
+      </p>
+
+      <label id="firebaseArea" style="display:none;">
+        Firebase config
+        <textarea id="firebaseConfigInput" rows="10" placeholder='{
+  "apiKey": "...",
+  "authDomain": "...",
+  "projectId": "...",
+  "storageBucket": "...",
+  "messagingSenderId": "...",
+  "appId": "..."
+}'></textarea>
+      </label>
+
+      <div class="editor-actions">
+        <button type="button" value="cancel" class="btn secondary" formnovalidate>Cancel</button>
+        <button value="default" class="btn primary">Save</button>
       </div>
     </form>
   </dialog>

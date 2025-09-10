@@ -57,6 +57,73 @@ const Meta = {
   },
 }
 
+// --- Database Settings & Backends ------------------------------------------
+const DbSettings = {
+  KEY: "vee-board-db-settings",
+  get() {
+    try {
+      return (
+        JSON.parse(localStorage.getItem(this.KEY)) || {
+          useFirebase: false,
+          firebaseConfig: null,
+        }
+      )
+    } catch {
+      return { useFirebase: false, firebaseConfig: null }
+    }
+  },
+  set(v) {
+    localStorage.setItem(this.KEY, JSON.stringify(v))
+  },
+}
+
+const LocalBackend = {
+  async load() {
+    const raw = localStorage.getItem(Store.STORAGE_KEY)
+    return raw ? JSON.parse(raw) : null
+  },
+  async save(state) {
+    localStorage.setItem(Store.STORAGE_KEY, JSON.stringify(state))
+  },
+}
+
+// ---- Realtime Database backend ----
+const FirebaseBackend = (() => {
+  let _app = null,
+    _db = null,
+    _ref = null
+
+  async function ensureInit(firebaseConfig) {
+    if (_db) return
+    const [{ initializeApp }, { getDatabase, ref, get, set }] =
+      await Promise.all([
+        import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"),
+        import(
+          "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js"
+        ),
+      ])
+    _app = initializeApp(firebaseConfig)
+    _db = getDatabase(_app)
+    _ref = ref(_db, "boards/default")
+    FirebaseBackend._get = get
+    FirebaseBackend._set = set
+  }
+
+  return {
+    _get: null,
+    _set: null,
+    async load(firebaseConfig) {
+      await ensureInit(firebaseConfig)
+      const snap = await this._get(_ref)
+      return snap.exists() ? snap.val() : null
+    },
+    async save(state, firebaseConfig) {
+      await ensureInit(firebaseConfig)
+      await this._set(_ref, state)
+    },
+  }
+})()
+
 /**
  * @module Store
  * Manages the application state and persistence to LocalStorage.
@@ -67,21 +134,39 @@ const Store = {
     columns: [],
   },
 
-  loadState() {
-    try {
-      const rawState = localStorage.getItem(this.STORAGE_KEY)
-      if (rawState) {
-        const data = JSON.parse(rawState)
-        this.validateState(data)
-        this.state = data
-      } else {
-        this.state = this.getDemoState()
+  loadState: async function () {
+    const cfg = DbSettings.get()
+    let data = null
+
+    if (cfg.useFirebase && cfg.firebaseConfig) {
+      try {
+        data = await FirebaseBackend.load(cfg.firebaseConfig)
+        if (!data) {
+          // Remote порожній → засіваємо локальним станом (або демо)
+          const local = await LocalBackend.load()
+          data = local || this.getDemoState()
+          await FirebaseBackend.save(data, cfg.firebaseConfig)
+        }
+      } catch (e) {
+        console.warn(
+          "Firebase (RTDB) load failed, fallback to LocalStorage:",
+          e
+        )
+        data = await LocalBackend.load()
       }
-    } catch {
-      this.state = this.getDemoState()
+    } else {
+      data = await LocalBackend.load()
     }
 
-    // Ensure archive column exists for backward compatibility
+    if (!data) data = this.getDemoState()
+    try {
+      this.validateState(data)
+    } catch {
+      data = this.getDemoState()
+    }
+    this.state = data
+
+    // Гарантуємо наявність archive-колонки
     if (!this.state.columns.some((c) => c.isArchive)) {
       this.state.columns.push({
         id: "archive",
@@ -90,12 +175,20 @@ const Store = {
         isArchive: true,
       })
     }
-
     return this.state
   },
 
-  saveState() {
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state))
+  saveState: async function () {
+    const cfg = DbSettings.get()
+    if (cfg.useFirebase && cfg.firebaseConfig) {
+      try {
+        await FirebaseBackend.save(this.state, cfg.firebaseConfig)
+        return
+      } catch (e) {
+        console.warn("Firebase (RTDB) save failed; also saving locally:", e)
+      }
+    }
+    await LocalBackend.save(this.state)
   },
 
   findColumn(colId) {
@@ -1157,11 +1250,11 @@ const Dnd = {
  * Main application controller. Initializes the app and handles events.
  */
 const App = {
-  init() {
+  async init() {
     this.registerServiceWorker()
     this.setupEventListeners()
     this.loadTheme()
-    Store.loadState()
+    await Store.loadState() // тепер це законно
     UI.renderBoard()
   },
 
@@ -1292,6 +1385,98 @@ const App = {
       ) {
         UI.menuContent.classList.remove("show")
       }
+    })
+
+    // --- Database & Sync (Firebase) ---
+    const dbBtn = Utils.qs("#dbSettingsBtn")
+    const dbDialog = Utils.qs("#dbDialog")
+    const dbForm = Utils.qs("#dbForm")
+    const useToggle = Utils.qs("#useFirebaseToggle", dbDialog)
+    const area = Utils.qs("#firebaseArea", dbDialog)
+    const help = Utils.qs("#firebaseHelp", dbDialog)
+    const cfgInput = Utils.qs("#firebaseConfigInput", dbDialog)
+
+    dbBtn.addEventListener("click", () => {
+      const cfg = DbSettings.get()
+      useToggle.checked = !!cfg.useFirebase
+      cfgInput.value = cfg.firebaseConfig
+        ? JSON.stringify(cfg.firebaseConfig, null, 2)
+        : ""
+      area.style.display = help.style.display = useToggle.checked ? "" : "none"
+      UI.showDialog(dbDialog)
+    })
+
+    useToggle.addEventListener("change", () => {
+      area.style.display = help.style.display = useToggle.checked ? "" : "none"
+    })
+
+    dbForm.addEventListener("submit", async (e) => {
+      e.preventDefault()
+      const wasFirebase = DbSettings.get().useFirebase
+      const wantFirebase = useToggle.checked
+      let parsedConfig = null
+
+      // Parse the firebaseConfig if toggle is ON
+      if (wantFirebase) {
+        const raw = cfgInput.value.trim()
+        if (!raw) return dbDialog.close("cancel")
+        try {
+          // Accept JS-ish object or JSON
+          parsedConfig = JSON.parse(raw) // works for JSON
+        } catch (_) {
+          // try to eval a const firebaseConfig = {...} string
+          try {
+            const wrapped = raw.includes("firebaseConfig")
+              ? raw
+              : "const firebaseConfig=" + raw
+            // eslint-disable-next-line no-new-func
+            const fn = new Function(wrapped + "; return firebaseConfig;")
+            parsedConfig = fn()
+          } catch (err) {
+            alert(
+              "Could not parse firebaseConfig. Please paste a valid object."
+            )
+            return
+          }
+        }
+      }
+
+      // Save settings early
+      DbSettings.set({
+        useFirebase: wantFirebase,
+        firebaseConfig: parsedConfig,
+      })
+
+      if (wantFirebase && !wasFirebase) {
+        // Switching Local -> Firebase: if remote empty, seed with local
+        try {
+          const remote = await FirebaseBackend.load(parsedConfig)
+          if (!remote) {
+            const local = await LocalBackend.load()
+            await FirebaseBackend.save(local || Store.state, parsedConfig)
+          }
+        } catch (e) {
+          console.error("Failed to switch to Firebase:", e)
+          alert("Failed to initialize Firebase. Staying on Local Storage.")
+          DbSettings.set({ useFirebase: false, firebaseConfig: null })
+        }
+      } else if (!wantFirebase && wasFirebase) {
+        // Switching Firebase -> Local: copy remote into LocalStorage
+        try {
+          const prev = DbSettings.get().firebaseConfig // was saved above
+          const remote = await FirebaseBackend.load(prev)
+          if (remote) {
+            await LocalBackend.save(remote)
+          }
+        } catch (e) {
+          console.warn("Could not copy Firebase data back to LocalStorage:", e)
+        }
+      }
+
+      // Reload state & UI from the selected backend
+      await Store.loadState()
+      UI.renderBoard()
+      dbDialog.close()
     })
 
     // --- Theme ---
