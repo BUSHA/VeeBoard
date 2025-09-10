@@ -1,6 +1,17 @@
 // ============================================================================
 //  VeeBoard
 // ============================================================================
+
+/* Live sync echo guard */
+const Sync = {
+  suppressEchoUntil: 0,
+  muteNext(ms = 900) {
+    this.suppressEchoUntil = Date.now() + ms
+  },
+  shouldIgnore() {
+    return Date.now() < this.suppressEchoUntil
+  },
+}
 //  Modules:
 //  - Utils: Helper functions (qs, qsa, uid, etc.)
 //  - Store: State management (data and persistence)
@@ -95,7 +106,7 @@ const FirebaseBackend = (() => {
 
   async function ensureInit(firebaseConfig) {
     if (_db) return
-    const [{ initializeApp }, { getDatabase, ref, get, set }] =
+    const [{ initializeApp }, { getDatabase, ref, get, set, onValue, off }] =
       await Promise.all([
         import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"),
         import(
@@ -107,11 +118,15 @@ const FirebaseBackend = (() => {
     _ref = ref(_db, "boards/default")
     FirebaseBackend._get = get
     FirebaseBackend._set = set
+    FirebaseBackend._onValue = onValue
+    FirebaseBackend._off = off
   }
 
   return {
     _get: null,
     _set: null,
+    _onValue: null,
+    _off: null,
     async load(firebaseConfig) {
       await ensureInit(firebaseConfig)
       const snap = await this._get(_ref)
@@ -120,6 +135,23 @@ const FirebaseBackend = (() => {
     async save(state, firebaseConfig) {
       await ensureInit(firebaseConfig)
       await this._set(_ref, state)
+    },
+    async subscribe(firebaseConfig, handler) {
+      await ensureInit(firebaseConfig)
+      const unsubscribe = FirebaseBackend._onValue(_ref, (snap) => {
+        if (!snap) return
+        const exists =
+          typeof snap.exists === "function" ? snap.exists() : !!snap.val
+        if (exists) handler(snap.val ? snap.val() : snap)
+      })
+      FirebaseBackend._unsubscribe = () => {
+        try {
+          FirebaseBackend._off(_ref)
+        } catch (_e) {}
+        if (typeof unsubscribe === "function") unsubscribe()
+        FirebaseBackend._unsubscribe = null
+      }
+      return FirebaseBackend._unsubscribe
     },
   }
 })()
@@ -182,6 +214,7 @@ const Store = {
     const cfg = DbSettings.get()
     if (cfg.useFirebase && cfg.firebaseConfig) {
       try {
+        Sync.muteNext(900)
         await FirebaseBackend.save(this.state, cfg.firebaseConfig)
         return
       } catch (e) {
@@ -434,6 +467,19 @@ const Store = {
           ],
         },
       ],
+    }
+  },
+  startRealtime(firebaseConfig) {
+    try {
+      if (!firebaseConfig || !FirebaseBackend.subscribe) return
+      FirebaseBackend.subscribe(firebaseConfig, (incoming) => {
+        if (Sync.shouldIgnore()) return
+        if (!incoming || typeof incoming !== "object") return
+        this.state = incoming
+        if (typeof UI !== "undefined" && UI.renderBoard) UI.renderBoard()
+      })
+    } catch (e) {
+      console.warn("Realtime subscribe failed:", e)
     }
   },
 }
@@ -1256,6 +1302,13 @@ const App = {
     this.loadTheme()
     await Store.loadState() // тепер це законно
     UI.renderBoard()
+    try {
+      const cfg = DbSettings.get()
+      if (cfg && cfg.useFirebase && cfg.firebaseConfig)
+        Store.startRealtime(cfg.firebaseConfig)
+    } catch (e) {
+      console.warn("Failed to start realtime:", e)
+    }
   },
 
   registerServiceWorker() {
