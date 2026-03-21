@@ -15,11 +15,12 @@ No frameworks, no backend — works entirely in the browser with **IndexedDB** p
 - **Drag & Drop** — Move cards and columns using native HTML5 drag-and-drop.
 - **Due Date Tracking** — Set a precise due date and time for any card to track deadlines. All content is sanitized for security.
 - **Rich Text Description** — The card description supports bold text (**Cmd/Ctrl+B**) and hyperlinks. Create links by pasting a URL onto selected text, and remove them with **Cmd/Ctrl+K**. All content is sanitized for security.
-- **Card Editor** — A simple popup form for editing a card's title, rich text description, due date, and tags.
-- **Tag Filtering** — Clickable tags to filter visible cards.
-- **Search** — Instant search to filter cards by title, description, or tags.
+- **Card Editor** — A simple popup form for editing a card's title, rich text description, due date, users, and tags.
+- **User Assignment** — Assign users to tasks with smart autocomplete that suggests existing users on your board.
+- **Image Attachments** — Attach up to 4 images per card (auto-converted to WebP for optimization).
+- **Filtering & Search** — Filter cards effortlessly by clicking tags or user avatars, or use the instant search bar for finding titles and descriptions.
 - **Theme Toggle** — Light and dark modes with saved preference.
-- **Basic Mobile Support** — Works on mobile devices, but experience is optimized for desktop.
+- **Mobile Support** — Responsive layout adapted for mobile screens with specialized action menus and forms.
 - **Multi-language support** — Works in English and Ukrainian.
 
 ## How It Works

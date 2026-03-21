@@ -56,6 +56,13 @@ Required only if cloud synchronization is enabled.
 - **Lifecycle:** Images are automatically deleted from R2 when the associated card or picture is removed.
 - **Authorization:** Requires Board ID and API Key (passed in headers for API calls and query params for direct image URLs).
 
+## User & Tag Management
+- **Autocomplete:** Smart autocomplete triggers on focus and typing. It dynamically pulls users or tags directly from the board's existing data to build comprehensive suggestions.
+- **Visuals:** Tags and assigned users share a procedural color-generation algorithm (`Utils.colorFromString`) to provide consistent, randomized colors without hardcoded mappings.
+
+## UI / UX Architecture Context
+- **Forms & Buttons:** Editor dialogues use `display: flex; flex-direction: column` for main structural layout, with `.actions-main` and `.actions-extra` container classes to robustly segment secondary operators (Archive, Mark Done) from primary operators (Save, Cancel). This avoids grid-related visual bugs, enforcing a consistent layout across mobile displays.
+
 ## Roadmap / TODOs
 - [ ] Add more comprehensive mobile touch support for drag-and-drop.
 - [ ] Enhance data export/import validation.
