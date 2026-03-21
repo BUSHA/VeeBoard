@@ -13,6 +13,7 @@
   --alert: #f08a00;
   --shadow: 0 6px 20px rgba(0, 0, 0, .08);
   --radius: 14px;
+  --radius-xs: 8px;
   --radius-sm: 10px;
   --stripe-mix: 4%;
 }
@@ -472,10 +473,10 @@ body.dialog-open {
 .tag {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
+  gap: 4px;
+  padding: 1px 6px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 10px;
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--panel), var(--primary) 8%)
 }
@@ -1084,7 +1085,7 @@ dialog:focus-visible {
 .attachment-item {
   position: relative;
   aspect-ratio: 1;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   overflow: hidden;
   border: 1px solid var(--border);
   background: var(--bg);
