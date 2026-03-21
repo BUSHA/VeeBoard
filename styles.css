@@ -247,14 +247,15 @@ body.dialog-open {
 .tag-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: 4px;
+  padding: 3px 7px;
   border-radius: 999px;
   border: 1px dashed var(--border);
   background: var(--panel);
   color: var(--muted);
   cursor: pointer;
-  user-select: none
+  user-select: none;
+  font-size: 12px;
 }
 
 .tag-chip.active {
@@ -454,6 +455,7 @@ body.dialog-open {
 .card-footer-row {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 12px;
   flex-wrap: wrap;
 }
@@ -941,6 +943,7 @@ dialog:focus-visible {
 .tag-chip.user-chip {
   border-style: solid;
   background: color-mix(in srgb, var(--panel), var(--primary) 4%);
+  padding-left: 4px;
 }
 
 .tag-chip.user-chip.active {
