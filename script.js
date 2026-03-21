@@ -885,6 +885,7 @@ const UI = {
     dot.className = "avatar-dot"
     const initial = (user.name || user.email || "?")[0]
     dot.textContent = initial
+    dot.style.background = Utils.colorFromString(user.name || user.email)
     const nameText = document.createTextNode(user.name || user.email)
     
     // Wrap in a span for easier styling/container if needed, but the request says "not styled as a badge"
@@ -1256,7 +1257,7 @@ const UI = {
         chip.dataset.userKey = userKey
         
         const initial = (user.name || user.email || "?")[0]
-        chip.innerHTML = `<span class="tag-dot avatar-dot" style="background:var(--primary); color:white; display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; font-size:9px; text-transform:uppercase; font-weight:700;">${initial}</span> ${user.name || user.email}`
+        chip.innerHTML = `<span class="tag-dot avatar-dot" style="background:${Utils.colorFromString(userKey)}; color:white; display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; font-size:9px; text-transform:uppercase; font-weight:700;">${initial}</span> ${user.name || user.email}`
         
         chip.setAttribute(
           "aria-pressed",
@@ -1354,19 +1355,16 @@ const UI = {
     const lastCommaIndex = value.lastIndexOf(",")
     const currentPrefix = value.slice(lastCommaIndex + 1).trim().toLowerCase()
 
-    if (!currentPrefix || currentPrefix.length < 1) {
-      container.classList.remove("show")
-      return
-    }
-
     // Collect all existing tags
     const allTags = new Set()
     Store.state.columns.forEach((c) =>
       c.cards.forEach((k) => (k.tags || []).forEach((t) => allTags.add(t)))
     )
 
+    const existingTags = value.split(",").map(t => t.trim().toLowerCase()).filter(Boolean)
+
     const matches = [...allTags]
-      .filter((t) => t.toLowerCase().startsWith(currentPrefix))
+      .filter((t) => t.toLowerCase().startsWith(currentPrefix) && !existingTags.includes(t.toLowerCase()))
       .sort()
 
     if (matches.length === 0) {
@@ -1408,12 +1406,21 @@ const UI = {
 
   updateUserAutocomplete(input, container) {
     const query = input.value.trim().toLowerCase()
-    if (!query || query.length < 1) {
-      container.classList.remove("show")
-      return
-    }
 
-    const matches = (Store.state.users || [])
+    const allUsersMap = new Map()
+    if (Store.state.users) {
+      Store.state.users.forEach(u => allUsersMap.set(u.email || u.name, u))
+    }
+    Store.state.columns.forEach((c) =>
+      c.cards.forEach((k) => {
+        if (k.assignedUser) {
+          const key = k.assignedUser.email || k.assignedUser.name
+          allUsersMap.set(key, k.assignedUser)
+        }
+      })
+    )
+
+    const matches = [...allUsersMap.values()]
       .filter(u => (u.name || "").toLowerCase().includes(query) || (u.email || "").toLowerCase().includes(query))
       .slice(0, 5)
 
@@ -1928,6 +1935,9 @@ const App = {
     tagsInput.addEventListener("input", () => {
       UI.updateTagAutocomplete(tagsInput, tagAutocomplete)
     })
+    tagsInput.addEventListener("focus", () => {
+      UI.updateTagAutocomplete(tagsInput, tagAutocomplete)
+    })
 
     const userInput = Utils.qs('input[name="user"]', Utils.qs("#editorForm"))
     const userAutocomplete = Utils.qs("#userAutocomplete")
@@ -1935,11 +1945,18 @@ const App = {
     userInput.addEventListener("input", () => {
       UI.updateUserAutocomplete(userInput, userAutocomplete)
     })
+    userInput.addEventListener("focus", () => {
+      UI.updateUserAutocomplete(userInput, userAutocomplete)
+    })
 
     // Close autocomplete when clicking outside
-    window.addEventListener("click", () => {
-      tagAutocomplete.classList.remove("show")
-      userAutocomplete.classList.remove("show")
+    window.addEventListener("click", (e) => {
+      if (e.target !== tagsInput && !tagAutocomplete.contains(e.target)) {
+        tagAutocomplete.classList.remove("show")
+      }
+      if (e.target !== userInput && !userAutocomplete.contains(e.target)) {
+        userAutocomplete.classList.remove("show")
+      }
     })
 
     Utils.qs("#renameForm").addEventListener(
