@@ -1,7 +1,7 @@
 const TRANSLATIONS = {
   en: {
     app_title: "VeeBoard",
-    search_placeholder: "Search by title or tags…",
+    search_placeholder: "Search by title, tags or users…",
     theme_toggle: "Dark/Light theme",
     theme: "Theme",
     theme_light: "Light mode",
@@ -89,7 +89,7 @@ const TRANSLATIONS = {
   },
   uk: {
     app_title: "VeeBoard",
-    search_placeholder: "Пошук за назвою або тегами…",
+    search_placeholder: "Пошук за назвою, тегами або користувачами…",
     theme_toggle: "Темна/Світла тема",
     theme: "Тема",
     theme_light: "Світла тема",

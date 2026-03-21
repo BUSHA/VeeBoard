@@ -1088,7 +1088,7 @@ dialog:focus-visible {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
   gap: 8px;
-  margin-top: 8px;
+  margin-bottom: 8px;
 }
 
 .attachment-item {

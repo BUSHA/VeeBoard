@@ -388,7 +388,7 @@ const Store = {
 
   addUser(user) {
     if (!user) return
-    if (!this.state.users.some(u => u.name === user.name || u.email === user.email)) {
+    if (!this.state.users.some(u => u.name === user.name)) {
       this.state.users.push(user)
       this.saveState()
     }
@@ -883,10 +883,10 @@ const UI = {
     const el = document.createDocumentFragment()
     const dot = document.createElement("span")
     dot.className = "avatar-dot"
-    const initial = (user.name || user.email || "?")[0]
+    const initial = (user.name || "?")[0]
     dot.textContent = initial
-    dot.style.background = Utils.colorFromString(user.name || user.email)
-    const nameText = document.createTextNode(user.name || user.email)
+    dot.style.background = Utils.colorFromString(user.name || "")
+    const nameText = document.createTextNode(user.name || "")
     
     // Wrap in a span for easier styling/container if needed, but the request says "not styled as a badge"
     const wrapper = document.createElement("span")
@@ -895,7 +895,7 @@ const UI = {
     wrapper.style.alignItems = "center"
     wrapper.style.gap = "6px"
     wrapper.append(dot, nameText)
-    wrapper.title = user.email || ""
+    wrapper.title = user.name || ""
     return wrapper
   },
 
@@ -1026,7 +1026,7 @@ const UI = {
       ? card.description || ""
       : ""
     form.elements.tags.value = card ? (card.tags || []).join(", ") : ""
-    form.elements.user.value = card?.assignedUser ? (card.assignedUser.name || card.assignedUser.email) : ""
+    form.elements.user.value = card?.assignedUser ? (card.assignedUser.name || "") : ""
 
     if (card?.due) {
       const dateObj = new Date(card.due)
@@ -1225,15 +1225,15 @@ const UI = {
     const tagBox = Utils.qs("#tagFilters")
     const userBox = Utils.qs("#userFilters")
     const allTags = new Set()
-    const allUsers = new Map() // email/name -> user object
+    const allUsers = new Map() // name -> user object
 
     Store.state.columns
       .filter((c) => !c.isArchive)
       .forEach((c) =>
         c.cards.forEach((k) => {
           (k.tags || []).forEach((t) => allTags.add(t))
-          if (k.assignedUser) {
-            const key = k.assignedUser.email || k.assignedUser.name
+          if (k.assignedUser && k.assignedUser.name) {
+            const key = k.assignedUser.name
             allUsers.set(key, k.assignedUser)
           }
         })
@@ -1245,14 +1245,14 @@ const UI = {
     // Populate User Filters
     if (allUsers.size > 0) {
       userBox.style.display = "flex"
-      ;[...allUsers.values()].sort((a,b) => (a.name||a.email).localeCompare(b.name||b.email)).forEach((user) => {
+      ;[...allUsers.values()].sort((a,b) => (a.name||"").localeCompare(b.name||"")).forEach((user) => {
         const chip = document.createElement("button")
         chip.className = "tag-chip user-chip"
-        const userKey = user.email || user.name
+        const userKey = user.name || ""
         chip.dataset.userKey = userKey
         
-        const initial = (user.name || user.email || "?")[0]
-        chip.innerHTML = `<span class="tag-dot avatar-dot" style="background:${Utils.colorFromString(userKey)}; color:white; display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; font-size:9px; text-transform:uppercase; font-weight:700;">${initial}</span> ${user.name || user.email}`
+        const initial = (user.name || "?")[0]
+        chip.innerHTML = `<span class="tag-dot avatar-dot" style="background:${Utils.colorFromString(userKey)}; color:white; display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; font-size:9px; text-transform:uppercase; font-weight:700;">${initial}</span> ${user.name || ""}`
         
         chip.setAttribute(
           "aria-pressed",
@@ -1329,7 +1329,8 @@ const UI = {
       !this.searchQuery ||
       card.title.toLowerCase().includes(this.searchQuery) ||
       card.description.toLowerCase().includes(this.searchQuery) ||
-      card.tags.join(" ").toLowerCase().includes(this.searchQuery)
+      card.tags.join(" ").toLowerCase().includes(this.searchQuery) ||
+      (card.assignedUser && (card.assignedUser.name || "").toLowerCase().includes(this.searchQuery))
 
     const tagsMatch =
       this.activeTagFilters.size === 0 ||
@@ -1339,7 +1340,7 @@ const UI = {
 
     const userMatch =
       this.activeUserFilters.size === 0 ||
-      (card.assignedUser && this.activeUserFilters.has(card.assignedUser.email || card.assignedUser.name))
+      (card.assignedUser && this.activeUserFilters.has(card.assignedUser.name))
 
     cardEl.style.display = searchMatch && tagsMatch && userMatch ? "" : "none"
   },
@@ -1404,19 +1405,18 @@ const UI = {
 
     const allUsersMap = new Map()
     if (Store.state.users) {
-      Store.state.users.forEach(u => allUsersMap.set(u.email || u.name, u))
+      Store.state.users.forEach(u => u.name && allUsersMap.set(u.name, u))
     }
     Store.state.columns.forEach((c) =>
       c.cards.forEach((k) => {
-        if (k.assignedUser) {
-          const key = k.assignedUser.email || k.assignedUser.name
-          allUsersMap.set(key, k.assignedUser)
+        if (k.assignedUser && k.assignedUser.name) {
+          allUsersMap.set(k.assignedUser.name, k.assignedUser)
         }
       })
     )
 
     const matches = [...allUsersMap.values()]
-      .filter(u => (u.name || "").toLowerCase().includes(query) || (u.email || "").toLowerCase().includes(query))
+      .filter(u => (u.name || "").toLowerCase().includes(query))
       .slice(0, 5)
 
     if (matches.length === 0) {
@@ -1428,7 +1428,7 @@ const UI = {
     matches.forEach(user => {
       const item = document.createElement("div")
       item.className = "suggestion-item"
-      item.textContent = user.name || user.email
+      item.textContent = user.name
       item.addEventListener("click", (e) => {
         e.stopPropagation()
         this.selectUserSuggestion(user, input, container)
@@ -1439,15 +1439,15 @@ const UI = {
   },
 
   selectUserSuggestion(user, input, container) {
-    input.value = user.name || user.email
+    input.value = user.name || ""
     container.classList.remove("show")
   },
 
   sortCardsByUser() {
     Store.state.columns.forEach(col => {
       col.cards.sort((a, b) => {
-        const nameA = (a.assignedUser?.name || a.assignedUser?.email || "zzz").toLowerCase()
-        const nameB = (b.assignedUser?.name || b.assignedUser?.email || "zzz").toLowerCase()
+        const nameA = (a.assignedUser?.name || "zzz").toLowerCase()
+        const nameB = (b.assignedUser?.name || "zzz").toLowerCase()
         return nameA.localeCompare(nameB)
       })
     })
@@ -2297,7 +2297,7 @@ const App = {
 
     const userVal = form.elements.user.value.trim()
     if (userVal) {
-      const existingUser = (Store.state.users || []).find(u => u.name === userVal || u.email === userVal)
+      const existingUser = (Store.state.users || []).find(u => u.name === userVal)
       if (existingUser) {
         cardData.assignedUser = existingUser
       } else {
