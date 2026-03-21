@@ -1858,6 +1858,18 @@ const App = {
     if (versionEl) versionEl.textContent = `v${CONFIG.version}`
 
     await Store.loadState()
+
+    // Show logout button only if Cloudflare Access session is detected
+    try {
+      const resp = await fetch("/cdn-cgi/access/me")
+      if (resp.ok) {
+        const logoutBtn = Utils.qs("#logoutBtn")
+        if (logoutBtn) logoutBtn.style.display = "block"
+      }
+    } catch (e) {
+      // Access not enabled or unreachable, keep button hidden
+    }
+
     UI.renderBoard()
     Store.startRealtime()
   },
