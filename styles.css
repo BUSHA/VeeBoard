@@ -450,13 +450,17 @@ body.dialog-open {
   margin-top: 8px;
 }
 
+.card-footer-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .card-due {
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   color: var(--muted);
-  align-self: flex-end;
-  margin-top: 4px;
-
 }
 
 .tags {
@@ -940,8 +944,6 @@ dialog:focus-visible {
   gap: 6px;
   font-size: 12px;
   color: var(--muted);
-  margin-top: 4px;
-  margin-bottom: 4px;
 }
 
 .card-user .avatar-dot {

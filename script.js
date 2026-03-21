@@ -267,36 +267,17 @@ const CloudflareBackend = {
     if (!cfWorkerUrl) return null
     cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "") // Remove trailing slashes
 
-    // Try to get user info from the same domain (Cloudflare Access identity endpoint)
-    if (!this.currentUser) {
-      try {
-        const meResp = await fetch("/cdn-cgi/access/me")
-        if (meResp.ok) {
-          const meData = await meResp.json()
-          if (meData && meData.email) {
-            this.currentUser = {
-              email: meData.email,
-              name: meData.name || meData.common_name || meData.email.split("@")[0]
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("Could not fetch Access identity:", e)
-      }
-    }
-
     const response = await fetch(`${cfWorkerUrl}/load`, {
       headers: { 
         "X-Board-ID": cfBoardId || "default",
         "X-API-Key": cfApiKey || ""
-      },
-      credentials: "include" // Allow sending cookies if worker is on a subdomain
+      }
     })
     if (!response.ok) throw new Error("Cloudflare load failed")
     const result = await response.json()
     // New format: { state, user }
     if (result && result.state !== undefined) {
-      if (result.user && !this.currentUser) {
+      if (result.user) {
         this.currentUser = result.user
       }
       return result.state
@@ -316,7 +297,6 @@ const CloudflareBackend = {
         "X-API-Key": cfApiKey || ""
       },
       body: JSON.stringify(state),
-      credentials: "include"
     })
     if (!response.ok) throw new Error("Cloudflare save failed")
   },
@@ -893,6 +873,10 @@ const UI = {
     // Hide card-meta if all its children are hidden
     const cardMeta = Utils.qs(".card-meta", node)
     if (cardMeta) {
+      const footerRow = Utils.qs(".card-footer-row", node)
+      if (footerRow) {
+        footerRow.style.display = (dueEl.style.display !== "none" || (userBox && userBox.style.display !== "none")) ? "flex" : "none"
+      }
       const hasVisibleChildren = [...cardMeta.children].some(child => child.style.display !== "none")
       cardMeta.style.display = hasVisibleChildren ? "" : "none"
     }

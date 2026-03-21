@@ -4,11 +4,12 @@ export default {
     const path = url.pathname.replace(/\/+/g, "/"); // Normalize slashes
     const method = request.method;
 
-    // Basic CORS
+    const origin = request.headers.get("Origin") || "*";
     const headers = {
-      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Origin": origin,
       "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, X-Board-ID, X-API-Key",
+      "Access-Control-Allow-Credentials": "true",
     };
 
     if (method === "OPTIONS") {
