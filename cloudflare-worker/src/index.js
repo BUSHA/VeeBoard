@@ -4,12 +4,11 @@ export default {
     const path = url.pathname.replace(/\/+/g, "/"); // Normalize slashes
     const method = request.method;
 
-    const origin = request.headers.get("Origin") || "*";
+    // Basic CORS
     const headers = {
-      "Access-Control-Allow-Origin": origin,
+      "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, X-Board-ID, X-API-Key",
-      "Access-Control-Allow-Credentials": "true",
     };
 
     if (method === "OPTIONS") {
@@ -33,15 +32,7 @@ export default {
           "SELECT data FROM boards WHERE id = ?"
         ).bind(boardId).first();
         
-        const userInfo = {
-          email: request.headers.get("Cf-Access-Authenticated-User-Email"),
-          name: request.headers.get("Cf-Access-Authenticated-User-Name") || request.headers.get("Cf-Access-Authenticated-User-Email")?.split("@")[0]
-        };
-
-        return new Response(JSON.stringify({
-          state: result ? JSON.parse(result.data) : null,
-          user: userInfo.email ? userInfo : null
-        }), { 
+        return new Response(JSON.stringify(result ? JSON.parse(result.data) : null), { 
           headers: { ...headers, "Content-Type": "application/json" } 
         });
       }

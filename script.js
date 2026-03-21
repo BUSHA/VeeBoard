@@ -271,21 +271,11 @@ const CloudflareBackend = {
       headers: { 
         "X-Board-ID": cfBoardId || "default",
         "X-API-Key": cfApiKey || ""
-      },
-      credentials: "include"
+      }
     })
     if (!response.ok) throw new Error("Cloudflare load failed")
-    const result = await response.json()
-    // New format: { state, user }
-    if (result && result.state !== undefined) {
-      if (result.user) {
-        this.currentUser = result.user
-      }
-      return result.state
-    }
-    return result // Old format fallback
+    return await response.json()
   },
-  currentUser: null,
   async save(state, config) {
     let { cfWorkerUrl, cfBoardId, cfApiKey } = config
     if (!cfWorkerUrl) return
@@ -298,7 +288,6 @@ const CloudflareBackend = {
         "X-API-Key": cfApiKey || ""
       },
       body: JSON.stringify(state),
-      credentials: "include"
     })
     if (!response.ok) throw new Error("Cloudflare save failed")
   },
@@ -319,7 +308,6 @@ const CloudflareBackend = {
         "Content-Type": file.type
       },
       body: file,
-      credentials: "include"
     })
     if (!response.ok) {
       const txt = await response.text();
@@ -379,10 +367,6 @@ const Store = {
       data = this.getDemoState()
     }
     this.state = data
-
-    if (CloudflareBackend.currentUser) {
-      this.addUser(CloudflareBackend.currentUser)
-    }
 
     // Гарантуємо наявність archive-колонки
     if (!this.state.columns.some((c) => c.isArchive)) {
@@ -1041,14 +1025,7 @@ const UI = {
       ? card.description || ""
       : ""
     form.elements.tags.value = card ? (card.tags || []).join(", ") : ""
-    
-    let defaultUser = ""
-    if (card?.assignedUser) {
-      defaultUser = card.assignedUser.name || card.assignedUser.email
-    } else if (!card && CloudflareBackend.currentUser) {
-      defaultUser = CloudflareBackend.currentUser.name || CloudflareBackend.currentUser.email
-    }
-    form.elements.user.value = defaultUser
+    form.elements.user.value = card?.assignedUser ? (card.assignedUser.name || card.assignedUser.email) : ""
 
     if (card?.due) {
       const dateObj = new Date(card.due)
@@ -1881,22 +1858,6 @@ const App = {
     if (versionEl) versionEl.textContent = `v${CONFIG.version}`
 
     await Store.loadState()
-    
-    if (CloudflareBackend.currentUser) {
-      const infoEl = Utils.qs("#currentUserInfo")
-      const nameEl = Utils.qs("#currentUserName")
-      const avatarEl = Utils.qs("#userAvatar")
-      if (infoEl && nameEl) {
-        infoEl.style.display = "block"
-        const name = CloudflareBackend.currentUser.name || CloudflareBackend.currentUser.email
-        nameEl.textContent = name
-        if (avatarEl) {
-          avatarEl.style.display = "flex"
-          avatarEl.textContent = name[0]
-        }
-      }
-    }
-
     UI.renderBoard()
     Store.startRealtime()
   },
