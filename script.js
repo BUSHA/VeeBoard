@@ -273,8 +273,17 @@ const CloudflareBackend = {
       },
     })
     if (!response.ok) throw new Error("Cloudflare load failed")
-    return await response.json()
+    const result = await response.json()
+    // New format: { state, user }
+    if (result && result.state !== undefined) {
+      if (result.user) {
+        this.currentUser = result.user
+      }
+      return result.state
+    }
+    return result // Old format fallback
   },
+  currentUser: null,
   async save(state, config) {
     let { cfWorkerUrl, cfBoardId, cfApiKey } = config
     if (!cfWorkerUrl) return
@@ -336,6 +345,7 @@ const Store = {
   STORAGE_KEY: "vee-board-state-v1",
   state: {
     columns: [],
+    users: [],
   },
 
   loadState: async function () {
@@ -366,6 +376,10 @@ const Store = {
     }
     this.state = data
 
+    if (CloudflareBackend.currentUser) {
+      this.addUser(CloudflareBackend.currentUser)
+    }
+
     // Гарантуємо наявність archive-колонки
     if (!this.state.columns.some((c) => c.isArchive)) {
       this.state.columns.push({
@@ -375,7 +389,21 @@ const Store = {
         isArchive: true,
       })
     }
+    
+    // Ensure users array exists
+    if (!this.state.users) {
+      this.state.users = []
+    }
+    
     return this.state
+  },
+
+  addUser(user) {
+    if (!user) return
+    if (!this.state.users.some(u => u.name === user.name || u.email === user.email)) {
+      this.state.users.push(user)
+      this.saveState()
+    }
   },
 
   async loadLocal() {
@@ -466,6 +494,7 @@ const Store = {
         description: cardData.description || "",
         tags: cardData.tags || [],
         due: cardData.due || "",
+        assignedUser: cardData.assignedUser || null,
         attachments: cardData.attachments || [],
         createdAt: Utils.nowIso(), // when the card was created (UTC ISO)
         lastChanged: Utils.nowIso(), // last modification timestamp (UTC ISO)
@@ -473,6 +502,9 @@ const Store = {
         seq: Meta.nextSeq(), // per-client monotonic sequence
         contentChangedAt: Utils.nowIso(), // content modification timestamp (UTC ISO)
         positionChangedAt: Utils.nowIso(), // position (column/order) change timestamp (UTC ISO)
+      }
+      if (newCard.assignedUser) {
+        this.addUser(newCard.assignedUser)
       }
       col.cards.push(newCard)
       this.saveState()
@@ -487,7 +519,13 @@ const Store = {
       card.description = cardData.description
       card.tags = cardData.tags
       card.due = cardData.due
+      card.assignedUser = cardData.assignedUser || null
       card.attachments = cardData.attachments || []
+      
+      if (card.assignedUser) {
+        this.addUser(card.assignedUser)
+      }
+
       // Update modification metadata
       card.lastChanged = Utils.nowIso()
       card.lastChangedBy = Meta.clientId
@@ -559,6 +597,7 @@ const Store = {
 
   validateState(data) {
     if (!data || !Array.isArray(data.columns)) throw new Error("Bad state")
+    if (data.users && !Array.isArray(data.users)) throw new Error("Bad users")
     for (const c of data.columns) {
       if (
         typeof c.id !== "string" ||
@@ -711,6 +750,7 @@ const UI = {
 
   // State for filtering
   activeTagFilters: new Set(),
+  activeUserFilters: new Set(),
   searchQuery: "",
 
   showDialog(dialog) {
@@ -737,7 +777,15 @@ const UI = {
     const sanitizedHtml = DOMPurify.sanitize(card.description || "", {
       ADD_ATTR: ["target"],
     })
-    Utils.qs(".card-desc", node).innerHTML = sanitizedHtml
+    const descEl = Utils.qs(".card-desc", node)
+    descEl.innerHTML = sanitizedHtml
+    
+    // Check if sanitized HTML has meaningful content
+    const tempDiv = document.createElement("div")
+    tempDiv.innerHTML = sanitizedHtml
+    const hasContent = tempDiv.textContent.trim().length > 0 || tempDiv.querySelector("img, iframe, a, hr") !== null
+    
+    descEl.style.display = hasContent ? "" : "none"
 
     const dueEl = Utils.qs(".card-due", node)
 
@@ -746,6 +794,7 @@ const UI = {
     dueEl.classList.remove("due-badge", "due-badge--soon", "due-badge--overdue")
 
     if (card.due) {
+      dueEl.style.display = ""
       const d = new Date(card.due)
       const formattedDate = d.toLocaleDateString(undefined, {
         month: "short",
@@ -776,16 +825,30 @@ const UI = {
       }
     } else {
       dueEl.textContent = ""
+      dueEl.style.display = "none"
     }
 
     const tagsBox = Utils.qs(".tags", node)
     tagsBox.innerHTML = ""
     ;(card.tags || []).forEach((t) => tagsBox.append(this.createTagBadge(t)))
+    tagsBox.style.display = (card.tags && card.tags.length > 0) ? "" : "none"
+
+    const userBox = Utils.qs(".card-user", node)
+    if (userBox) {
+      userBox.innerHTML = ""
+      if (card.assignedUser) {
+        userBox.style.display = ""
+        userBox.append(this.createUserBadge(card.assignedUser))
+      } else {
+        userBox.style.display = "none"
+      }
+    }
 
     const attBox = Utils.qs(".card-attachments", node)
     if (attBox) {
       attBox.innerHTML = ""
       if (card.attachments && card.attachments.length > 0) {
+        attBox.style.display = ""
         card.attachments.forEach((att) => {
           const item = document.createElement("div")
           item.className = "attachment-item"
@@ -801,7 +864,16 @@ const UI = {
           })
           attBox.append(item)
         })
+      } else {
+        attBox.style.display = "none"
       }
+    }
+    
+    // Hide card-meta if all its children are hidden
+    const cardMeta = Utils.qs(".card-meta", node)
+    if (cardMeta) {
+      const hasVisibleChildren = [...cardMeta.children].some(child => child.style.display !== "none")
+      cardMeta.style.display = hasVisibleChildren ? "" : "none"
     }
   },
 
@@ -813,6 +885,25 @@ const UI = {
     dot.style.background = Utils.colorFromString(tag)
     el.append(dot, document.createTextNode(tag))
     return el
+  },
+
+  createUserBadge(user) {
+    const el = document.createDocumentFragment()
+    const dot = document.createElement("span")
+    dot.className = "avatar-dot"
+    const initial = (user.name || user.email || "?")[0]
+    dot.textContent = initial
+    const nameText = document.createTextNode(user.name || user.email)
+    
+    // Wrap in a span for easier styling/container if needed, but the request says "not styled as a badge"
+    const wrapper = document.createElement("span")
+    wrapper.className = "card-assignee"
+    wrapper.style.display = "inline-flex"
+    wrapper.style.alignItems = "center"
+    wrapper.style.gap = "6px"
+    wrapper.append(dot, nameText)
+    wrapper.title = user.email || ""
+    return wrapper
   },
 
   // --- Column Rendering ---
@@ -942,6 +1033,14 @@ const UI = {
       ? card.description || ""
       : ""
     form.elements.tags.value = card ? (card.tags || []).join(", ") : ""
+    
+    let defaultUser = ""
+    if (card?.assignedUser) {
+      defaultUser = card.assignedUser.name || card.assignedUser.email
+    } else if (!card && CloudflareBackend.currentUser) {
+      defaultUser = CloudflareBackend.currentUser.name || CloudflareBackend.currentUser.email
+    }
+    form.elements.user.value = defaultUser
 
     if (card?.due) {
       const dateObj = new Date(card.due)
@@ -1142,30 +1241,69 @@ const UI = {
 
   // --- Filtering & Searching ---
   updateTagFilters() {
-    const box = Utils.qs("#tagFilters")
+    const tagBox = Utils.qs("#tagFilters")
+    const userBox = Utils.qs("#userFilters")
     const allTags = new Set()
+    const allUsers = new Map() // email/name -> user object
 
     Store.state.columns
       .filter((c) => !c.isArchive)
       .forEach((c) =>
-        c.cards.forEach((k) => (k.tags || []).forEach((t) => allTags.add(t)))
+        c.cards.forEach((k) => {
+          (k.tags || []).forEach((t) => allTags.add(t))
+          if (k.assignedUser) {
+            const key = k.assignedUser.email || k.assignedUser.name
+            allUsers.set(key, k.assignedUser)
+          }
+        })
       )
 
-    box.innerHTML = ""
-    ;[...allTags].sort().forEach((tag) => {
-      const chip = document.createElement("button")
-      chip.className = "tag-chip"
-      chip.dataset.tag = tag
-      chip.innerHTML = `<span class="tag-dot" style="background:${Utils.colorFromString(
-        tag
-      )}"></span> ${tag}`
-      chip.setAttribute(
-        "aria-pressed",
-        this.activeTagFilters.has(tag) ? "true" : "false"
-      )
-      if (this.activeTagFilters.has(tag)) chip.classList.add("active")
-      box.appendChild(chip)
-    })
+    tagBox.innerHTML = ""
+    userBox.innerHTML = ""
+    
+    // Populate User Filters
+    if (allUsers.size > 0) {
+      userBox.style.display = "flex"
+      ;[...allUsers.values()].sort((a,b) => (a.name||a.email).localeCompare(b.name||b.email)).forEach((user) => {
+        const chip = document.createElement("button")
+        chip.className = "tag-chip user-chip"
+        const userKey = user.email || user.name
+        chip.dataset.userKey = userKey
+        
+        const initial = (user.name || user.email || "?")[0]
+        chip.innerHTML = `<span class="tag-dot avatar-dot" style="background:var(--primary); color:white; display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; font-size:9px; text-transform:uppercase; font-weight:700;">${initial}</span> ${user.name || user.email}`
+        
+        chip.setAttribute(
+          "aria-pressed",
+          this.activeUserFilters.has(userKey) ? "true" : "false"
+        )
+        if (this.activeUserFilters.has(userKey)) chip.classList.add("active")
+        userBox.appendChild(chip)
+      })
+    } else {
+      userBox.style.display = "none"
+    }
+
+    // Populate Tag Filters
+    if (allTags.size > 0) {
+      tagBox.style.display = "flex"
+      ;[...allTags].sort().forEach((tag) => {
+        const chip = document.createElement("button")
+        chip.className = "tag-chip"
+        chip.dataset.tag = tag
+        chip.innerHTML = `<span class="tag-dot" style="background:${Utils.colorFromString(
+          tag
+        )}"></span> ${tag}`
+        chip.setAttribute(
+          "aria-pressed",
+          this.activeTagFilters.has(tag) ? "true" : "false"
+        )
+        if (this.activeTagFilters.has(tag)) chip.classList.add("active")
+        tagBox.appendChild(chip)
+      })
+    } else {
+      tagBox.style.display = "none"
+    }
   },
 
   toggleTagFilter(tag) {
@@ -1174,15 +1312,18 @@ const UI = {
     } else {
       this.activeTagFilters.add(tag)
     }
-    const chip = Utils.qs(`.tag-chip[data-tag="${tag}"]`)
-    if (chip) {
-      chip.classList.toggle("active")
-      chip.setAttribute(
-        "aria-pressed",
-        this.activeTagFilters.has(tag) ? "true" : "false"
-      )
+    this.applyFilters()
+    this.updateTagFilters()
+  },
+
+  toggleUserFilter(userKey) {
+    if (this.activeUserFilters.has(userKey)) {
+      this.activeUserFilters.delete(userKey)
+    } else {
+      this.activeUserFilters.add(userKey)
     }
     this.applyFilters()
+    this.updateTagFilters()
   },
 
   setSearchQuery(query) {
@@ -1215,7 +1356,11 @@ const UI = {
         card.tags.includes(filterTag)
       )
 
-    cardEl.style.display = searchMatch && tagsMatch ? "" : "none"
+    const userMatch =
+      this.activeUserFilters.size === 0 ||
+      (card.assignedUser && this.activeUserFilters.has(card.assignedUser.email || card.assignedUser.name))
+
+    cardEl.style.display = searchMatch && tagsMatch && userMatch ? "" : "none"
   },
 
 
@@ -1274,6 +1419,53 @@ const UI = {
     input.value = prefix + (prefix.length > 0 && !prefix.endsWith(" ") ? " " : "") + tag + ", "
     input.focus()
     container.classList.remove("show")
+  },
+
+  updateUserAutocomplete(input, container) {
+    const query = input.value.trim().toLowerCase()
+    if (!query || query.length < 1) {
+      container.classList.remove("show")
+      return
+    }
+
+    const matches = (Store.state.users || [])
+      .filter(u => (u.name || "").toLowerCase().includes(query) || (u.email || "").toLowerCase().includes(query))
+      .slice(0, 5)
+
+    if (matches.length === 0) {
+      container.classList.remove("show")
+      return
+    }
+
+    container.innerHTML = ""
+    matches.forEach(user => {
+      const item = document.createElement("div")
+      item.className = "suggestion-item"
+      item.textContent = user.name || user.email
+      item.addEventListener("click", (e) => {
+        e.stopPropagation()
+        this.selectUserSuggestion(user, input, container)
+      })
+      container.appendChild(item)
+    })
+    container.classList.add("show")
+  },
+
+  selectUserSuggestion(user, input, container) {
+    input.value = user.name || user.email
+    container.classList.remove("show")
+  },
+
+  sortCardsByUser() {
+    Store.state.columns.forEach(col => {
+      col.cards.sort((a, b) => {
+        const nameA = (a.assignedUser?.name || a.assignedUser?.email || "zzz").toLowerCase()
+        const nameB = (b.assignedUser?.name || b.assignedUser?.email || "zzz").toLowerCase()
+        return nameA.localeCompare(nameB)
+      })
+    })
+    Store.saveState()
+    this.renderBoard()
   },
 
   // --- Theme ---
@@ -1681,6 +1873,22 @@ const App = {
     if (versionEl) versionEl.textContent = `v${CONFIG.version}`
 
     await Store.loadState()
+    
+    if (CloudflareBackend.currentUser) {
+      const infoEl = Utils.qs("#currentUserInfo")
+      const nameEl = Utils.qs("#currentUserName")
+      const avatarEl = Utils.qs("#userAvatar")
+      if (infoEl && nameEl) {
+        infoEl.style.display = "block"
+        const name = CloudflareBackend.currentUser.name || CloudflareBackend.currentUser.email
+        nameEl.textContent = name
+        if (avatarEl) {
+          avatarEl.style.display = "flex"
+          avatarEl.textContent = name[0]
+        }
+      }
+    }
+
     UI.renderBoard()
     Store.startRealtime()
   },
@@ -1751,9 +1959,17 @@ const App = {
       UI.updateTagAutocomplete(tagsInput, tagAutocomplete)
     })
 
+    const userInput = Utils.qs('input[name="user"]', Utils.qs("#editorForm"))
+    const userAutocomplete = Utils.qs("#userAutocomplete")
+
+    userInput.addEventListener("input", () => {
+      UI.updateUserAutocomplete(userInput, userAutocomplete)
+    })
+
     // Close autocomplete when clicking outside
     window.addEventListener("click", () => {
       tagAutocomplete.classList.remove("show")
+      userAutocomplete.classList.remove("show")
     })
 
     Utils.qs("#renameForm").addEventListener(
@@ -1773,8 +1989,24 @@ const App = {
     )
     Utils.qs("#tagFilters").addEventListener("click", (e) => {
       const chip = e.target.closest(".tag-chip")
-      if (chip) UI.toggleTagFilter(chip.dataset.tag)
+      if (chip && chip.dataset.tag) {
+        UI.toggleTagFilter(chip.dataset.tag)
+      }
     })
+
+    Utils.qs("#userFilters").addEventListener("click", (e) => {
+      const chip = e.target.closest(".tag-chip")
+      if (chip && chip.dataset.userKey) {
+        UI.toggleUserFilter(chip.dataset.userKey)
+      }
+    })
+
+    const logoutBtn = Utils.qs("#logoutBtn")
+    if (logoutBtn) {
+      logoutBtn.addEventListener("click", () => {
+        // Just follow the link, Cloudflare Access handles it
+      })
+    }
 
     // --- Dropdown Menu ---
     UI.menuBtn.addEventListener("click", (e) => {
@@ -2063,10 +2295,20 @@ const App = {
     // Preserve existing attachments
     const { card: existingCard } = cardId ? Store.findCard(cardId) : { card: null }
     
+    // Helper to check if HTML has meaningful content
+    const hasMeaningfulContent = (html) => {
+      const temp = document.createElement("div")
+      temp.innerHTML = html
+      return temp.textContent.trim().length > 0 || temp.querySelector("img, iframe, a, hr") !== null
+    }
+
+    const descHtml = Utils.qs("#descriptionEditor", form).innerHTML.trim()
+    const description = hasMeaningfulContent(descHtml) ? descHtml : ""
+
     //Get reminder data from form
     const cardData = {
       title,
-      description: Utils.qs("#descriptionEditor", form).innerHTML.trim(),
+      description,
       tags: form.elements.tags.value
         .split(",")
         .map((s) => s.trim())
@@ -2074,7 +2316,18 @@ const App = {
       due: form.elements.due.value
         ? new Date(form.elements.due.value).toISOString()
         : "",
+      assignedUser: null,
       attachments: existingCard ? existingCard.attachments : []
+    }
+
+    const userVal = form.elements.user.value.trim()
+    if (userVal) {
+      const existingUser = (Store.state.users || []).find(u => u.name === userVal || u.email === userVal)
+      if (existingUser) {
+        cardData.assignedUser = existingUser
+      } else {
+        cardData.assignedUser = { name: userVal }
+      }
     }
 
     let savedCard

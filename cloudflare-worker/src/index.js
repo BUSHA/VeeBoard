@@ -32,7 +32,15 @@ export default {
           "SELECT data FROM boards WHERE id = ?"
         ).bind(boardId).first();
         
-        return new Response(JSON.stringify(result ? JSON.parse(result.data) : null), { 
+        const userInfo = {
+          email: request.headers.get("Cf-Access-Authenticated-User-Email"),
+          name: request.headers.get("Cf-Access-Authenticated-User-Name") || request.headers.get("Cf-Access-Authenticated-User-Email")?.split("@")[0]
+        };
+
+        return new Response(JSON.stringify({
+          state: result ? JSON.parse(result.data) : null,
+          user: userInfo.email ? userInfo : null
+        }), { 
           headers: { ...headers, "Content-Type": "application/json" } 
         });
       }

@@ -34,8 +34,15 @@
         </div>
         <div class="actions">
           <div class="dropdown-menu">
-            <button id="menuBtn" class="btn" title="More options" data-i18n-title="more_options">☰</button>
+            <button id="menuBtn" class="btn menu-btn" title="More options" data-i18n-title="more_options">
+              <span class="burger-icon">☰</span>
+              <span id="userAvatar" class="user-avatar" style="display: none;"></span>
+            </button>
             <div id="menuContent" class="dropdown-content">
+              <div id="currentUserInfo" style="padding: 8px 12px; font-size: 12px; border-bottom: 1px solid var(--border); margin-bottom: 4px; display: none;">
+                <span class="label-text" style="display: block; font-size: 10px; opacity: 0.7;" data-i18n="logged_in_as">Logged in as:</span>
+                <strong id="currentUserName"></strong>
+              </div>
               <button id="addColumnBtn" class="btn" title="Add column" data-i18n="add_column" data-i18n-title="add_column">Add column</button>
               <button id="toggleArchiveBtn" class="btn" title="Show/hide archive" data-i18n="show_archive" data-i18n-title="show_archive">Show archive</button>
               <button id="exportBtn" class="btn" title="Export JSON" data-i18n="save_backup" data-i18n-title="save_backup">Save backup</button>
@@ -43,6 +50,7 @@
                   accept="application/json" hidden></label>
               <button id="dbSettingsBtn" class="btn" title="Database & sync" data-i18n="db_sync" data-i18n-title="db_sync">Database & sync</button>
               <button id="themeToggle" class="btn" title="Dark/light theme" data-i18n-title="theme_toggle">Theme mode</button>
+              <a href="/cdn-cgi/access/logout" id="logoutBtn" class="btn" style="text-decoration:none; text-align:left;" data-i18n="logout">Logout</a>
               <div id="appVersion" style="text-align: center; font-size: 10px; color: var(--text-dim); margin-top: 2px; opacity: 0.6;"></div>
             </div>
           </div>
@@ -50,7 +58,10 @@
       </div>
     </div>
   </header>
-  <div id="tagFilters" class="tag-filters" role="group" aria-label="Tag filter"></div>
+  <div class="filter-panel">
+    <div id="userFilters" class="tag-filters" role="group" aria-label="User filter"></div>
+    <div id="tagFilters" class="tag-filters" role="group" aria-label="Tag filter"></div>
+  </div>
 
   <main id="board" class="board" aria-label="Board"></main>
 
@@ -80,6 +91,7 @@
       <div class="card-meta">
         <time class="card-due" title="Due"></time>
         <div class="tags"></div>
+        <div class="card-user"></div>
         <div class="card-attachments"></div>
       </div>
     </article>
@@ -109,6 +121,12 @@
         </label>
         <label data-i18n="due_date_label">Due date
           <input name="due" type="datetime-local" />
+        </label>
+        <label data-i18n="assigned_user_label">Assigned user
+          <div class="user-input-wrapper">
+            <input name="user" placeholder="Type name or email..." autocomplete="off" data-i18n-placeholder="users_placeholder" />
+            <div id="userAutocomplete" class="autocomplete-suggestions"></div>
+          </div>
         </label>
       </div>
       <div class="editor-attachments-section">

@@ -232,15 +232,15 @@ body.dialog-open {
    Tag Filters
    ================================= */
 .tag-filters {
-  order: 2;
-  flex: 0 0 100%;
-  width: 100%;
   display: flex;
   gap: 8px;
   align-items: center;
   flex-wrap: wrap;
   padding: 16px 20px 0px 20px;
-  margin-top: 4px
+}
+
+#tagFilters {
+  padding-top: 8px;
 }
 
 .tag-chip {
@@ -415,7 +415,7 @@ body.dialog-open {
 }
 
 .card-desc {
-  margin: .35rem 0 .25rem;
+  margin-top: 8px;
   color: var(--muted);
   font-size: 13px;
   max-height: 200px;
@@ -447,6 +447,7 @@ body.dialog-open {
   display: flex;
   gap: 8px;
   flex-direction: column;
+  margin-top: 8px;
 }
 
 .card-due {
@@ -890,6 +891,125 @@ dialog:focus-visible {
   margin: 0;
   line-height: 1.4;
   font-weight: 400;
+}
+
+.user-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  overflow: hidden;
+}
+
+.menu-btn .burger-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menu-btn:has(.user-avatar:not([style*="display: none"])) .burger-icon {
+  display: none;
+}
+
+.menu-btn .user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 0;
+  font-size: 16px;
+}
+
+.card-user {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.card-user .avatar-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  color: white;
+  background: var(--primary);
+  text-transform: uppercase;
+}
+
+/* =================================
+   User Badges & Autocomplete
+   ================================= */
+.tag-chip.user-chip {
+  border-style: solid;
+  background: color-mix(in srgb, var(--panel), var(--primary) 4%);
+}
+
+.tag-chip.user-chip.active {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.user-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel), var(--primary) 15%);
+  color: var(--text);
+  margin-top: 4px;
+}
+
+.user-badge .avatar-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  color: white;
+  background: var(--primary);
+  text-transform: uppercase;
+}
+
+.user-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+/* Reusing autocomplete styles from tags */
+.user-input-wrapper .autocomplete-suggestions {
+  display: none;
+}
+
+.user-input-wrapper .autocomplete-suggestions.show {
+  display: block;
 }
 
 /* =================================
