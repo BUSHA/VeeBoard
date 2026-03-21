@@ -271,7 +271,8 @@ const CloudflareBackend = {
       headers: { 
         "X-Board-ID": cfBoardId || "default",
         "X-API-Key": cfApiKey || ""
-      }
+      },
+      credentials: "include"
     })
     if (!response.ok) throw new Error("Cloudflare load failed")
     const result = await response.json()
@@ -297,6 +298,7 @@ const CloudflareBackend = {
         "X-API-Key": cfApiKey || ""
       },
       body: JSON.stringify(state),
+      credentials: "include"
     })
     if (!response.ok) throw new Error("Cloudflare save failed")
   },
@@ -316,7 +318,8 @@ const CloudflareBackend = {
         "X-API-Key": cfApiKey || "",
         "Content-Type": file.type
       },
-      body: file
+      body: file,
+      credentials: "include"
     })
     if (!response.ok) {
       const txt = await response.text();
