@@ -581,12 +581,10 @@ dialog:focus-visible {
   overflow-y: auto;
   overflow-x: hidden;
   background: var(--panel);
-  /* Спрощуємо фон для коректної роботи градієнтів */
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 16px;
   box-shadow: var(--shadow);
-  /* Прибираємо вертикальні відступи, щоб елементи прилипали до країв */
   padding: 0 clamp(16px, 5vw, 24px);
   display: flex;
   flex-direction: column;
@@ -668,14 +666,22 @@ dialog:focus-visible {
   padding-top: 12px;
   padding-bottom: clamp(16px, 5vw, 24px);
   z-index: 10;
-  /* Видаляємо попередні стилі, які тепер не потрібні */
   margin-top: 6px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 
-/* Градієнт "згасання" НАД кнопками */
+.actions-extra:empty {
+  display: none;
+}
+
+.actions-extra, .actions-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
 .editor-actions::before {
   content: '';
   position: absolute;
@@ -688,7 +694,7 @@ dialog:focus-visible {
 }
 
 .editor-actions .btn {
-  width: 100%
+  flex: 1 1 calc(50% - 6px);
 }
 
 .editor-form-row {

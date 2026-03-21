@@ -133,9 +133,13 @@
         <input type="file" id="attachmentInput" accept="image/*" multiple style="display: none;" />
       </div>
       <div class="editor-actions">
-        <button type="button" value="cancel" class="btn secondary" formnovalidate data-i18n="cancel">Cancel</button>
-        <button id="markDoneBtn" type="button" class="btn secondary" data-i18n="mark_as_done">Mark as done</button>
-        <button value="default" class="btn primary" data-i18n="save">Save</button>
+        <div class="actions-extra">
+          <button id="markDoneBtn" type="button" class="btn secondary" data-i18n="mark_as_done">Mark as done</button>
+        </div>
+        <div class="actions-main">
+          <button type="button" value="cancel" class="btn secondary" formnovalidate data-i18n="cancel">Cancel</button>
+          <button value="default" class="btn primary" data-i18n="save">Save</button>
+        </div>
       </div>
     </form>
   </dialog>
@@ -147,8 +151,10 @@
         <input name="title" required maxlength="120" />
       </label>
       <div class="editor-actions">
-        <button type="button" value="cancel" class="btn secondary" formnovalidate data-i18n="cancel">Cancel</button>
-        <button value="default" class="btn primary" data-i18n="create">Create</button>
+        <div class="actions-main">
+          <button type="button" value="cancel" class="btn secondary" formnovalidate data-i18n="cancel">Cancel</button>
+          <button value="default" class="btn primary" data-i18n="create">Create</button>
+        </div>
       </div>
     </form>
   </dialog>
@@ -167,8 +173,10 @@
         </label>
       </div>
       <div class="editor-actions">
-        <button type="button" value="cancel" class="btn secondary" formnovalidate data-i18n="cancel">Cancel</button>
-        <button value="default" class="btn primary" data-i18n="save">Save</button>
+        <div class="actions-main">
+          <button type="button" value="cancel" class="btn secondary" formnovalidate data-i18n="cancel">Cancel</button>
+          <button value="default" class="btn primary" data-i18n="save">Save</button>
+        </div>
       </div>
     </form>
   </dialog>
@@ -177,10 +185,14 @@
     <form id="confirmForm" method="dialog" class="editor-form">
       <h3 id="confirmTitle" data-i18n="delete_card_confirm">Delete card?</h3>
       <p id="confirmText" style="margin:4px 0 0"></p>
-      <div class="editor-actions" style="grid-template-columns: 1fr 1fr 1fr;">
-        <button type="button" value="cancel" class="btn secondary" formnovalidate data-i18n="cancel">Cancel</button>
-        <button id="confirmOk" value="delete" class="btn error" data-i18n="delete">Delete</button>
-        <button value="archive" class="btn primary" data-i18n="archive">Archive</button>
+      <div class="editor-actions">
+        <div class="actions-extra">
+          <button value="archive" class="btn primary" data-i18n="archive">Archive</button>
+        </div>
+        <div class="actions-main">
+          <button type="button" value="cancel" class="btn secondary" formnovalidate data-i18n="cancel">Cancel</button>
+          <button id="confirmOk" value="delete" class="btn error" data-i18n="delete">Delete</button>
+        </div>
       </div>
     </form>
   </dialog>
@@ -218,8 +230,10 @@
       </div>
 
       <div class="editor-actions">
-        <button type="button" value="cancel" class="btn secondary" formnovalidate>Cancel</button>
-        <button value="default" class="btn primary">Save</button>
+        <div class="actions-main">
+          <button type="button" value="cancel" class="btn secondary" formnovalidate>Cancel</button>
+          <button value="default" class="btn primary">Save</button>
+        </div>
       </div>
     </form>
   </dialog>
@@ -228,10 +242,14 @@
     <form id="importChoiceForm" method="dialog" class="editor-form">
       <h3 data-i18n="import_options">Import options</h3>
       <p data-i18n="import_hint">How to apply the imported JSON?</p>
-      <div class="editor-actions" style="grid-template-columns: 1fr 1fr 1fr;">
-        <button type="button" value="cancel" class="btn secondary" data-i18n="cancel">Cancel</button>
-        <button class="btn" value="replace" data-i18n="replace">Replace</button>
-        <button class="btn primary" value="merge" data-i18n="merge">Merge</button>
+      <div class="editor-actions">
+        <div class="actions-extra">
+          <button class="btn" value="replace" data-i18n="replace">Replace</button>
+        </div>
+        <div class="actions-main">
+          <button type="button" value="cancel" class="btn secondary" data-i18n="cancel">Cancel</button>
+          <button class="btn primary" value="merge" data-i18n="merge">Merge</button>
+        </div>
       </div>
     </form>
   </dialog>

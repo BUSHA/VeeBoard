@@ -1041,12 +1041,10 @@ const UI = {
     const markDoneBtn = Utils.qs("#markDoneBtn", form)
     if (card) {
       const { col } = Store.findCard(card.id)
-      markDoneBtn.style.display = ""
+      markDoneBtn.parentElement.style.display = ""
       markDoneBtn.textContent = col.isDone ? I18n.t("undone") : I18n.t("mark_as_done")
-      form.querySelector(".editor-actions").style.gridTemplateColumns = "1fr 1fr 1fr"
     } else {
-      markDoneBtn.style.display = "none"
-      form.querySelector(".editor-actions").style.gridTemplateColumns = "1fr 1fr"
+      markDoneBtn.parentElement.style.display = "none"
     }
 
     this.showDialog(this.editor)
@@ -1166,11 +1164,9 @@ const UI = {
       deleteButton.textContent = deleteText
 
       if (showArchive) {
-        archiveButton.style.display = ""
-        actionsContainer.style.gridTemplateColumns = "1fr 1fr 1fr"
+        archiveButton.parentElement.style.display = ""
       } else {
-        archiveButton.style.display = "none"
-        actionsContainer.style.gridTemplateColumns = "1fr 1fr"
+        archiveButton.parentElement.style.display = "none"
       }
 
       Utils.qs("#confirmText", dialog).textContent = message
@@ -1196,16 +1192,15 @@ const UI = {
 
       titleEl.textContent = title
       deleteButton.textContent = "Ok"
-      archiveButton.style.display = "none"
+      archiveButton.parentElement.style.display = "none"
       cancelButton.style.display = "none"
-      actionsContainer.style.gridTemplateColumns = "1fr"
 
       Utils.qs("#confirmText", dialog).textContent = message
 
       const closeHandler = () => {
         dialog.removeEventListener("close", closeHandler)
         // Restore buttons
-        archiveButton.style.display = ""
+        archiveButton.parentElement.style.display = ""
         cancelButton.style.display = ""
         resolve()
       }
