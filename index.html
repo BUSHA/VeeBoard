@@ -16,6 +16,7 @@
   <link rel="manifest" href="favicon/site.webmanifest" />
 
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+  <script src="translations.js"></script>
   <script src="script.js" defer></script>
 
 </head>
@@ -24,20 +25,25 @@
   <header class="app-header">
     <div class="toolbar" role="toolbar" aria-label="Toolbar">
       <img src="favicon/favicon-96x96.png" width="24px" alt="VeeBoard logo" class="logo" />
-      <h1 class="title">VeeBoard</h1>
+      <h1 class="title" data-i18n="app_title">VeeBoard</h1>
       <div class="toolbar-actions">
-        <input id="search" class="search" type="search" placeholder="Search by title or tags…" aria-label="Search" />
-        <button id="themeToggle" class="btn" title="Dark/Light theme">☼</button>
+        <input id="search" class="search" type="search" placeholder="Search by title or tags…" aria-label="Search" data-i18n-placeholder="search_placeholder" />
+        <div class="lang-tabs" role="group" aria-label="Language selection">
+          <button class="lang-tab" data-lang="en">Eng</button>
+          <button class="lang-tab" data-lang="uk">Укр</button>
+        </div>
         <div class="actions">
           <div class="dropdown-menu">
-            <button id="menuBtn" class="btn" title="More options">☰</button>
+            <button id="menuBtn" class="btn" title="More options" data-i18n-title="more_options">☰</button>
             <div id="menuContent" class="dropdown-content">
-              <button id="addColumnBtn" class="btn" title="Add column">Add column</button>
-              <button id="toggleArchiveBtn" class="btn" title="Show/Hide Archive">Show Archive</button>
-              <button id="exportBtn" class="btn" title="Export JSON">Save backup</button>
-              <label class="btn file-btn" title="Import JSON">Import backup<input id="importInput" type="file"
+              <button id="addColumnBtn" class="btn" title="Add column" data-i18n="add_column" data-i18n-title="add_column">Add column</button>
+              <button id="toggleArchiveBtn" class="btn" title="Show/hide archive" data-i18n="show_archive" data-i18n-title="show_archive">Show archive</button>
+              <button id="exportBtn" class="btn" title="Export JSON" data-i18n="save_backup" data-i18n-title="save_backup">Save backup</button>
+              <label class="btn" title="Import JSON" data-i18n-title="import_backup"><span data-i18n="import_backup">Import backup</span><input id="importInput" type="file"
                   accept="application/json" hidden></label>
-              <button id="dbSettingsBtn" class="btn" title="Database & Sync">Database & sync</button>
+              <button id="dbSettingsBtn" class="btn" title="Database & sync" data-i18n="db_sync" data-i18n-title="db_sync">Database & sync</button>
+              <button id="themeToggle" class="btn" title="Dark/light theme" data-i18n-title="theme_toggle">Theme mode</button>
+              <div id="appVersion" style="text-align: center; font-size: 10px; color: var(--text-dim); margin-top: 2px; opacity: 0.6;"></div>
             </div>
           </div>
         </div>
@@ -51,15 +57,15 @@
   <template id="columnTemplate">
     <section class="column" role="list" aria-label="Column">
       <header class="column-header">
-        <button class="drag-handle" aria-label="Drag column" title="Drag to reorder">⠿</button>
+        <button class="drag-handle" aria-label="Drag column" title="Drag to reorder" data-i18n-title="drag_to_reorder">⠿</button>
         <h2 class="column-title" tabindex="0"></h2>
         <div class="column-actions">
-          <button class="btn btn-rename" title="Rename column" data-action="rename-column">✎</button>
-          <button class="btn btn-del-col" title="Delete column" data-action="delete-column">✕</button>
+          <button class="btn btn-rename" title="Rename column" data-action="rename-column" data-i18n-title="rename_column">✎</button>
+          <button class="btn btn-del-col" title="Delete column" data-action="delete-column" data-i18n-title="delete_column">✕</button>
         </div>
       </header>
       <div class="cards" role="list"></div>
-      <button class="btn btn-add-card" title="Add task" data-action="add-card">+ Add task</button>
+      <button class="btn btn-add-card" title="Add task" data-action="add-card" data-i18n="add_task" data-i18n-title="add_task">+ Add task</button>
     </section>
   </template>
 
@@ -68,134 +74,135 @@
       <header class="card-top">
         <!-- <button class="card-grip" title="Drag card" aria-label="Drag">⠿</button> -->
         <h3 class="card-title"></h3>
-        <button class="btn btn-del-card" title="Delete card" aria-label="Delete" data-action="delete-card">✕</button>
+        <button class="btn btn-del-card" title="Delete card" aria-label="Delete" data-action="delete-card" data-i18n-title="delete_card">✕</button>
       </header>
       <p class="card-desc"></p>
       <div class="card-meta">
         <time class="card-due" title="Due"></time>
         <div class="tags"></div>
+        <div class="card-attachments"></div>
       </div>
     </article>
   </template>
 
-  <dialog id="editor" aria-label="Edit card">
+  <dialog id="editor" aria-label="Edit card" tabindex="-1">
     <form id="editorForm" method="dialog" class="editor-form">
-      <h3 id="editorTitle">Edit card</h3>
-      <label>Title
+      <h3 id="editorTitle" data-i18n="edit_card">Edit card</h3>
+      <label data-i18n="title_label">Title
         <input name="title" required maxlength="160" />
       </label>
-      <label>Description
+      <label data-i18n="description_label">Description
         <div id="descriptionEditor" class="content-editor" contenteditable="true" role="textbox"></div>
       </label>
       <div class="hotkey-hints">
-        <span><kbd>Cmd/Ctrl</kbd> + <kbd>B</kbd> - bold,</span>
-        <span><kbd>Cmd/Ctrl</kbd> + <kbd>I</kbd> - italic,</span>
-        <span><kbd>Cmd/Ctrl</kbd> + <kbd>V</kbd> - add link,</span>
-        <span><kbd>Cmd/Ctrl</kbd> + <kbd>K</kbd> - remove link</span>
+        <!-- <span><kbd>Cmd/Ctrl</kbd> + <kbd>B</kbd> - <span data-i18n="hotkey_bold">bold</span>,</span>
+        <span><kbd>Cmd/Ctrl</kbd> + <kbd>I</kbd> - <span data-i18n="hotkey_italic">italic</span>,</span> -->
+        <span><kbd>Cmd/Ctrl</kbd> + <kbd>V</kbd> - <span data-i18n="hotkey_add_link">add link</span>,</span>
+        <span><kbd>Cmd/Ctrl</kbd> + <kbd>K</kbd> - <span data-i18n="hotkey_remove_link">remove link</span></span>
       </div>
       <div class="editor-form-row">
-        <label style="flex:2">Tags (comma-separated)
-          <input name="tags" placeholder="ui, bug, research" />
+        <label data-i18n="tags_label">Tags (comma-separated)
+          <div class="tags-input-wrapper">
+            <input name="tags" placeholder="ui, bug, research" autocomplete="off" data-i18n-placeholder="tags_placeholder" />
+            <div id="tagAutocomplete" class="autocomplete-suggestions"></div>
+          </div>
         </label>
-        <label style="flex:1">Due date
+        <label data-i18n="due_date_label">Due date
           <input name="due" type="datetime-local" />
         </label>
       </div>
-      <label class="toggle-switch">
-        <p id="notification-permission-warning" class="notification-warning hidden"></p>
-        <input name="reminderEnabled" type="checkbox" />
-        <span class="slider"></span>
-        <span class="label-text">Set a reminder</span>
-        <div>
-          <select name="reminderOffset" class="hidden"
-            style="padding: 8px; border-radius: 8px; border: 1px solid var(--border);">
-            <option value="1">1m</option>
-            <option value="5">5m</option>
-            <option value="15">15m</option>
-            <option value="30" selected>30m</option>
-            <option value="60">1h</option>
-          </select>
-          <span id="afterLabel" style="margin-left: 10px;" class="label-text hidden"> before the due date</span>
-
+      <div class="editor-attachments-section">
+        <label data-i18n="attachments">Attachments</label>
+        <div id="editorAttachments" class="editor-attachments-list"></div>
+        <div class="attachment-action">
+          <button type="button" id="addAttachmentBtn" class="btn-link">+ <span data-i18n="attach_picture">Attach picture</span></button>
         </div>
-      </label>
+        <input type="file" id="attachmentInput" accept="image/*" multiple style="display: none;" />
+      </div>
       <div class="editor-actions">
-        <button type="button" value="cancel" class="btn secondary" formnovalidate>Cancel</button>
-        <button value="default" class="btn primary">Save</button>
+        <button type="button" value="cancel" class="btn secondary" formnovalidate data-i18n="cancel">Cancel</button>
+        <button id="markDoneBtn" type="button" class="btn secondary" data-i18n="mark_as_done">Mark as done</button>
+        <button value="default" class="btn primary" data-i18n="save">Save</button>
       </div>
     </form>
   </dialog>
 
-  <dialog id="colDialog" aria-label="Create column">
+  <dialog id="colDialog" aria-label="Create column" tabindex="-1">
     <form id="colForm" method="dialog" class="editor-form">
-      <h3>Create column</h3>
-      <label>Name
+      <h3 data-i18n="create_column">Create column</h3>
+      <label data-i18n="column_name">Name
         <input name="title" required maxlength="120" />
       </label>
       <div class="editor-actions">
-        <button type="button" value="cancel" class="btn secondary" formnovalidate>Cancel</button>
-        <button value="default" class="btn primary">Create</button>
+        <button type="button" value="cancel" class="btn secondary" formnovalidate data-i18n="cancel">Cancel</button>
+        <button value="default" class="btn primary" data-i18n="create">Create</button>
       </div>
     </form>
   </dialog>
 
-  <dialog id="renameDialog" aria-label="Rename column">
+  <dialog id="renameDialog" aria-label="Rename column" tabindex="-1">
     <form id="renameForm" method="dialog" class="editor-form">
-      <h3>Column settings</h3>
-      <label>Title
+      <h3 data-i18n="column_settings">Column settings</h3>
+      <label data-i18n="title_label">Title
         <input name="title" required maxlength="160" />
       </label>
       <div class="checkbox-wrapper">
         <label class="toggle-switch">
           <input name="isDoneColumn" type="checkbox" />
           <span class="slider"></span>
-          <span class="label-text">Mark as column for completed cards</span>
+          <span class="label-text" data-i18n="mark_done_column">Mark as column for completed cards</span>
         </label>
       </div>
       <div class="editor-actions">
-        <button type="button" value="cancel" class="btn secondary" formnovalidate>Cancel</button>
-        <button value="default" class="btn primary">Save</button>
+        <button type="button" value="cancel" class="btn secondary" formnovalidate data-i18n="cancel">Cancel</button>
+        <button value="default" class="btn primary" data-i18n="save">Save</button>
       </div>
     </form>
   </dialog>
 
-  <dialog id="confirmDialog" aria-label="Confirm action">
+  <dialog id="confirmDialog" aria-label="Confirm action" tabindex="-1">
     <form id="confirmForm" method="dialog" class="editor-form">
-      <h3 id="confirmTitle">Delete card?</h3>
+      <h3 id="confirmTitle" data-i18n="delete_card_confirm">Delete card?</h3>
       <p id="confirmText" style="margin:4px 0 0"></p>
       <div class="editor-actions" style="grid-template-columns: 1fr 1fr 1fr;">
-        <button type="button" value="cancel" class="btn secondary" formnovalidate>Cancel</button>
-        <button id="confirmOk" value="delete" class="btn error">Delete</button>
-        <button value="archive" class="btn primary">Archive</button>
+        <button type="button" value="cancel" class="btn secondary" formnovalidate data-i18n="cancel">Cancel</button>
+        <button id="confirmOk" value="delete" class="btn error" data-i18n="delete">Delete</button>
+        <button value="archive" class="btn primary" data-i18n="archive">Archive</button>
       </div>
     </form>
   </dialog>
 
-  <dialog id="dbDialog" aria-label="Database & Sync">
+  <dialog id="dbDialog" aria-label="Database & sync" tabindex="-1">
     <form id="dbForm" method="dialog" class="editor-form">
-      <h3>Database & Sync</h3>
+      <h3 data-i18n="db_sync_title">Database & sync</h3>
+      <div class="db-provider-choice">
+        <div class="lang-tabs" role="group" aria-label="Database provider selection">
+          <button type="button" class="lang-tab db-provider-tab" data-provider="local" data-i18n="local_storage">Browser storage</button>
+          <button type="button" class="lang-tab db-provider-tab" data-provider="cloudflare" data-i18n="cloudflare_d1">Cloudflare D1</button>
+        </div>
+        <input type="hidden" name="dbProvider" id="dbProviderInput" value="local">
+      </div>
 
-      <label class="toggle-switch">
-        <input id="useFirebaseToggle" type="checkbox" />
-        <span class="slider"></span>
-        <span class="label-text">Use Firebase instead of Local Storage</span>
-      </label>
+      <div id="localSettings" class="db-settings-section" style="display:none;">
+        <p class="label-text" data-i18n="local_db_hint">
+          All data is saved in your browser using IndexedDB. No configuration is required. Works locally only.
+        </p>
+      </div>
 
-      <p id="firebaseHelp" class="label-text" style="margin:0;display:none;">
-        Paste your <code>firebaseConfig</code> object (JS or JSON). We’ll store it locally.
-      </p>
-
-      <label id="firebaseArea" style="display:none;">
-        Firebase config
-        <textarea id="firebaseConfigInput" rows="10" placeholder='{
-  "apiKey": "...",
-  "authDomain": "...",
-  "projectId": "...",
-  "storageBucket": "...",
-  "messagingSenderId": "...",
-  "appId": "..."
-}'></textarea>
-      </label>
+      <div id="cloudflareSettings" class="db-settings-section" style="display:none;">
+        <p class="label-text" data-i18n="cloudflare_hint">
+          Enter your Cloudflare worker URL and an optional board ID.
+        </p>
+        <label data-i18n="worker_url">Worker URL
+          <input id="cfWorkerUrl" type="url" placeholder="https://your-worker.workers.dev" />
+        </label>
+        <label data-i18n="api_key">Password (API key)
+          <input id="cfApiKey" type="password" placeholder="Enter your secret key" />
+        </label>
+        <label data-i18n="board_id">Board ID (optional)
+          <input id="cfBoardId" type="text" placeholder="default" />
+        </label>
+      </div>
 
       <div class="editor-actions">
         <button type="button" value="cancel" class="btn secondary" formnovalidate>Cancel</button>
@@ -204,16 +211,21 @@
     </form>
   </dialog>
 
-  <dialog id="importChoice" aria-label="Import options">
+  <dialog id="importChoice" aria-label="Import options" tabindex="-1">
     <form id="importChoiceForm" method="dialog" class="editor-form">
-      <h3>Import options</h3>
-      <p>How to apply the imported JSON?</p>
+      <h3 data-i18n="import_options">Import options</h3>
+      <p data-i18n="import_hint">How to apply the imported JSON?</p>
       <div class="editor-actions" style="grid-template-columns: 1fr 1fr 1fr;">
-        <button type="button" value="cancel" class="btn secondary">Cancel</button>
-        <button class="btn" value="replace">Replace</button>
-        <button class="btn primary" value="merge">Merge</button>
+        <button type="button" value="cancel" class="btn secondary" data-i18n="cancel">Cancel</button>
+        <button class="btn" value="replace" data-i18n="replace">Replace</button>
+        <button class="btn primary" value="merge" data-i18n="merge">Merge</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="lightbox" aria-label="Image viewer">
+    <button class="close-lightbox" aria-label="Close" data-action="close-lightbox">&times;</button>
+    <img id="lightboxImg" src="" alt="Full size attachment" />
   </dialog>
 
 </body>

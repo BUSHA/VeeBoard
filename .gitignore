@@ -1,1 +1,12 @@
+# Dependency directories
+node_modules/
+.wrangler/
 .DS_Store
+
+# Local config
+.env
+.env.*
+
+# Build artifacts
+dist/
+build/
