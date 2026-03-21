@@ -990,6 +990,27 @@ dialog:focus-visible {
   width: 100%;
 }
 
+.clear-input-btn {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  display: none;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.clear-input-btn:hover {
+  color: var(--text);
+}
+
 /* Reusing autocomplete styles from tags */
 .user-input-wrapper .autocomplete-suggestions {
   display: none;

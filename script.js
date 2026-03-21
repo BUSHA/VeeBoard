@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.4.1"
+  version: "0.5.0"
 }
 
 /* Live sync echo guard */
@@ -1028,6 +1028,11 @@ const UI = {
     form.elements.tags.value = card ? (card.tags || []).join(", ") : ""
     form.elements.user.value = card?.assignedUser ? (card.assignedUser.name || "") : ""
 
+    const clearUserBtn = Utils.qs('#clearUserBtn', form)
+    if (clearUserBtn) {
+      clearUserBtn.style.display = form.elements.user.value ? "block" : "none"
+    }
+
     if (card?.due) {
       const dateObj = new Date(card.due)
       const localDate = new Date(
@@ -1936,13 +1941,29 @@ const App = {
 
     const userInput = Utils.qs('input[name="user"]', Utils.qs("#editorForm"))
     const userAutocomplete = Utils.qs("#userAutocomplete")
+    const clearUserBtn = Utils.qs('#clearUserBtn', Utils.qs("#editorForm"))
+
+    const toggleClearBtn = () => {
+      if (clearUserBtn) clearUserBtn.style.display = userInput.value ? "block" : "none"
+    }
 
     userInput.addEventListener("input", () => {
       UI.updateUserAutocomplete(userInput, userAutocomplete)
+      toggleClearBtn()
     })
     userInput.addEventListener("focus", () => {
       UI.updateUserAutocomplete(userInput, userAutocomplete)
+      toggleClearBtn()
     })
+
+    if (clearUserBtn) {
+      clearUserBtn.addEventListener("click", () => {
+        userInput.value = ""
+        userAutocomplete.classList.remove("show")
+        toggleClearBtn()
+        userInput.focus()
+      })
+    }
 
     // Close autocomplete when clicking outside
     window.addEventListener("click", (e) => {
