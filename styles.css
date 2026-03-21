@@ -576,7 +576,7 @@ dialog:focus-visible {
 }
 
 .editor-form {
-  width: min(680px, 90vw);
+  width: min(740px, 90vw);
   max-height: 90dvh;
   overflow-y: auto;
   overflow-x: hidden;

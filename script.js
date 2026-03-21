@@ -494,7 +494,7 @@ const Store = {
       if (newCard.assignedUser) {
         this.addUser(newCard.assignedUser)
       }
-      col.cards.push(newCard)
+      col.cards.unshift(newCard)
       this.saveState()
       return newCard
     }
@@ -992,7 +992,7 @@ const UI = {
     const colData = Store.findColumn(colId)
     if (colEl && colData) {
       const cardEl = this.createCardElement(card, colData)
-      Utils.qs(".cards", colEl).append(cardEl)
+      Utils.qs(".cards", colEl).prepend(cardEl)
       this.applyFiltersToCard(cardEl)
     }
     this.updateTagFilters()
@@ -2345,13 +2345,13 @@ const App = {
 
     const context = col.isArchive
       ? {
-          title: "Archived card",
-          deleteText: "Delete permanently",
+          title: I18n.t("archived_card_title") || "Archived card",
+          deleteText: I18n.t("delete_permanently") || "Delete permanently",
           showArchiveButton: false,
         }
       : {
-          title: "Delete or archive card?",
-          deleteText: "Delete",
+          title: I18n.t("delete_card_title") || "Delete or archive card?",
+          deleteText: I18n.t("delete") || "Delete",
           showArchiveButton: true,
         }
 
