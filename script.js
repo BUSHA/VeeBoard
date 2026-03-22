@@ -3091,7 +3091,7 @@ const App = {
       return
     }
 
-    const choice = await UI.showConfirm(I18n.t("delete_text"), {
+    const choice = await UI.showConfirm(I18n.t("delete_comment_confirm"), {
       title: I18n.t("delete_comment"),
       deleteText: I18n.t("delete"),
       showArchiveButton: false,

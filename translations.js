@@ -109,6 +109,7 @@ const TRANSLATIONS = {
     replying_to: "Replying to {name}",
     edit_comment: "Edit",
     delete_comment: "Delete",
+    delete_comment_confirm: "Are you sure you want to delete this comment?",
     no_comments: "No comments yet.",
     comment_placeholder: "Write a comment...",
     own_comment_only_error: "You can edit or delete only your own comments.",
@@ -223,8 +224,9 @@ const TRANSLATIONS = {
     replying_to: "Відповідь для {name}",
     edit_comment: "Редагувати",
     delete_comment: "Видалити",
+    delete_comment_confirm: "Ви впевнені, що хочете видалити цей коментар?",
     no_comments: "Коментарів поки немає.",
-    comment_placeholder: "Напишіть коментар...",
+    comment_placeholder: "Ваш коментар...",
     own_comment_only_error: "Ви можете редагувати або видаляти лише власні коментарі.",
   }
 };
