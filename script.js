@@ -276,10 +276,14 @@ const CloudflareBackend = {
       }
     })
     if (!response.ok) throw new Error("Cloudflare load failed")
+    
+    Store.adminUser = response.headers.get("X-Admin-User") || null
+    if (typeof UI !== "undefined" && UI.updateAdminPanelVisibility) UI.updateAdminPanelVisibility()
+
     return await response.json()
   },
   async save(state, config) {
-    let { cfWorkerUrl, cfBoardId, cfApiKey } = config
+    let { cfWorkerUrl, cfBoardId, cfApiKey, cfUserName } = config
     if (!cfWorkerUrl) return
     cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "") // Remove trailing slashes
     const response = await fetch(`${cfWorkerUrl}/save`, {
@@ -287,7 +291,8 @@ const CloudflareBackend = {
       headers: {
         "Content-Type": "application/json",
         "X-Board-ID": cfBoardId || "default",
-        "X-API-Key": cfApiKey || ""
+        "X-API-Key": cfApiKey || "",
+        "X-Admin-User": cfUserName || ""
       },
       body: JSON.stringify(state),
     })
@@ -742,6 +747,75 @@ const UI = {
   activeTagFilters: new Set(),
   activeUserFilters: new Set(),
   searchQuery: "",
+
+  updateAdminPanelVisibility() {
+    const adminBtn = Utils.qs("#adminPanelBtn");
+    if (!adminBtn) return;
+    const cfg = DbSettings.get();
+    if (cfg.provider === "cloudflare" && Store.adminUser && cfg.cfUserName === Store.adminUser) {
+      adminBtn.style.display = "block";
+    } else {
+      adminBtn.style.display = "none";
+    }
+  },
+
+  renderAdminUsers() {
+    const list = Utils.qs("#adminUserList");
+    if (!list) return;
+    list.innerHTML = "";
+    
+    // Security check to prevent rendering if not admin
+    const cfg = DbSettings.get();
+    if (cfg.provider !== "cloudflare" || !Store.adminUser || cfg.cfUserName !== Store.adminUser) {
+      return;
+    }
+
+    (Store.state.users || []).forEach((u, i) => {
+      const row = document.createElement("div");
+      row.style.display = "flex";
+      row.style.gap = "8px";
+      row.style.alignItems = "center";
+      
+      const nameInp = document.createElement("input");
+      nameInp.value = u.name || "";
+      nameInp.placeholder = I18n.t("your_name") || "Your name";
+      nameInp.style.flex = "1";
+      
+      const pinInp = document.createElement("input");
+      pinInp.type = "text";
+      pinInp.value = u.pinCode || "";
+      pinInp.placeholder = I18n.t("pin_code") || "Pin-code";
+      pinInp.style.flex = "1";
+      
+      const delBtn = document.createElement("button");
+      delBtn.className = "btn error";
+      delBtn.title = I18n.t("delete") || "Delete";
+      delBtn.innerHTML = "✕";
+      delBtn.style.padding = "0 8px";
+      
+      row.appendChild(nameInp);
+      row.appendChild(pinInp);
+      row.appendChild(delBtn);
+      
+      const saveChanges = () => {
+         u.name = nameInp.value.trim();
+         u.pinCode = pinInp.value.trim();
+         Store.saveState();
+      };
+      
+      nameInp.addEventListener("change", saveChanges);
+      pinInp.addEventListener("change", saveChanges);
+      
+      delBtn.addEventListener("click", () => {
+        if (confirm(`${I18n.t("delete_user") || "Remove user"} ${u.name}?`)) {
+          Store.state.users.splice(i, 1);
+          Store.saveState();
+          UI.renderAdminUsers();
+        }
+      });
+      list.appendChild(row);
+    });
+  },
 
   showDialog(dialog) {
     document.body.classList.add("dialog-open")
@@ -1872,6 +1946,7 @@ const App = {
     if (versionEl) versionEl.textContent = `v${CONFIG.version}`
 
     await Store.loadState()
+    if (typeof UI !== "undefined" && UI.updateAdminPanelVisibility) UI.updateAdminPanelVisibility()
 
     UI.renderBoard()
     Store.startRealtime()
@@ -2026,6 +2101,40 @@ const App = {
         UI.menuContent.classList.remove("show")
       }
     })
+
+    // --- Admin Panel ---
+    const adminPanelBtn = Utils.qs("#adminPanelBtn");
+    const adminDialog = Utils.qs("#adminDialog");
+    if (adminPanelBtn && adminDialog) {
+      adminPanelBtn.addEventListener("click", (e) => {
+        const cfg = DbSettings.get();
+        if (cfg.provider !== "cloudflare" || !Store.adminUser || cfg.cfUserName !== Store.adminUser) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+
+        UI.renderAdminUsers();
+        UI.showDialog(adminDialog);
+        adminPanelBtn.closest(".dropdown-content").classList.remove("show");
+      });
+      
+      const addBtn = Utils.qs(".btn-add-user", adminDialog);
+      if (addBtn) {
+        addBtn.addEventListener("click", () => {
+          Store.state.users.push({ name: "New User", pinCode: "0000" });
+          Store.saveState();
+          UI.renderAdminUsers();
+        });
+      }
+      
+      const closeBtn = Utils.qs(".btn-close-admin", adminDialog);
+      if (closeBtn) {
+        closeBtn.addEventListener("click", () => {
+          adminDialog.close();
+        });
+      }
+    }
 
     // --- Database & Sync ---
     const dbBtn = Utils.qs("#dbSettingsBtn")

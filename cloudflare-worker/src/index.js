@@ -8,7 +8,8 @@ export default {
     const headers = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, X-Board-ID, X-API-Key",
+      "Access-Control-Allow-Headers": "Content-Type, X-Board-ID, X-API-Key, X-Admin-User",
+      "Access-Control-Expose-Headers": "X-Admin-User",
     };
 
     if (method === "OPTIONS") {
@@ -32,13 +33,40 @@ export default {
           "SELECT data FROM boards WHERE id = ?"
         ).bind(boardId).first();
         
+        const responseHeaders = { ...headers, "Content-Type": "application/json" };
+        if (env.ADMIN_USER) {
+          responseHeaders["X-Admin-User"] = env.ADMIN_USER;
+        }
+
         return new Response(JSON.stringify(result ? JSON.parse(result.data) : null), { 
-          headers: { ...headers, "Content-Type": "application/json" } 
+          headers: responseHeaders 
         });
       }
 
       if (path === "/save" && method === "POST") {
         const body = await request.json();
+        
+        // Basic Security Check: only admin can modify the `users` array
+        if (env.ADMIN_USER) {
+          const sentAdminUser = request.headers.get("X-Admin-User");
+          const existingRow = await env.DB.prepare(
+            "SELECT data FROM boards WHERE id = ?"
+          ).bind(boardId).first();
+          
+          if (existingRow && existingRow.data) {
+            const existingData = JSON.parse(existingRow.data);
+            const oldUsers = JSON.stringify(existingData.users || []);
+            const newUsers = JSON.stringify(body.users || []);
+            
+            if (oldUsers !== newUsers && sentAdminUser !== env.ADMIN_USER) {
+              return new Response(JSON.stringify({ error: "Only admin can modify users list." }), { 
+                status: 403, 
+                headers: { ...headers, "Content-Type": "application/json" } 
+              });
+            }
+          }
+        }
+        
         const data = JSON.stringify(body);
         
         await env.DB.prepare(
