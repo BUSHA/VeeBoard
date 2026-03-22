@@ -277,7 +277,16 @@ const CloudflareBackend = {
     })
     if (!response.ok) throw new Error("Cloudflare load failed")
     
-    Store.adminUser = response.headers.get("X-Admin-User") || null
+    const encodedAdminUser = response.headers.get("X-Admin-User-Encoded")
+    if (encodedAdminUser) {
+      try {
+        Store.adminUser = decodeURIComponent(encodedAdminUser)
+      } catch {
+        Store.adminUser = encodedAdminUser
+      }
+    } else {
+      Store.adminUser = response.headers.get("X-Admin-User") || null
+    }
     if (typeof UI !== "undefined" && UI.updateAdminPanelVisibility) UI.updateAdminPanelVisibility()
 
     return await response.json()
@@ -292,7 +301,7 @@ const CloudflareBackend = {
         "Content-Type": "application/json",
         "X-Board-ID": cfBoardId || "default",
         "X-API-Key": cfApiKey || "",
-        "X-Admin-User": cfUserName || ""
+        "X-Admin-User-Encoded": encodeURIComponent(cfUserName || "")
       },
       body: JSON.stringify(state),
     })
@@ -483,6 +492,7 @@ const Store = {
   addCard(colId, cardData) {
     const col = this.findColumn(colId)
     if (col) {
+      const cfg = DbSettings.get()
       const newCard = {
         id: Utils.uid(),
         title: cardData.title,
@@ -491,6 +501,7 @@ const Store = {
         due: cardData.due || "",
         assignedUser: cardData.assignedUser || null,
         attachments: cardData.attachments || [],
+        createdBy: cfg.provider === "cloudflare" ? (cfg.cfUserName || "").trim() : "",
         createdAt: Utils.nowIso(), // when the card was created (UTC ISO)
         lastChanged: Utils.nowIso(), // last modification timestamp (UTC ISO)
         lastChangedBy: Meta.clientId, // stable client identifier
@@ -510,12 +521,16 @@ const Store = {
   updateCard(cardId, cardData) {
     const { card } = this.findCard(cardId)
     if (card) {
+      const cfg = DbSettings.get()
       card.title = cardData.title
       card.description = cardData.description
       card.tags = cardData.tags
       card.due = cardData.due
       card.assignedUser = cardData.assignedUser || null
       card.attachments = cardData.attachments || []
+      if (!card.createdBy && cfg.provider === "cloudflare") {
+        card.createdBy = (cfg.cfUserName || "").trim()
+      }
       
       if (card.assignedUser) {
         this.addUser(card.assignedUser)
@@ -842,6 +857,7 @@ const UI = {
   },
 
   updateCardElement(node, card, column) {
+    const cfg = DbSettings.get()
     Utils.qs(".card-title", node).textContent = card.title
     const sanitizedHtml = DOMPurify.sanitize(card.description || "", {
       ADD_ATTR: ["target"],
@@ -937,6 +953,22 @@ const UI = {
         attBox.style.display = "none"
       }
     }
+
+    const creatorEl = Utils.qs(".card-creator", node)
+    if (creatorEl) {
+      const creatorName = (card.createdBy || "").trim()
+      if (cfg.provider === "cloudflare" && creatorName) {
+        creatorEl.innerHTML = ""
+        const label = document.createElement("span")
+        label.className = "card-creator-label"
+        label.textContent = `${I18n.t("author_label")}:`
+        creatorEl.append(label, this.createUserBadge({ name: creatorName }, { subtle: true }))
+        creatorEl.style.display = ""
+      } else {
+        creatorEl.innerHTML = ""
+        creatorEl.style.display = "none"
+      }
+    }
     
     // Hide card-meta if all its children are hidden
     const cardMeta = Utils.qs(".card-meta", node)
@@ -960,18 +992,20 @@ const UI = {
     return el
   },
 
-  createUserBadge(user) {
+  createUserBadge(user, options = {}) {
+    const { subtle = false } = options
     const el = document.createDocumentFragment()
     const dot = document.createElement("span")
     dot.className = "avatar-dot"
+    if (subtle) dot.classList.add("avatar-dot--subtle")
     const initial = (user.name || "?")[0]
     dot.textContent = initial
     dot.style.background = Utils.colorFromString(user.name || "")
     const nameText = document.createTextNode(user.name || "")
     
-    // Wrap in a span for easier styling/container if needed, but the request says "not styled as a badge"
     const wrapper = document.createElement("span")
     wrapper.className = "card-assignee"
+    if (subtle) wrapper.classList.add("card-assignee--subtle")
     wrapper.style.display = "inline-flex"
     wrapper.style.alignItems = "center"
     wrapper.style.gap = "6px"

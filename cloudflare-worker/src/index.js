@@ -8,8 +8,8 @@ export default {
     const headers = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, X-Board-ID, X-API-Key, X-Admin-User",
-      "Access-Control-Expose-Headers": "X-Admin-User",
+      "Access-Control-Allow-Headers": "Content-Type, X-Board-ID, X-API-Key, X-Admin-User, X-Admin-User-Encoded",
+      "Access-Control-Expose-Headers": "X-Admin-User, X-Admin-User-Encoded",
     };
 
     if (method === "OPTIONS") {
@@ -35,7 +35,7 @@ export default {
         
         const responseHeaders = { ...headers, "Content-Type": "application/json" };
         if (env.ADMIN_USER) {
-          responseHeaders["X-Admin-User"] = env.ADMIN_USER;
+          responseHeaders["X-Admin-User-Encoded"] = encodeURIComponent(env.ADMIN_USER);
         }
 
         return new Response(JSON.stringify(result ? JSON.parse(result.data) : null), { 
@@ -48,7 +48,15 @@ export default {
         
         // Basic Security Check: only admin can modify the `users` array
         if (env.ADMIN_USER) {
-          const sentAdminUser = request.headers.get("X-Admin-User");
+          const sentAdminUserEncoded = request.headers.get("X-Admin-User-Encoded");
+          let sentAdminUser = request.headers.get("X-Admin-User");
+          if (sentAdminUserEncoded) {
+            try {
+              sentAdminUser = decodeURIComponent(sentAdminUserEncoded);
+            } catch {
+              sentAdminUser = sentAdminUserEncoded;
+            }
+          }
           const existingRow = await env.DB.prepare(
             "SELECT data FROM boards WHERE id = ?"
           ).bind(boardId).first();
