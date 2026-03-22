@@ -195,7 +195,9 @@ const DbSettings = {
         provider: "local", // 'local', 'cloudflare'
         cfWorkerUrl: "",
         cfBoardId: "default",
-        cfApiKey: ""
+        cfApiKey: "",
+        cfUserName: "",
+        cfPinCode: ""
       }
       const saved = JSON.parse(localStorage.getItem(this.KEY)) || {}
       
@@ -206,7 +208,7 @@ const DbSettings = {
       
       return { ...defaults, ...saved }
     } catch {
-      return { provider: "local", cfWorkerUrl: "", cfBoardId: "default", cfApiKey: "" }
+      return { provider: "local", cfWorkerUrl: "", cfBoardId: "default", cfApiKey: "", cfUserName: "", cfPinCode: "" }
     }
   },
   set(v) {
@@ -1407,11 +1409,16 @@ const UI = {
 
   updateUserAutocomplete(input, container) {
     const query = input.value.trim().toLowerCase()
-
     const allUsersMap = new Map()
+
     if (Store.state.users) {
-      Store.state.users.forEach(u => u.name && allUsersMap.set(u.name, u))
+      Store.state.users.forEach((u) => {
+        if (u && u.name) {
+          allUsersMap.set(u.name, u)
+        }
+      })
     }
+
     Store.state.columns.forEach((c) =>
       c.cards.forEach((k) => {
         if (k.assignedUser && k.assignedUser.name) {
@@ -2045,6 +2052,11 @@ const App = {
       cfIdInput.value = cfg.cfBoardId || ""
       cfKeyInput.value = cfg.cfApiKey || ""
       
+      const cfUserNameInput = Utils.qs("#cfUserName", dbDialog)
+      const cfPinCodeInput = Utils.qs("#cfPinCode", dbDialog)
+      if (cfUserNameInput) cfUserNameInput.value = cfg.cfUserName || ""
+      if (cfPinCodeInput) cfPinCodeInput.value = cfg.cfPinCode || ""
+      
       updateDbSettingsVisibility(cfg.provider)
       UI.showDialog(dbDialog)
     })
@@ -2068,8 +2080,51 @@ const App = {
         cfApiKey: cfKeyInput.value.trim()
       }
 
+      if (provider === "cloudflare") {
+         const userName = Utils.qs("#cfUserName", dbDialog).value.trim()
+         const pinCode = Utils.qs("#cfPinCode", dbDialog).value.trim()
+         if (!userName || !pinCode) {
+            UI.showAlert(I18n.t("name_pin_required") || "Name and Pin-code are required for D1.");
+            return;
+         }
+         newCfg.cfUserName = userName;
+         newCfg.cfPinCode = pinCode;
+         
+         let remoteData = null;
+         if (newCfg.cfWorkerUrl) {
+           try {
+             remoteData = await CloudflareBackend.load(newCfg);
+           } catch(err) {
+             console.warn(err);
+           }
+         }
+         if (!remoteData) {
+           const local = await Store.loadLocal();
+           remoteData = local || Store.getDemoState();
+         }
+         remoteData.users = remoteData.users || [];
+         const existingUser = remoteData.users.find(u => u.name === userName);
+         if (existingUser) {
+           if (existingUser.pinCode !== pinCode) {
+             UI.showAlert(I18n.t("incorrect_pin") || "Incorrect pin-code for this name");
+             return;
+           }
+         } else {
+           remoteData.users.push({ name: userName, pinCode });
+           if (newCfg.cfWorkerUrl) {
+             try {
+               await CloudflareBackend.save(remoteData, newCfg);
+             } catch(err) {
+               console.warn(err);
+             }
+           }
+         }
+      }
+
       // Logic for seeding/migrating data when switching providers
-      if (provider !== prevCfg.provider) {
+      if (provider !== prevCfg.provider && provider === "cloudflare" && !newCfg.cfWorkerUrl) {
+         // silently allow if user just activated it and has no worker URL
+      } else if (provider !== prevCfg.provider) {
         const choice = await UI.showConfirm(
           I18n.t("db_switch_confirm", { provider }) || `Switch database to ${provider}? This will sync with the new provider. Continue?`,
           { title: I18n.t("db_sync"), showArchiveButton: false, deleteText: I18n.t("save") }
@@ -2077,7 +2132,6 @@ const App = {
         if (choice !== "delete") return
 
         try {
-          // If switching to a remote provider, we might want to seed it if it's empty
           if (provider === "cloudflare" && newCfg.cfWorkerUrl) {
              const remote = await CloudflareBackend.load(newCfg)
              if (!remote) await CloudflareBackend.save(Store.state, newCfg)
@@ -2322,7 +2376,13 @@ const App = {
       if (existingUser) {
         cardData.assignedUser = existingUser
       } else {
-        cardData.assignedUser = { name: userVal }
+        const cfg = DbSettings.get()
+        if (cfg.provider === "cloudflare") {
+          UI.showAlert(I18n.t("user_not_found") || "User not found. For D1, users must be registered in the Database sync settings.");
+          return;
+        } else {
+          cardData.assignedUser = { name: userVal }
+        }
       }
     }
 
