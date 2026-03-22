@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0" />
   <title>VeeBoard</title>
 
-  <link rel="stylesheet" href="styles.css?v=0.5.0">
+  <link rel="stylesheet" href="styles.css?v=0.5.1">
 
   <link rel="icon" type="image/png" href="favicon/favicon-96x96.png" sizes="96x96" />
   <link rel="icon" type="image/svg+xml" href="favicon/favicon.svg" />
@@ -16,8 +16,8 @@
   <link rel="manifest" href="favicon/site.webmanifest" />
 
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
-  <script src="translations.js?v=0.5.0"></script>
-  <script src="script.js?v=0.5.0" defer></script>
+  <script src="translations.js?v=0.5.1"></script>
+  <script src="script.js?v=0.5.1" defer></script>
 
 </head>
 
@@ -223,18 +223,22 @@
         <label data-i18n="worker_url">Worker URL
           <input id="cfWorkerUrl" type="url" placeholder="https://your-worker.workers.dev" />
         </label>
-        <label data-i18n="api_key">Password (API key)
-          <input id="cfApiKey" type="password" placeholder="Enter your secret key" />
-        </label>
-        <label data-i18n="board_id">Board ID (optional)
-          <input id="cfBoardId" type="text" placeholder="default" />
-        </label>
-        <label data-i18n="your_name">Your name
-          <input id="cfUserName" type="text" placeholder="Your name" autocomplete="off" />
-        </label>
-        <label data-i18n="pin_code">Pin-code
-          <input id="cfPinCode" type="password" placeholder="XXXX" />
-        </label>
+        <div class="editor-form-row">
+          <label data-i18n="api_key">Password (API key)
+            <input id="cfApiKey" type="password" placeholder="Enter your secret key" />
+          </label>
+          <label data-i18n="board_id">Board ID (optional)
+            <input id="cfBoardId" type="text" placeholder="default" />
+          </label>
+        </div>
+        <div class="editor-form-row">
+          <label data-i18n="your_name">Your name
+            <input id="cfUserName" type="text" placeholder="Your name" autocomplete="off" />
+          </label>
+          <label data-i18n="pin_code">Pin-code
+            <input id="cfPinCode" type="password" placeholder="XXXX" />
+          </label>
+        </div>
       </div>
 
       <div class="editor-actions">
