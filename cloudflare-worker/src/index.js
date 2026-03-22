@@ -55,6 +55,48 @@ function comparableCardContent(card = {}) {
   };
 }
 
+function normalizeComments(comments = []) {
+  if (!Array.isArray(comments)) return [];
+  return comments.map((comment) => ({
+    id: comment.id || "",
+    text: comment.text || "",
+    author: comment.author || "",
+    createdAt: comment.createdAt || "",
+    updatedAt: comment.updatedAt || comment.createdAt || "",
+  }));
+}
+
+function commentsChangeAllowed(oldComments = [], newComments = [], currentUser = "") {
+  const oldList = normalizeComments(oldComments);
+  const newList = normalizeComments(newComments);
+  const oldById = new Map(oldList.map((comment) => [comment.id, comment]));
+  const newById = new Map(newList.map((comment) => [comment.id, comment]));
+
+  for (const oldComment of oldList) {
+    const next = newById.get(oldComment.id);
+    if (!next) {
+      if ((oldComment.author || "").trim() !== currentUser) return false;
+      continue;
+    }
+    if ((next.author || "").trim() !== (oldComment.author || "").trim()) return false;
+    if ((next.createdAt || "") !== (oldComment.createdAt || "")) return false;
+    if (stableStringify(oldComment) !== stableStringify(next) && (oldComment.author || "").trim() !== currentUser) {
+      return false;
+    }
+  }
+
+  for (const newComment of newList) {
+    if (oldById.has(newComment.id)) continue;
+    if ((newComment.author || "").trim() !== currentUser) return false;
+  }
+
+  const preservedOldIds = oldList.filter((comment) => newById.has(comment.id)).map((comment) => comment.id);
+  const preservedNewIds = newList.filter((comment) => oldById.has(comment.id)).map((comment) => comment.id);
+  if (stableStringify(preservedOldIds) !== stableStringify(preservedNewIds)) return false;
+
+  return true;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -168,6 +210,17 @@ export default {
                   continue;
                 }
 
+                const commentsChanged =
+                  stableStringify(normalizeComments(oldEntry.card.comments)) !==
+                  stableStringify(normalizeComments(newEntry.card.comments));
+
+                if (commentsChanged && !commentsChangeAllowed(oldEntry.card.comments, newEntry.card.comments, sentAdminUser)) {
+                  return new Response(JSON.stringify({ error: "You can edit or delete only your own comments." }), {
+                    status: 403,
+                    headers: { ...headers, "Content-Type": "application/json" }
+                  });
+                }
+
                 const cardChanged =
                   JSON.stringify(oldEntry.card) !== JSON.stringify(newEntry.card) ||
                   oldEntry.colId !== newEntry.colId ||
@@ -181,14 +234,28 @@ export default {
                   const indexChanged = oldEntry.index !== newEntry.index;
                   const passiveReindexOnly =
                     !contentChanged &&
+                    !commentsChanged &&
                     !columnChanged &&
                     indexChanged;
                   const moveOnly =
                     !contentChanged &&
+                    !commentsChanged &&
                     columnChanged &&
                     oldAssignee === sentAdminUser;
+                  const commentsOnly =
+                    !contentChanged &&
+                    !columnChanged &&
+                    !indexChanged &&
+                    commentsChanged &&
+                    commentsChangeAllowed(oldEntry.card.comments, newEntry.card.comments, sentAdminUser);
+                  const moveWithAllowedComments =
+                    !contentChanged &&
+                    columnChanged &&
+                    commentsChanged &&
+                    oldAssignee === sentAdminUser &&
+                    commentsChangeAllowed(oldEntry.card.comments, newEntry.card.comments, sentAdminUser);
 
-                  if (!moveOnly && !passiveReindexOnly) {
+                  if (!moveOnly && !passiveReindexOnly && !commentsOnly && !moveWithAllowedComments) {
                     return new Response(JSON.stringify({ error: "You can edit or delete only your own cards." }), {
                       status: 403,
                       headers: { ...headers, "Content-Type": "application/json" }
@@ -208,6 +275,13 @@ export default {
                 if (oldCards.has(cardId)) continue;
                 if ((newEntry.card.createdBy || "").trim() !== sentAdminUser) {
                   return new Response(JSON.stringify({ error: "New cards must belong to the current user." }), {
+                    status: 403,
+                    headers: { ...headers, "Content-Type": "application/json" }
+                  });
+                }
+                const newComments = normalizeComments(newEntry.card.comments);
+                if (newComments.some((comment) => (comment.author || "").trim() !== sentAdminUser)) {
+                  return new Response(JSON.stringify({ error: "You can add only your own comments." }), {
                     status: 403,
                     headers: { ...headers, "Content-Type": "application/json" }
                   });

@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.5.2"
+  version: "0.5.4"
 }
 
 /* Live sync echo guard */
@@ -412,6 +412,10 @@ const Store = {
     if (!this.state.users) {
       this.state.users = []
     }
+
+    this.state.columns.forEach((col) => {
+      col.cards.forEach((card) => this.normalizeCard(card))
+    })
     
     return this.state
   },
@@ -464,6 +468,25 @@ const Store = {
     await IndexedDBBackend.save(this.state)
   },
 
+  normalizeComment(comment = {}) {
+    return {
+      id: typeof comment.id === "string" && comment.id ? comment.id : Utils.uid(),
+      text: typeof comment.text === "string" ? comment.text : "",
+      author: typeof comment.author === "string" ? comment.author : "",
+      createdAt: comment.createdAt || Utils.nowIso(),
+      updatedAt: comment.updatedAt || comment.createdAt || Utils.nowIso(),
+    }
+  },
+
+  normalizeCard(card) {
+    card.comments = Array.isArray(card.comments)
+      ? card.comments
+          .map((comment) => this.normalizeComment(comment))
+          .filter((comment) => comment.text.trim())
+      : []
+    return card
+  },
+
   getCurrentUserName() {
     const cfg = DbSettings.get()
     return cfg.provider === "cloudflare" ? (cfg.cfUserName || "").trim() : ""
@@ -493,6 +516,19 @@ const Store = {
     const owner = (card.createdBy || "").trim()
     const assignee = (card.assignedUser?.name || "").trim()
     return owner === currentUser || assignee === currentUser
+  },
+
+  canCurrentUserManageComment(comment) {
+    const cfg = DbSettings.get()
+    if (cfg.provider !== "cloudflare") return false
+    if (this.isCurrentUserAdmin()) return true
+    const currentUser = this.getCurrentUserName()
+    return !!currentUser && !!comment && (comment.author || "").trim() === currentUser
+  },
+
+  canCurrentUserComment() {
+    const cfg = DbSettings.get()
+    return cfg.provider === "cloudflare" && !!this.getCurrentUserName()
   },
 
   findColumn(colId) {
@@ -553,6 +589,7 @@ const Store = {
         due: cardData.due || "",
         assignedUser: cardData.assignedUser || null,
         attachments: cardData.attachments || [],
+        comments: cardData.comments || [],
         createdBy: cfg.provider === "cloudflare" ? (cfg.cfUserName || "").trim() : "",
         createdAt: Utils.nowIso(), // when the card was created (UTC ISO)
         lastChanged: Utils.nowIso(), // last modification timestamp (UTC ISO)
@@ -580,6 +617,7 @@ const Store = {
       card.due = cardData.due
       card.assignedUser = cardData.assignedUser || null
       card.attachments = cardData.attachments || []
+      card.comments = cardData.comments || card.comments || []
       if (!card.createdBy && cfg.provider === "cloudflare") {
         card.createdBy = (cfg.cfUserName || "").trim()
       }
@@ -622,6 +660,55 @@ const Store = {
         }
       }
     }
+  },
+
+  addComment(cardId, text) {
+    const { card } = this.findCard(cardId)
+    const cfg = DbSettings.get()
+    const author = (cfg.cfUserName || "").trim()
+    if (!card || cfg.provider !== "cloudflare" || !author) return null
+    const now = Utils.nowIso()
+    const comment = this.normalizeComment({
+      id: Utils.uid(),
+      text,
+      author,
+      createdAt: now,
+      updatedAt: now,
+    })
+    card.comments = card.comments || []
+    card.comments.push(comment)
+    card.lastChanged = now
+    card.lastChangedBy = Meta.clientId
+    card.seq = Meta.nextSeq()
+    this.saveState()
+    return comment
+  },
+
+  updateComment(cardId, commentId, text) {
+    const { card } = this.findCard(cardId)
+    if (!card) return null
+    const comment = (card.comments || []).find((entry) => entry.id === commentId)
+    if (!comment) return null
+    comment.text = text
+    comment.updatedAt = Utils.nowIso()
+    card.lastChanged = comment.updatedAt
+    card.lastChangedBy = Meta.clientId
+    card.seq = Meta.nextSeq()
+    this.saveState()
+    return comment
+  },
+
+  deleteComment(cardId, commentId) {
+    const { card } = this.findCard(cardId)
+    if (!card || !Array.isArray(card.comments)) return false
+    const index = card.comments.findIndex((entry) => entry.id === commentId)
+    if (index === -1) return false
+    card.comments.splice(index, 1)
+    card.lastChanged = Utils.nowIso()
+    card.lastChangedBy = Meta.clientId
+    card.seq = Meta.nextSeq()
+    this.saveState()
+    return true
   },
 
   moveCard(cardId, fromColId, toColId, toIndex) {
@@ -704,6 +791,7 @@ const Store = {
       createdBy = "",
       createdAt,
       editedAt = "",
+      comments = [],
     }) => ({
       id: Utils.uid(),
       title,
@@ -712,6 +800,7 @@ const Store = {
       due,
       assignedUser,
       attachments: [],
+      comments,
       createdBy,
       createdAt,
       lastChanged: editedAt || createdAt,
@@ -744,6 +833,15 @@ const Store = {
               assignedUser: { name: "Misha" },
               createdBy: "Busha",
               createdAt: createPastDate(8, 10, 15),
+              comments: [
+                {
+                  id: Utils.uid(),
+                  text: "Try moving me to Done after you assign the task.",
+                  author: "Anya",
+                  createdAt: createPastDate(7, 9, 10),
+                  updatedAt: createPastDate(7, 9, 10),
+                },
+              ],
             }),
             makeDemoCard({
               title: I18n.t("demo_rich_text_title"),
@@ -770,6 +868,22 @@ const Store = {
               createdBy: "Anya",
               createdAt: createPastDate(5, 11, 20),
               editedAt: createPastDate(1, 19, 5),
+              comments: [
+                {
+                  id: Utils.uid(),
+                  text: "Please keep the warning visible until this lands.",
+                  author: "Busha",
+                  createdAt: createPastDate(2, 13, 25),
+                  updatedAt: createPastDate(2, 13, 25),
+                },
+                {
+                  id: Utils.uid(),
+                  text: "I can take this one tomorrow morning.",
+                  author: "Misha",
+                  createdAt: createPastDate(1, 8, 40),
+                  updatedAt: createPastDate(1, 8, 40),
+                },
+              ],
             }),
           ],
         },
@@ -866,6 +980,7 @@ const UI = {
   activeTagFilters: new Set(),
   activeUserFilters: new Set(),
   searchQuery: "",
+  editingCommentId: "",
 
   updateAdminPanelVisibility() {
     const adminBtn = Utils.qs("#adminPanelBtn");
@@ -1055,6 +1170,19 @@ const UI = {
         })
       } else {
         attBox.style.display = "none"
+      }
+    }
+
+    const commentsCountEl = Utils.qs(".card-comments-count", node)
+    if (commentsCountEl) {
+      const count = Array.isArray(card.comments) ? card.comments.length : 0
+      if (cfg.provider === "cloudflare" && count > 0) {
+        commentsCountEl.textContent = I18n.t("comments_count", { count })
+        commentsCountEl.title = I18n.t("comments")
+        commentsCountEl.style.display = ""
+      } else {
+        commentsCountEl.textContent = ""
+        commentsCountEl.style.display = "none"
       }
     }
 
@@ -1286,6 +1414,7 @@ const UI = {
     const descriptionEditor = Utils.qs("#descriptionEditor", form)
     const saveBtn = Utils.qs('.actions-main .btn.primary', form)
     const addAttachmentBtn = Utils.qs("#addAttachmentBtn", form)
+    const commentsSection = Utils.qs("#commentsSection", form)
     const canEdit = !card || Store.canCurrentUserEditCard(card)
     const canMove = !card || Store.canCurrentUserMoveCard(card)
 
@@ -1307,8 +1436,11 @@ const UI = {
       markDoneBtn.parentElement.style.display = "none"
     }
 
+    this.resetCommentComposer()
     this.showDialog(this.editor)
     this.updateEditorAttachments(card ? card.attachments : [], card?.id)
+    this.renderEditorComments(card)
+    commentsSection.style.display = card && DbSettings.get().provider === "cloudflare" ? "flex" : "none"
   },
 
   updateEditorAttachments(attachments, cardId) {
@@ -1379,6 +1511,106 @@ const UI = {
     if (form.dataset.cardId === cardId) {
       this.updateEditorAttachments(card.attachments, cardId)
     }
+  },
+
+  resetCommentComposer() {
+    this.editingCommentId = ""
+    const input = Utils.qs("#commentInput")
+    const saveBtn = Utils.qs("#saveCommentBtn")
+    const cancelBtn = Utils.qs("#cancelCommentEditBtn")
+    if (input) input.value = ""
+    if (saveBtn) {
+      saveBtn.textContent = "➤"
+      saveBtn.title = I18n.t("add_comment")
+      saveBtn.setAttribute("aria-label", I18n.t("add_comment"))
+    }
+    if (cancelBtn) cancelBtn.style.display = "none"
+  },
+
+  renderEditorComments(card) {
+    const section = Utils.qs("#commentsSection")
+    const list = Utils.qs("#editorComments")
+    const input = Utils.qs("#commentInput")
+    const saveBtn = Utils.qs("#saveCommentBtn")
+    if (!section || !list || !input || !saveBtn) return
+
+    const cfg = DbSettings.get()
+    if (!card || cfg.provider !== "cloudflare") {
+      section.style.display = "none"
+      return
+    }
+
+    section.style.display = "flex"
+    list.innerHTML = ""
+    const comments = Array.isArray(card.comments) ? card.comments : []
+
+    if (comments.length === 0) {
+      const empty = document.createElement("div")
+      empty.className = "comment-item-text"
+      empty.textContent = I18n.t("no_comments")
+      list.append(empty)
+    } else {
+      comments.forEach((comment) => {
+        const item = document.createElement("div")
+        item.className = "comment-item"
+        item.dataset.commentId = comment.id
+
+        const header = document.createElement("div")
+        header.className = "comment-item-header"
+
+        const meta = document.createElement("div")
+        meta.className = "comment-item-meta"
+        meta.append(this.createUserBadge({ name: comment.author }, { subtle: true }))
+
+        const date = document.createElement("time")
+        date.className = "comment-item-date"
+        const timestamp = comment.updatedAt || comment.createdAt
+        if (timestamp) {
+          date.dateTime = timestamp
+          date.textContent = new Date(timestamp).toLocaleDateString(undefined, {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        }
+        meta.append(date)
+        header.append(meta)
+
+        if (Store.canCurrentUserManageComment(comment)) {
+          const actions = document.createElement("div")
+          actions.className = "comment-item-actions"
+
+          const editBtn = document.createElement("button")
+          editBtn.type = "button"
+          editBtn.className = "btn-link"
+          editBtn.dataset.commentAction = "edit"
+          editBtn.dataset.commentId = comment.id
+          editBtn.textContent = I18n.t("edit_comment")
+
+          const deleteBtn = document.createElement("button")
+          deleteBtn.type = "button"
+          deleteBtn.className = "btn-link"
+          deleteBtn.dataset.commentAction = "delete"
+          deleteBtn.dataset.commentId = comment.id
+          deleteBtn.textContent = I18n.t("delete_comment")
+
+          actions.append(editBtn, deleteBtn)
+          header.append(actions)
+        }
+
+        const text = document.createElement("div")
+        text.className = "comment-item-text"
+        text.textContent = comment.text || ""
+
+        item.append(header, text)
+        list.append(item)
+      })
+    }
+
+    input.disabled = !Store.canCurrentUserComment()
+    saveBtn.disabled = !Store.canCurrentUserComment()
   },
 
   showLightbox(url) {
@@ -2187,6 +2419,46 @@ const App = {
       this.handleMarkAsDone(e.target.closest("form"))
     })
 
+    Utils.qs("#saveCommentBtn").addEventListener("click", () => {
+      this.handleSaveComment()
+    })
+
+    Utils.qs("#cancelCommentEditBtn").addEventListener("click", () => {
+      UI.resetCommentComposer()
+    })
+
+    Utils.qs("#editorComments").addEventListener("click", (e) => {
+      const actionEl = e.target.closest("[data-comment-action]")
+      if (!actionEl) return
+
+      const cardId = Utils.qs("#editorForm").dataset.cardId
+      const { card } = Store.findCard(cardId)
+      if (!card) return
+
+      const commentId = actionEl.dataset.commentId
+      const comment = (card.comments || []).find((entry) => entry.id === commentId)
+      if (!comment) return
+
+      if (actionEl.dataset.commentAction === "edit") {
+        if (!Store.canCurrentUserManageComment(comment)) {
+          UI.showAlert(I18n.t("own_comment_only_error"))
+          return
+        }
+        UI.editingCommentId = comment.id
+        Utils.qs("#commentInput").value = comment.text || ""
+        Utils.qs("#saveCommentBtn").textContent = "✓"
+        Utils.qs("#saveCommentBtn").title = I18n.t("save_comment")
+        Utils.qs("#saveCommentBtn").setAttribute("aria-label", I18n.t("save_comment"))
+        Utils.qs("#cancelCommentEditBtn").style.display = ""
+        Utils.qs("#commentInput").focus()
+        return
+      }
+
+      if (actionEl.dataset.commentAction === "delete") {
+        this.handleDeleteComment(card.id, comment.id)
+      }
+    })
+
     Utils.qs("#editorForm").addEventListener("change", (e) => {
       // Form change logic here if needed
     })
@@ -2675,6 +2947,7 @@ const App = {
         ? new Date(form.elements.due.value).toISOString()
         : "",
       assignedUser: null,
+      comments: existingCard ? (existingCard.comments || []) : [],
       attachments: existingCard ? existingCard.attachments : []
     }
 
@@ -2705,6 +2978,58 @@ const App = {
 
 
     form.closest("dialog").close()
+  },
+
+  handleSaveComment() {
+    const form = Utils.qs("#editorForm")
+    const cardId = form.dataset.cardId
+    if (!cardId || !Store.canCurrentUserComment()) return
+
+    const input = Utils.qs("#commentInput")
+    const text = input.value.trim()
+    if (!text) return
+
+    const { card } = Store.findCard(cardId)
+    if (!card) return
+
+    if (UI.editingCommentId) {
+      const comment = (card.comments || []).find((entry) => entry.id === UI.editingCommentId)
+      if (!comment || !Store.canCurrentUserManageComment(comment)) {
+        UI.showAlert(I18n.t("own_comment_only_error"))
+        return
+      }
+      Store.updateComment(cardId, comment.id, text)
+    } else {
+      Store.addComment(cardId, text)
+    }
+
+    const fresh = Store.findCard(cardId).card
+    UI.updateCard(fresh)
+    UI.renderEditorComments(fresh)
+    UI.resetCommentComposer()
+  },
+
+  async handleDeleteComment(cardId, commentId) {
+    const { card } = Store.findCard(cardId)
+    const comment = (card?.comments || []).find((entry) => entry.id === commentId)
+    if (!card || !comment) return
+    if (!Store.canCurrentUserManageComment(comment)) {
+      UI.showAlert(I18n.t("own_comment_only_error"))
+      return
+    }
+
+    const choice = await UI.showConfirm(I18n.t("delete_text"), {
+      title: I18n.t("delete_comment"),
+      deleteText: I18n.t("delete"),
+      showArchiveButton: false,
+    })
+    if (choice !== "delete") return
+
+    Store.deleteComment(cardId, commentId)
+    const fresh = Store.findCard(cardId).card
+    UI.updateCard(fresh)
+    UI.renderEditorComments(fresh)
+    UI.resetCommentComposer()
   },
 
   async promptDeleteOrArchive(cardId) {
@@ -2875,6 +3200,9 @@ const App = {
               exCard.description = incCard.description
               exCard.tags = Array.isArray(incCard.tags) ? incCard.tags : []
               exCard.due = incCard.due || ""
+              exCard.comments = Array.isArray(incCard.comments)
+                ? incCard.comments.map((comment) => Store.normalizeComment(comment))
+                : []
               // metadata copy without mutating timestamps on import
               if (incCard.createdAt) exCard.createdAt = incCard.createdAt
               if (incCard.lastChanged) exCard.lastChanged = incCard.lastChanged
@@ -2901,6 +3229,10 @@ const App = {
           })
         })
       }
+
+      Store.state.columns.forEach((col) => {
+        col.cards.forEach((card) => Store.normalizeCard(card))
+      })
 
       Store.saveState()
       UI.renderBoard()
