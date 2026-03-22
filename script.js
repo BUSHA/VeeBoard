@@ -1011,10 +1011,30 @@ const UI = {
       const creatorName = (card.createdBy || "").trim()
       if (cfg.provider === "cloudflare" && creatorName) {
         creatorEl.innerHTML = ""
+        const createdAtTs = card.createdAt ? Date.parse(card.createdAt) : 0
+        const editedAtTs = card.contentChangedAt ? Date.parse(card.contentChangedAt) : 0
+        const isEdited = !!createdAtTs && !!editedAtTs && editedAtTs > createdAtTs
+        const timestamp = isEdited ? card.contentChangedAt : card.createdAt
+        const formattedTimestamp = timestamp
+          ? new Date(timestamp).toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : ""
         const label = document.createElement("span")
         label.className = "card-creator-label"
-        label.textContent = `${I18n.t("author_label")}:`
-        creatorEl.append(label, this.createUserBadge({ name: creatorName }, { subtle: true }))
+        label.textContent = `${I18n.t(isEdited ? "edited_label" : "author_label")}:`
+        const meta = document.createElement("span")
+        meta.className = "card-creator-meta"
+        meta.textContent = formattedTimestamp
+        creatorEl.append(
+          label,
+          this.createUserBadge({ name: creatorName }, { subtle: true }),
+          meta
+        )
         creatorEl.style.display = ""
       } else {
         creatorEl.innerHTML = ""
