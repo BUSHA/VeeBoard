@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.5.4"
+  version: "0.6.0"
 }
 
 /* Live sync echo guard */
@@ -475,6 +475,11 @@ const Store = {
       author: typeof comment.author === "string" ? comment.author : "",
       createdAt: comment.createdAt || Utils.nowIso(),
       updatedAt: comment.updatedAt || comment.createdAt || Utils.nowIso(),
+      replies: Array.isArray(comment.replies)
+        ? comment.replies
+            .map((reply) => this.normalizeComment(reply))
+            .filter((reply) => reply.text.trim())
+        : [],
     }
   },
 
@@ -529,6 +534,20 @@ const Store = {
   canCurrentUserComment() {
     const cfg = DbSettings.get()
     return cfg.provider === "cloudflare" && !!this.getCurrentUserName()
+  },
+
+  getCommentCount(card) {
+    const walk = (comments = []) => comments.reduce((sum, comment) => sum + 1 + walk(comment.replies || []), 0)
+    return walk(card?.comments || [])
+  },
+
+  findComment(card, commentId, comments = card?.comments || [], parent = null) {
+    for (const comment of comments) {
+      if (comment.id === commentId) return { comment, parent, siblings: comments }
+      const nested = this.findComment(card, commentId, comment.replies || [], comment)
+      if (nested.comment) return nested
+    }
+    return { comment: null, parent: null, siblings: null }
   },
 
   findColumn(colId) {
@@ -662,7 +681,7 @@ const Store = {
     }
   },
 
-  addComment(cardId, text) {
+  addComment(cardId, text, parentCommentId = "") {
     const { card } = this.findCard(cardId)
     const cfg = DbSettings.get()
     const author = (cfg.cfUserName || "").trim()
@@ -675,8 +694,16 @@ const Store = {
       createdAt: now,
       updatedAt: now,
     })
-    card.comments = card.comments || []
-    card.comments.push(comment)
+    if (parentCommentId) {
+      const parentEntry = this.findComment(card, parentCommentId)
+      if (!parentEntry.comment) return null
+      parentEntry.comment.replies = parentEntry.comment.replies || []
+      parentEntry.comment.replies.push(comment)
+      parentEntry.comment.updatedAt = now
+    } else {
+      card.comments = card.comments || []
+      card.comments.push(comment)
+    }
     card.lastChanged = now
     card.lastChangedBy = Meta.clientId
     card.seq = Meta.nextSeq()
@@ -687,7 +714,7 @@ const Store = {
   updateComment(cardId, commentId, text) {
     const { card } = this.findCard(cardId)
     if (!card) return null
-    const comment = (card.comments || []).find((entry) => entry.id === commentId)
+    const comment = this.findComment(card, commentId).comment
     if (!comment) return null
     comment.text = text
     comment.updatedAt = Utils.nowIso()
@@ -701,9 +728,11 @@ const Store = {
   deleteComment(cardId, commentId) {
     const { card } = this.findCard(cardId)
     if (!card || !Array.isArray(card.comments)) return false
-    const index = card.comments.findIndex((entry) => entry.id === commentId)
+    const entry = this.findComment(card, commentId)
+    const siblings = entry.siblings
+    const index = siblings ? siblings.findIndex((entry) => entry.id === commentId) : -1
     if (index === -1) return false
-    card.comments.splice(index, 1)
+    siblings.splice(index, 1)
     card.lastChanged = Utils.nowIso()
     card.lastChangedBy = Meta.clientId
     card.seq = Meta.nextSeq()
@@ -981,6 +1010,7 @@ const UI = {
   activeUserFilters: new Set(),
   searchQuery: "",
   editingCommentId: "",
+  replyToCommentId: "",
 
   updateAdminPanelVisibility() {
     const adminBtn = Utils.qs("#adminPanelBtn");
@@ -1175,7 +1205,7 @@ const UI = {
 
     const commentsCountEl = Utils.qs(".card-comments-count", node)
     if (commentsCountEl) {
-      const count = Array.isArray(card.comments) ? card.comments.length : 0
+      const count = Store.getCommentCount(card)
       if (cfg.provider === "cloudflare" && count > 0) {
         commentsCountEl.textContent = I18n.t("comments_count", { count })
         commentsCountEl.title = I18n.t("comments")
@@ -1515,9 +1545,11 @@ const UI = {
 
   resetCommentComposer() {
     this.editingCommentId = ""
+    this.replyToCommentId = ""
     const input = Utils.qs("#commentInput")
     const saveBtn = Utils.qs("#saveCommentBtn")
     const cancelBtn = Utils.qs("#cancelCommentEditBtn")
+    const replyEl = Utils.qs("#commentReplyingTo")
     if (input) input.value = ""
     if (saveBtn) {
       saveBtn.textContent = "➤"
@@ -1525,6 +1557,10 @@ const UI = {
       saveBtn.setAttribute("aria-label", I18n.t("add_comment"))
     }
     if (cancelBtn) cancelBtn.style.display = "none"
+    if (replyEl) {
+      replyEl.textContent = ""
+      replyEl.style.display = "none"
+    }
   },
 
   renderEditorComments(card) {
@@ -1544,69 +1580,84 @@ const UI = {
     list.innerHTML = ""
     const comments = Array.isArray(card.comments) ? card.comments : []
 
+    const renderCommentItem = (comment, isReply = false) => {
+      const item = document.createElement("div")
+      item.className = `comment-item${isReply ? " comment-reply" : ""}`
+      item.dataset.commentId = comment.id
+
+      const header = document.createElement("div")
+      header.className = "comment-item-header"
+
+      const meta = document.createElement("div")
+      meta.className = "comment-item-meta"
+      meta.append(this.createUserBadge({ name: comment.author }, { subtle: true }))
+
+      const date = document.createElement("time")
+      date.className = "comment-item-date"
+      const timestamp = comment.updatedAt || comment.createdAt
+      if (timestamp) {
+        date.dateTime = timestamp
+        date.textContent = new Date(timestamp).toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      }
+      meta.append(date)
+      header.append(meta)
+
+      const actions = document.createElement("div")
+      actions.className = "comment-item-actions"
+
+      if (!isReply) {
+        const replyBtn = document.createElement("button")
+        replyBtn.type = "button"
+        replyBtn.className = "btn-link"
+        replyBtn.dataset.commentAction = "reply"
+        replyBtn.dataset.commentId = comment.id
+        replyBtn.textContent = I18n.t("reply_comment")
+        actions.append(replyBtn)
+      }
+
+      if (Store.canCurrentUserManageComment(comment)) {
+        const editBtn = document.createElement("button")
+        editBtn.type = "button"
+        editBtn.className = "btn-link"
+        editBtn.dataset.commentAction = "edit"
+        editBtn.dataset.commentId = comment.id
+        editBtn.textContent = I18n.t("edit_comment")
+
+        const deleteBtn = document.createElement("button")
+        deleteBtn.type = "button"
+        deleteBtn.className = "btn-link"
+        deleteBtn.dataset.commentAction = "delete"
+        deleteBtn.dataset.commentId = comment.id
+        deleteBtn.textContent = I18n.t("delete_comment")
+
+        actions.append(editBtn, deleteBtn)
+      }
+
+      header.append(actions)
+
+      const text = document.createElement("div")
+      text.className = "comment-item-text"
+      text.textContent = comment.text || ""
+
+      item.append(header, text)
+      list.append(item)
+
+      ;(comment.replies || []).forEach((reply) => renderCommentItem(reply, true))
+    }
+
     if (comments.length === 0) {
       const empty = document.createElement("div")
       empty.className = "comment-item-text"
       empty.textContent = I18n.t("no_comments")
       list.append(empty)
     } else {
-      comments.forEach((comment) => {
-        const item = document.createElement("div")
-        item.className = "comment-item"
-        item.dataset.commentId = comment.id
-
-        const header = document.createElement("div")
-        header.className = "comment-item-header"
-
-        const meta = document.createElement("div")
-        meta.className = "comment-item-meta"
-        meta.append(this.createUserBadge({ name: comment.author }, { subtle: true }))
-
-        const date = document.createElement("time")
-        date.className = "comment-item-date"
-        const timestamp = comment.updatedAt || comment.createdAt
-        if (timestamp) {
-          date.dateTime = timestamp
-          date.textContent = new Date(timestamp).toLocaleDateString(undefined, {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          })
-        }
-        meta.append(date)
-        header.append(meta)
-
-        if (Store.canCurrentUserManageComment(comment)) {
-          const actions = document.createElement("div")
-          actions.className = "comment-item-actions"
-
-          const editBtn = document.createElement("button")
-          editBtn.type = "button"
-          editBtn.className = "btn-link"
-          editBtn.dataset.commentAction = "edit"
-          editBtn.dataset.commentId = comment.id
-          editBtn.textContent = I18n.t("edit_comment")
-
-          const deleteBtn = document.createElement("button")
-          deleteBtn.type = "button"
-          deleteBtn.className = "btn-link"
-          deleteBtn.dataset.commentAction = "delete"
-          deleteBtn.dataset.commentId = comment.id
-          deleteBtn.textContent = I18n.t("delete_comment")
-
-          actions.append(editBtn, deleteBtn)
-          header.append(actions)
-        }
-
-        const text = document.createElement("div")
-        text.className = "comment-item-text"
-        text.textContent = comment.text || ""
-
-        item.append(header, text)
-        list.append(item)
-      })
+      comments.forEach((comment) => renderCommentItem(comment))
     }
 
     input.disabled = !Store.canCurrentUserComment()
@@ -2423,6 +2474,13 @@ const App = {
       this.handleSaveComment()
     })
 
+    Utils.qs("#commentInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault()
+        this.handleSaveComment()
+      }
+    })
+
     Utils.qs("#cancelCommentEditBtn").addEventListener("click", () => {
       UI.resetCommentComposer()
     })
@@ -2436,8 +2494,23 @@ const App = {
       if (!card) return
 
       const commentId = actionEl.dataset.commentId
-      const comment = (card.comments || []).find((entry) => entry.id === commentId)
+      const comment = Store.findComment(card, commentId).comment
       if (!comment) return
+
+      if (actionEl.dataset.commentAction === "reply") {
+        UI.replyToCommentId = comment.id
+        UI.editingCommentId = ""
+        const replyEl = Utils.qs("#commentReplyingTo")
+        replyEl.textContent = I18n.t("replying_to", { name: comment.author || "" })
+        replyEl.style.display = ""
+        Utils.qs("#commentInput").value = ""
+        Utils.qs("#saveCommentBtn").textContent = "➤"
+        Utils.qs("#saveCommentBtn").title = I18n.t("add_comment")
+        Utils.qs("#saveCommentBtn").setAttribute("aria-label", I18n.t("add_comment"))
+        Utils.qs("#cancelCommentEditBtn").style.display = ""
+        Utils.qs("#commentInput").focus()
+        return
+      }
 
       if (actionEl.dataset.commentAction === "edit") {
         if (!Store.canCurrentUserManageComment(comment)) {
@@ -2993,14 +3066,14 @@ const App = {
     if (!card) return
 
     if (UI.editingCommentId) {
-      const comment = (card.comments || []).find((entry) => entry.id === UI.editingCommentId)
+      const comment = Store.findComment(card, UI.editingCommentId).comment
       if (!comment || !Store.canCurrentUserManageComment(comment)) {
         UI.showAlert(I18n.t("own_comment_only_error"))
         return
       }
       Store.updateComment(cardId, comment.id, text)
     } else {
-      Store.addComment(cardId, text)
+      Store.addComment(cardId, text, UI.replyToCommentId)
     }
 
     const fresh = Store.findCard(cardId).card
@@ -3011,7 +3084,7 @@ const App = {
 
   async handleDeleteComment(cardId, commentId) {
     const { card } = Store.findCard(cardId)
-    const comment = (card?.comments || []).find((entry) => entry.id === commentId)
+    const comment = card ? Store.findComment(card, commentId).comment : null
     if (!card || !comment) return
     if (!Store.canCurrentUserManageComment(comment)) {
       UI.showAlert(I18n.t("own_comment_only_error"))

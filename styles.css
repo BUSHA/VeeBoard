@@ -1263,6 +1263,11 @@ dialog:focus-visible {
   background: color-mix(in srgb, var(--panel), var(--bg) 35%);
 }
 
+.comment-item.comment-reply {
+  margin-left: 20px;
+  border-radius: 1px 12px 12px 12px;
+}
+
 .comment-item-header {
   display: flex;
   align-items: center;
@@ -1292,6 +1297,12 @@ dialog:focus-visible {
 
 .comment-item-actions .btn-link {
   font-size: 12px;
+}
+
+.comment-replying-to {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: -2px;
 }
 
 .comment-item-text {

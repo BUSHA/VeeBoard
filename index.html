@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0" />
   <title>VeeBoard</title>
 
-  <link rel="stylesheet" href="styles.css?v=0.5.4">
+  <link rel="stylesheet" href="styles.css?v=0.6.0">
 
   <link rel="icon" type="image/png" href="favicon/favicon-96x96.png" sizes="96x96" />
   <link rel="icon" type="image/svg+xml" href="favicon/favicon.svg" />
@@ -16,8 +16,8 @@
   <link rel="manifest" href="favicon/site.webmanifest" />
 
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
-  <script src="translations.js?v=0.5.4"></script>
-  <script src="script.js?v=0.5.4" defer></script>
+  <script src="translations.js?v=0.6.0"></script>
+  <script src="script.js?v=0.6.0" defer></script>
 
 </head>
 
@@ -139,6 +139,7 @@
       <div id="commentsSection" class="editor-comments-section" style="display: none;">
         <label data-i18n="comments">Comments</label>
         <div id="editorComments" class="editor-comments-list"></div>
+        <div id="commentReplyingTo" class="comment-replying-to" style="display: none;"></div>
         <div class="comment-composer-actions">
           <input id="commentInput" type="text" data-i18n-placeholder="comment_placeholder" placeholder="Write a comment..." />
           <button type="button" id="cancelCommentEditBtn" class="btn secondary" style="display: none;" data-i18n="cancel">Cancel</button>

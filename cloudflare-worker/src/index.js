@@ -63,6 +63,7 @@ function normalizeComments(comments = []) {
     author: comment.author || "",
     createdAt: comment.createdAt || "",
     updatedAt: comment.updatedAt || comment.createdAt || "",
+    replies: normalizeComments(comment.replies || []),
   }));
 }
 
