@@ -2264,6 +2264,8 @@ const App = {
                await CloudflareBackend.save(remoteData, newCfg);
              } catch(err) {
                console.warn(err);
+               UI.showAlert(err.message || (I18n.t("db_init_failed") || "Failed to initialize new provider. Staying on current one."));
+               return;
              }
            }
          }

@@ -63,14 +63,34 @@ export default {
           
           if (existingRow && existingRow.data) {
             const existingData = JSON.parse(existingRow.data);
-            const oldUsers = JSON.stringify(existingData.users || []);
-            const newUsers = JSON.stringify(body.users || []);
+            const oldUsersList = existingData.users || [];
+            const newUsersList = body.users || [];
+            const oldUsers = JSON.stringify(oldUsersList);
+            const newUsers = JSON.stringify(newUsersList);
             
             if (oldUsers !== newUsers && sentAdminUser !== env.ADMIN_USER) {
-              return new Response(JSON.stringify({ error: "Only admin can modify users list." }), { 
-                status: 403, 
-                headers: { ...headers, "Content-Type": "application/json" } 
-              });
+              const addedUsers = newUsersList.filter(
+                newUser => !oldUsersList.some(
+                  oldUser => oldUser.name === newUser.name && oldUser.pinCode === newUser.pinCode
+                )
+              );
+              const removedUsers = oldUsersList.filter(
+                oldUser => !newUsersList.some(
+                  newUser => newUser.name === oldUser.name && newUser.pinCode === oldUser.pinCode
+                )
+              );
+              const isSelfRegistration =
+                sentAdminUser &&
+                addedUsers.length === 1 &&
+                removedUsers.length === 0 &&
+                addedUsers[0].name === sentAdminUser;
+
+              if (!isSelfRegistration) {
+                return new Response(JSON.stringify({ error: "Only admin can modify users list." }), { 
+                  status: 403, 
+                  headers: { ...headers, "Content-Type": "application/json" } 
+                });
+              }
             }
           }
         }
