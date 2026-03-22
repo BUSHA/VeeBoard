@@ -67,6 +67,55 @@ function normalizeComments(comments = []) {
   }));
 }
 
+function normalizeUserRecord(user = {}) {
+  return {
+    name: user.name || "",
+    pinCode: user.pinCode || "",
+    avatarUrl: user.avatarUrl || "",
+    avatarKey: user.avatarKey || "",
+  };
+}
+
+function isAllowedSelfUserMutation(oldUsersList = [], newUsersList = [], currentUser = "") {
+  if (!currentUser) return false;
+
+  const oldUsers = oldUsersList.map(normalizeUserRecord);
+  const newUsers = newUsersList.map(normalizeUserRecord);
+  const oldByName = new Map(oldUsers.map((user) => [user.name, user]));
+  const newByName = new Map(newUsers.map((user) => [user.name, user]));
+
+  const added = newUsers.filter((user) => !oldByName.has(user.name));
+  const removed = oldUsers.filter((user) => !newByName.has(user.name));
+
+  const changed = [];
+  for (const oldUser of oldUsers) {
+    const next = newByName.get(oldUser.name);
+    if (!next) continue;
+    if (stableStringify(oldUser) !== stableStringify(next)) {
+      changed.push({ oldUser, newUser: next });
+    }
+  }
+
+  const isSelfRegistration =
+    added.length === 1 &&
+    removed.length === 0 &&
+    changed.length === 0 &&
+    added[0].name === currentUser;
+
+  if (isSelfRegistration) return true;
+
+  if (added.length !== 0 || removed.length !== 0 || changed.length !== 1) return false;
+
+  const { oldUser, newUser } = changed[0];
+  if (oldUser.name !== currentUser || newUser.name !== currentUser) return false;
+  if (oldUser.pinCode !== newUser.pinCode) return false;
+
+  return (
+    oldUser.name === newUser.name &&
+    oldUser.pinCode === newUser.pinCode
+  );
+}
+
 function commentsChangeAllowed(oldComments = [], newComments = [], currentUser = "") {
   const oldList = normalizeComments(oldComments);
   const newList = normalizeComments(newComments);
@@ -157,27 +206,11 @@ export default {
             const existingData = JSON.parse(existingRow.data);
             const oldUsersList = existingData.users || [];
             const newUsersList = body.users || [];
-            const oldUsers = JSON.stringify(oldUsersList);
-            const newUsers = JSON.stringify(newUsersList);
+            const oldUsers = stableStringify(oldUsersList.map(normalizeUserRecord));
+            const newUsers = stableStringify(newUsersList.map(normalizeUserRecord));
             
             if (oldUsers !== newUsers && sentAdminUser !== env.ADMIN_USER) {
-              const addedUsers = newUsersList.filter(
-                newUser => !oldUsersList.some(
-                  oldUser => oldUser.name === newUser.name && oldUser.pinCode === newUser.pinCode
-                )
-              );
-              const removedUsers = oldUsersList.filter(
-                oldUser => !newUsersList.some(
-                  newUser => newUser.name === oldUser.name && newUser.pinCode === oldUser.pinCode
-                )
-              );
-              const isSelfRegistration =
-                sentAdminUser &&
-                addedUsers.length === 1 &&
-                removedUsers.length === 0 &&
-                addedUsers[0].name === sentAdminUser;
-
-              if (!isSelfRegistration) {
+              if (!isAllowedSelfUserMutation(oldUsersList, newUsersList, sentAdminUser)) {
                 return new Response(JSON.stringify({ error: "Only admin can modify users list." }), { 
                   status: 403, 
                   headers: { ...headers, "Content-Type": "application/json" } 

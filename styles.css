@@ -178,6 +178,34 @@ body.dialog-open {
   min-width: 40px;
 }
 
+#menuBtn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.menu-avatar-img,
+.avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+
+.avatar-image {
+  width: 18px;
+  height: 18px;
+}
+
+.avatar-image--subtle {
+  width: 18px;
+  height: 18px;
+  opacity: 1;
+}
+
 /* --- Dropdown Menu Styles --- */
 .dropdown-menu {
   position: relative;
@@ -659,6 +687,16 @@ dialog:focus-visible {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent)
 }
 
+.editor-form input[type="checkbox"] {
+  width: auto;
+  max-width: none;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .editor-actions {
   position: sticky;
   bottom: 0;
@@ -743,17 +781,32 @@ dialog:focus-visible {
 .checkbox-wrapper {
   padding: 6px 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .editor-form .toggle-switch {
   display: flex;
   flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-wrap: nowrap;
+  align-items: flex-start;
   gap: 12px;
+  width: 100%;
   cursor: pointer;
   /* min-height: 35px; */
+}
+
+.editor-form .toggle-switch input[type="checkbox"] {
+  margin: 2px 0 0;
+  flex: 0 0 auto;
+}
+
+.editor-form .toggle-switch .slider {
+  display: none;
+}
+
+.editor-form .toggle-switch .label-text {
+  flex: 1 1 auto;
+  line-height: 1.35;
 }
 
 .label-text {
@@ -906,6 +959,43 @@ dialog:focus-visible {
   font-weight: 400;
 }
 
+.profile-avatar-settings {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.profile-avatar-preview {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel), var(--primary) 10%);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-size: 20px;
+}
+
+.profile-avatar-preview.placeholder {
+  background: color-mix(in srgb, var(--panel), var(--primary) 14%);
+}
+
+.profile-avatar-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-avatar-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .user-avatar {
   width: 24px;
   height: 24px;
@@ -957,20 +1047,20 @@ dialog:focus-visible {
 }
 
 .avatar-dot--subtle {
-  width: 12px;
-  height: 12px;
-  font-size: 8px;
-  opacity: 0.8;
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+  opacity: 1;
 }
 
 .avatar-dot {
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 9px;
+  font-size: 10px;
   color: white;
   background: var(--primary);
   text-transform: uppercase;
@@ -1006,13 +1096,13 @@ dialog:focus-visible {
 }
 
 .user-badge .avatar-dot {
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 9px;
+  font-size: 10px;
   color: white;
   background: var(--primary);
   text-transform: uppercase;

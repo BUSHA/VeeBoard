@@ -113,6 +113,9 @@ const TRANSLATIONS = {
     no_comments: "No comments yet.",
     comment_placeholder: "Write a comment...",
     own_comment_only_error: "You can edit or delete only your own comments.",
+    change_picture: "Change picture",
+    remove_picture: "Remove picture",
+    picture_upload_failed: "Picture upload failed.",
   },
   uk: {
     app_title: "VeeBoard",
@@ -228,5 +231,8 @@ const TRANSLATIONS = {
     no_comments: "Коментарів поки немає.",
     comment_placeholder: "Ваш коментар...",
     own_comment_only_error: "Ви можете редагувати або видаляти лише власні коментарі.",
+    change_picture: "Змінити фото",
+    remove_picture: "Видалити фото",
+    picture_upload_failed: "Не вдалося завантажити фото.",
   }
 };

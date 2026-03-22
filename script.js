@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.6.0"
+  version: "0.7.0"
 }
 
 /* Live sync echo guard */
@@ -68,6 +68,39 @@ const Utils = {
               resolve(file)
             }
           }, "image/webp", quality)
+        }
+        img.onerror = () => resolve(file)
+        img.src = e.target.result
+      }
+      reader.onerror = () => resolve(file)
+      reader.readAsDataURL(file)
+    })
+  },
+  processAvatarImage: async (file) => {
+    return new Promise((resolve) => {
+      if (!file.type.startsWith("image/")) return resolve(file)
+
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const img = new Image()
+        img.onload = () => {
+          const size = 256
+          const srcSize = Math.min(img.width, img.height)
+          const sx = Math.max(0, Math.floor((img.width - srcSize) / 2))
+          const sy = Math.max(0, Math.floor((img.height - srcSize) / 2))
+          const canvas = document.createElement("canvas")
+          canvas.width = size
+          canvas.height = size
+          const ctx = canvas.getContext("2d")
+          ctx.drawImage(img, sx, sy, srcSize, srcSize, 0, 0, size, size)
+          canvas.toBlob((blob) => {
+            if (blob) {
+              const newName = file.name.replace(/\.[^/.]+$/, "") + ".webp"
+              resolve(new File([blob], newName, { type: "image/webp" }))
+            } else {
+              resolve(file)
+            }
+          }, "image/webp", 0.9)
         }
         img.onerror = () => resolve(file)
         img.src = e.target.result
@@ -412,6 +445,11 @@ const Store = {
     if (!this.state.users) {
       this.state.users = []
     }
+    this.state.users = this.state.users.map((user) => ({
+      ...user,
+      avatarUrl: user.avatarUrl || "",
+      avatarKey: user.avatarKey || "",
+    }))
 
     this.state.columns.forEach((col) => {
       col.cards.forEach((card) => this.normalizeCard(card))
@@ -534,6 +572,16 @@ const Store = {
   canCurrentUserComment() {
     const cfg = DbSettings.get()
     return cfg.provider === "cloudflare" && !!this.getCurrentUserName()
+  },
+
+  canCurrentUserManageBoardStructure() {
+    const cfg = DbSettings.get()
+    if (cfg.provider !== "cloudflare") return true
+    return this.isCurrentUserAdmin()
+  },
+
+  findUserByName(name) {
+    return (this.state.users || []).find((user) => (user.name || "").trim() === (name || "").trim()) || null
   },
 
   getCommentCount(card) {
@@ -1011,6 +1059,8 @@ const UI = {
   searchQuery: "",
   editingCommentId: "",
   replyToCommentId: "",
+  pendingProfileAvatarFile: null,
+  pendingProfileAvatarRemoved: false,
 
   updateAdminPanelVisibility() {
     const adminBtn = Utils.qs("#adminPanelBtn");
@@ -1026,6 +1076,54 @@ const UI = {
     } else {
       adminBtn.style.display = "none";
     }
+  },
+
+  updateMenuButtonAvatar() {
+    if (!this.menuBtn) return
+    const cfg = DbSettings.get()
+    if (cfg.provider !== "cloudflare") {
+      this.menuBtn.textContent = "☰"
+      return
+    }
+    const currentUser = Store.findUserByName(cfg.cfUserName || "")
+    if (currentUser?.avatarUrl) {
+      this.menuBtn.innerHTML = `<img src="${currentUser.avatarUrl}" alt="" class="menu-avatar-img">`
+    } else {
+      this.menuBtn.textContent = "☰"
+    }
+  },
+
+  updateProfileAvatarPreview(avatarUrl = "") {
+    const preview = Utils.qs("#profileAvatarPreview")
+    const removeBtn = Utils.qs("#removeAvatarBtn")
+    if (!preview) return
+    if (avatarUrl) {
+      preview.classList.remove("placeholder")
+      preview.innerHTML = `<img src="${avatarUrl}" alt="">`
+    } else {
+      preview.classList.add("placeholder")
+      preview.innerHTML = ""
+    }
+    if (removeBtn) removeBtn.disabled = !avatarUrl && !this.pendingProfileAvatarFile
+  },
+
+  createAvatarNode(user, options = {}) {
+    const { subtle = false } = options
+    const resolvedUser = Store.findUserByName(user?.name || "") || user || {}
+    if (resolvedUser.avatarUrl) {
+      const img = document.createElement("img")
+      img.src = resolvedUser.avatarUrl
+      img.alt = ""
+      img.className = `avatar-image${subtle ? " avatar-image--subtle" : ""}`
+      return img
+    }
+    const dot = document.createElement("span")
+    dot.className = "avatar-dot"
+    if (subtle) dot.classList.add("avatar-dot--subtle")
+    const initial = (resolvedUser.name || user?.name || "?")[0]
+    dot.textContent = initial
+    dot.style.background = Utils.colorFromString(resolvedUser.name || user?.name || "")
+    return dot
   },
 
   renderAdminUsers() {
@@ -1044,6 +1142,17 @@ const UI = {
       row.style.display = "flex";
       row.style.gap = "8px";
       row.style.alignItems = "center";
+
+      const avatarPreview = document.createElement("div");
+      avatarPreview.className = "profile-avatar-preview";
+      avatarPreview.style.width = "36px";
+      avatarPreview.style.height = "36px";
+      avatarPreview.style.flex = "0 0 auto";
+      if (u.avatarUrl) {
+        avatarPreview.innerHTML = `<img src="${u.avatarUrl}" alt="">`;
+      } else {
+        avatarPreview.classList.add("placeholder");
+      }
       
       const nameInp = document.createElement("input");
       nameInp.value = u.name || "";
@@ -1062,6 +1171,7 @@ const UI = {
       delBtn.innerHTML = "✕";
       delBtn.style.padding = "0 8px";
       
+      row.appendChild(avatarPreview);
       row.appendChild(nameInp);
       row.appendChild(pinInp);
       row.appendChild(delBtn);
@@ -1077,9 +1187,16 @@ const UI = {
       
       delBtn.addEventListener("click", () => {
         if (confirm(`${I18n.t("delete_user") || "Remove user"} ${u.name}?`)) {
+          const avatarKey = u.avatarKey
           Store.state.users.splice(i, 1);
-          Store.saveState();
+          Promise.resolve(Store.saveState()).then(() => {
+            const cfg = DbSettings.get()
+            if (cfg.provider === "cloudflare" && avatarKey) {
+              CloudflareBackend.deleteImage(avatarKey, cfg).catch(console.error)
+            }
+          })
           UI.renderAdminUsers();
+          UI.updateMenuButtonAvatar();
         }
       });
       list.appendChild(row);
@@ -1107,6 +1224,7 @@ const UI = {
 
   updateCardElement(node, card, column) {
     const cfg = DbSettings.get()
+    const deleteBtn = Utils.qs(".btn-del-card", node)
     Utils.qs(".card-title", node).textContent = card.title
     const sanitizedHtml = DOMPurify.sanitize(card.description || "", {
       ADD_ATTR: ["target"],
@@ -1216,6 +1334,10 @@ const UI = {
       }
     }
 
+    if (deleteBtn) {
+      deleteBtn.style.display = Store.canCurrentUserEditCard(card) ? "" : "none"
+    }
+
     const creatorEl = Utils.qs(".card-creator", node)
     if (creatorEl) {
       const creatorName = (card.createdBy || "").trim()
@@ -1276,13 +1398,8 @@ const UI = {
 
   createUserBadge(user, options = {}) {
     const { subtle = false } = options
-    const el = document.createDocumentFragment()
-    const dot = document.createElement("span")
-    dot.className = "avatar-dot"
-    if (subtle) dot.classList.add("avatar-dot--subtle")
-    const initial = (user.name || "?")[0]
-    dot.textContent = initial
-    dot.style.background = Utils.colorFromString(user.name || "")
+    const resolvedUser = Store.findUserByName(user?.name || "") || user || {}
+    const avatar = this.createAvatarNode(resolvedUser, { subtle })
     const nameText = document.createTextNode(user.name || "")
     
     const wrapper = document.createElement("span")
@@ -1291,7 +1408,7 @@ const UI = {
     wrapper.style.display = "inline-flex"
     wrapper.style.alignItems = "center"
     wrapper.style.gap = "6px"
-    wrapper.append(dot, nameText)
+    wrapper.append(avatar, nameText)
     wrapper.title = user.name || ""
     return wrapper
   },
@@ -1301,12 +1418,18 @@ const UI = {
     const node = this.columnTemplate.content.firstElementChild.cloneNode(true)
     node.dataset.id = column.id
     Utils.qs(".column-title", node).textContent = column.title
+    const canManageStructure = Store.canCurrentUserManageBoardStructure()
 
     if (column.isArchive) {
       node.classList.add("column--archive")
       Utils.qs(".column-actions", node).remove()
       Utils.qs('[data-action="add-card"]', node).remove()
       Utils.qs(".drag-handle", node).remove()
+    } else if (!canManageStructure) {
+      const actions = Utils.qs(".column-actions", node)
+      const dragHandle = Utils.qs(".drag-handle", node)
+      if (actions) actions.style.display = "none"
+      if (dragHandle) dragHandle.style.display = "none"
     }
 
     const cardsList = Utils.qs(".cards", node)
@@ -1329,8 +1452,11 @@ const UI = {
     Store.state.columns.forEach((col) => {
       this.board.append(this.createColumnElement(col))
     })
+    const addColumnBtn = Utils.qs("#addColumnBtn")
+    if (addColumnBtn) addColumnBtn.style.display = Store.canCurrentUserManageBoardStructure() ? "" : "none"
     this.updateTagFilters()
     this.applyFilters()
+    this.updateMenuButtonAvatar()
     if (typeof I18n !== "undefined") I18n.updatePage()
   },
 
@@ -1691,6 +1817,11 @@ const UI = {
     form.dataset.colId = col.id
     form.elements.title.value = currentTitle
     form.elements.isDoneColumn.checked = col.isDone || false
+    const canManageStructure = Store.canCurrentUserManageBoardStructure()
+    form.elements.title.readOnly = !canManageStructure
+    form.elements.isDoneColumn.disabled = !canManageStructure
+    const saveBtn = Utils.qs('.actions-main .btn.primary', form)
+    if (saveBtn) saveBtn.disabled = !canManageStructure
     this.showDialog(this.renameDialog)
   },
 
@@ -1796,9 +1927,7 @@ const UI = {
         chip.className = "tag-chip user-chip"
         const userKey = user.name || ""
         chip.dataset.userKey = userKey
-        
-        const initial = (user.name || "?")[0]
-        chip.innerHTML = `<span class="tag-dot avatar-dot" style="background:${Utils.colorFromString(userKey)}; color:white; display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; font-size:9px; text-transform:uppercase; font-weight:700;">${initial}</span> ${user.name || ""}`
+        chip.append(this.createAvatarNode(user), document.createTextNode(` ${user.name || ""}`))
         
         chip.setAttribute(
           "aria-pressed",
@@ -2416,6 +2545,7 @@ const App = {
     if (typeof UI !== "undefined" && UI.updateAdminPanelVisibility) UI.updateAdminPanelVisibility()
 
     UI.renderBoard()
+    UI.updateMenuButtonAvatar()
     Store.startRealtime()
   },
 
@@ -2451,10 +2581,12 @@ const App = {
           this.promptDeleteOrArchive(cardId)
           break
         case "rename-column":
+          if (!Store.canCurrentUserManageBoardStructure()) return
           const col = Store.findColumn(colId)
           UI.showRenameDialog(col, col.title)
           break
         case "delete-column":
+          if (!Store.canCurrentUserManageBoardStructure()) return
           this.handleDeleteColumn(colId)
           break
       }
@@ -2674,6 +2806,9 @@ const App = {
     const cfUrlInput = Utils.qs("#cfWorkerUrl", dbDialog)
     const cfIdInput = Utils.qs("#cfBoardId", dbDialog)
     const cfKeyInput = Utils.qs("#cfApiKey", dbDialog)
+    const profileAvatarInput = Utils.qs("#profileAvatarInput", dbDialog)
+    const changeAvatarBtn = Utils.qs("#changeAvatarBtn", dbDialog)
+    const removeAvatarBtn = Utils.qs("#removeAvatarBtn", dbDialog)
 
     const updateDbSettingsVisibility = (provider) => {
       localSettings.style.display = provider === "local" ? "" : "none"
@@ -2694,16 +2829,45 @@ const App = {
       const cfPinCodeInput = Utils.qs("#cfPinCode", dbDialog)
       if (cfUserNameInput) cfUserNameInput.value = cfg.cfUserName || ""
       if (cfPinCodeInput) cfPinCodeInput.value = cfg.cfPinCode || ""
+      UI.pendingProfileAvatarFile = null
+      UI.pendingProfileAvatarRemoved = false
+      const currentUser = Store.findUserByName(cfg.cfUserName || "")
+      UI.updateProfileAvatarPreview(currentUser?.avatarUrl || "")
       
       updateDbSettingsVisibility(cfg.provider)
       UI.showDialog(dbDialog)
     })
+
+    if (changeAvatarBtn && profileAvatarInput) {
+      changeAvatarBtn.addEventListener("click", () => profileAvatarInput.click())
+      profileAvatarInput.addEventListener("change", async (e) => {
+        const file = e.target.files && e.target.files[0]
+        if (!file) return
+        UI.pendingProfileAvatarFile = await Utils.processAvatarImage(file)
+        UI.pendingProfileAvatarRemoved = false
+        UI.updateProfileAvatarPreview(URL.createObjectURL(UI.pendingProfileAvatarFile))
+        e.target.value = ""
+      })
+    }
+
+    if (removeAvatarBtn) {
+      removeAvatarBtn.addEventListener("click", () => {
+        UI.pendingProfileAvatarFile = null
+        UI.pendingProfileAvatarRemoved = true
+        UI.updateProfileAvatarPreview("")
+      })
+    }
 
     Utils.qsa(".db-provider-tab", dbDialog).forEach(tab => {
       tab.addEventListener("click", (e) => {
         updateDbSettingsVisibility(e.target.dataset.provider)
       })
     })
+
+    const addColumnBtn = Utils.qs("#addColumnBtn")
+    if (addColumnBtn) {
+      addColumnBtn.disabled = !Store.canCurrentUserManageBoardStructure()
+    }
 
     dbForm.addEventListener("submit", async (e) => {
       e.preventDefault()
@@ -2742,6 +2906,8 @@ const App = {
          }
          remoteData.users = remoteData.users || [];
          const existingUser = remoteData.users.find(u => u.name === userName);
+         let avatarTouched = false
+         let oldAvatarKey = existingUser?.avatarKey || ""
          if (existingUser) {
            if (existingUser.pinCode !== pinCode) {
              UI.showAlert(I18n.t("incorrect_pin") || "Incorrect pin-code for this name");
@@ -2749,6 +2915,7 @@ const App = {
            }
          } else {
            remoteData.users.push({ name: userName, pinCode });
+           avatarTouched = true
            if (newCfg.cfWorkerUrl) {
              try {
                await CloudflareBackend.save(remoteData, newCfg);
@@ -2757,6 +2924,39 @@ const App = {
                UI.showAlert(err.message || (I18n.t("db_init_failed") || "Failed to initialize new provider. Staying on current one."));
                return;
              }
+           }
+         }
+
+         const targetUser = remoteData.users.find(u => u.name === userName)
+         if (targetUser) {
+           if (UI.pendingProfileAvatarFile && newCfg.cfWorkerUrl) {
+             try {
+               const uploadedAvatar = await CloudflareBackend.uploadImage(UI.pendingProfileAvatarFile, newCfg)
+               targetUser.avatarUrl = uploadedAvatar.url
+               targetUser.avatarKey = uploadedAvatar.key
+               avatarTouched = true
+             } catch (err) {
+               console.warn(err)
+               UI.showAlert(I18n.t("picture_upload_failed"))
+               return
+             }
+           } else if (UI.pendingProfileAvatarRemoved) {
+             targetUser.avatarUrl = ""
+             targetUser.avatarKey = ""
+             avatarTouched = true
+           }
+         }
+
+         if (avatarTouched && newCfg.cfWorkerUrl) {
+           try {
+             await CloudflareBackend.save(remoteData, newCfg)
+             if (oldAvatarKey && (!targetUser?.avatarKey || oldAvatarKey !== targetUser.avatarKey)) {
+               CloudflareBackend.deleteImage(oldAvatarKey, newCfg).catch(console.error)
+             }
+           } catch (err) {
+             console.warn(err)
+             UI.showAlert(err.message || (I18n.t("db_init_failed") || "Failed to initialize new provider. Staying on current one."))
+             return
            }
          }
       }
@@ -2786,6 +2986,7 @@ const App = {
       DbSettings.set(newCfg)
       await Store.loadState()
       UI.renderBoard()
+      UI.updateMenuButtonAvatar()
       dbDialog.close()
     })
 
@@ -2905,6 +3106,7 @@ const App = {
   // --- Action Handlers ---
   handleAddColumn(e) {
     e.preventDefault()
+    if (!Store.canCurrentUserManageBoardStructure()) return
     const form = e.target
     const title = form.elements.title.value.trim()
     if (title) {
@@ -2916,6 +3118,10 @@ const App = {
 
   handleRenameColumn(e) {
     e.preventDefault()
+    if (!Store.canCurrentUserManageBoardStructure()) {
+      e.target.closest("dialog").close()
+      return
+    }
     const form = e.target
     const colId = form.dataset.colId
     const newTitle = form.elements.title.value.trim()
@@ -2931,6 +3137,7 @@ const App = {
   },
 
   async handleDeleteColumn(colId) {
+    if (!Store.canCurrentUserManageBoardStructure()) return
     const col = Store.findColumn(colId)
     const context = {
       title: I18n.t("delete_column") + "?",
