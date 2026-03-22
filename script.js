@@ -682,46 +682,95 @@ const Store = {
       return d.toISOString()
     }
 
+    const createPastDate = (days, hours, minutes) => {
+      const d = new Date()
+      d.setDate(d.getDate() - days)
+      d.setHours(hours, minutes, 0, 0)
+      return d.toISOString()
+    }
+
+    const demoUsers = [
+      { name: "Misha", pinCode: "1111" },
+      { name: "Ihor", pinCode: "2222" },
+      { name: "Anya", pinCode: "3333" },
+    ]
+
+    const makeDemoCard = ({
+      title,
+      description,
+      tags,
+      due = "",
+      assignedUser = null,
+      createdBy = "",
+      createdAt,
+      editedAt = "",
+    }) => ({
+      id: Utils.uid(),
+      title,
+      description,
+      tags,
+      due,
+      assignedUser,
+      attachments: [],
+      createdBy,
+      createdAt,
+      lastChanged: editedAt || createdAt,
+      lastChangedBy: "demo-seed",
+      seq: 0,
+      contentChangedAt: editedAt || createdAt,
+      positionChangedAt: editedAt || createdAt,
+    })
+
     return {
+      users: demoUsers,
       columns: [
         {
           id: Utils.uid(),
           title: I18n.t("rename_col_demo_title"),
           cards: [
-            {
-              id: Utils.uid(),
+            makeDemoCard({
               title: I18n.t("demo_welcome_title"),
               description: I18n.t("demo_welcome_desc"),
               tags: ["guide", "welcome"],
               due: "",
-            },
-            {
-              id: Utils.uid(),
+              createdBy: "Busha",
+              createdAt: createPastDate(10, 9, 30),
+            }),
+            makeDemoCard({
               title: I18n.t("demo_drag_title"),
               description: I18n.t("demo_drag_desc"),
               tags: ["guide", "welcome"],
               due: "",
-            },
-            {
-              id: Utils.uid(),
+              assignedUser: { name: "Misha" },
+              createdBy: "Busha",
+              createdAt: createPastDate(8, 10, 15),
+            }),
+            makeDemoCard({
               title: I18n.t("demo_rich_text_title"),
               description: I18n.t("demo_rich_text_desc"),
               tags: ["feature", "editor"],
               due: createFutureDate(4, 18, 0),
-            },
+              assignedUser: { name: "Anya" },
+              createdBy: "Misha",
+              createdAt: createPastDate(7, 14, 0),
+              editedAt: createPastDate(2, 16, 45),
+            }),
           ],
         },
         {
           id: Utils.uid(),
           title: I18n.t("in_progress_col_title"),
           cards: [
-            {
-              id: Utils.uid(),
+            makeDemoCard({
               title: I18n.t("demo_overdue_title"),
               description: I18n.t("demo_overdue_desc"),
               tags: ["ui", "ux", "design"],
               due: Utils.isoPlusDays(-1),
-            },
+              assignedUser: { name: "Misha" },
+              createdBy: "Anya",
+              createdAt: createPastDate(5, 11, 20),
+              editedAt: createPastDate(1, 19, 5),
+            }),
           ],
         },
         {
@@ -729,13 +778,14 @@ const Store = {
           title: I18n.t("done_col_title"),
           isDone: true,
           cards: [
-            {
-              id: Utils.uid(),
+            makeDemoCard({
               title: I18n.t("demo_theme_title"),
               description: I18n.t("demo_theme_desc"),
               tags: ["theme"],
               due: "",
-            },
+              createdBy: "Busha",
+              createdAt: createPastDate(12, 13, 0),
+            }),
           ],
         },
         {
@@ -744,13 +794,15 @@ const Store = {
           isDone: false,
           isArchive: true,
           cards: [
-            {
-              id: Utils.uid(),
+            makeDemoCard({
               title: I18n.t("demo_archive_col_title"),
               description: I18n.t("demo_archive_col_desc"),
               tags: ["theme"],
               due: "",
-            },
+              createdBy: "Anya",
+              createdAt: createPastDate(20, 15, 30),
+              editedAt: createPastDate(14, 9, 10),
+            }),
           ],
         },
       ],

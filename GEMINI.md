@@ -59,6 +59,17 @@ Required only if cloud synchronization is enabled.
 ## User & Tag Management
 - **Autocomplete:** Smart autocomplete triggers on focus and typing. It dynamically pulls users or tags directly from the board's existing data to build comprehensive suggestions.
 - **Visuals:** Tags and assigned users share a procedural color-generation algorithm (`Utils.colorFromString`) to provide consistent, randomized colors without hardcoded mappings.
+- **Cloudflare D1 users:** Users are stored in the board state with `name` and `pinCode`. Non-admin users may self-register through the D1 settings flow.
+
+## D1 Card Ownership Rules
+- **Authorship metadata:** In Cloudflare D1 mode, new cards record `createdBy`, `createdAt`, `lastChanged`, `contentChangedAt`, and `positionChangedAt`. Older cards backfill `createdBy` on first save.
+- **Footer metadata:** Card footers display `Created` or `Edited` with the author badge and timestamp. Column moves do not count as content edits.
+- **Permissions:** Admin can manage all cards and users. Non-admin users can edit or delete only cards where `createdBy` matches their own name.
+- **Assigned-card moves:** A non-admin user may still move cards assigned to them between columns, including mark-done / undo flows, but may not edit the card fields unless they are the owner.
+- **Enforcement:** These rules are enforced both in the frontend and in `cloudflare-worker/src/index.js`. If rules change, keep both layers aligned.
+
+## Demo State
+- **Seeded board:** `Store.getDemoState()` now includes seeded users, assignees, card authors, creation dates, and edited timestamps so the demo reflects current D1-era features instead of only bare card content.
 
 ## UI / UX Architecture Context
 - **Forms & Buttons:** Editor dialogues use `display: flex; flex-direction: column` for main structural layout, with `.actions-main` and `.actions-extra` container classes to robustly segment secondary operators (Archive, Mark Done) from primary operators (Save, Cancel). This avoids grid-related visual bugs, enforcing a consistent layout across mobile displays.
