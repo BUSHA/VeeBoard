@@ -752,7 +752,12 @@ const UI = {
     const adminBtn = Utils.qs("#adminPanelBtn");
     if (!adminBtn) return;
     const cfg = DbSettings.get();
-    if (cfg.provider === "cloudflare" && Store.adminUser && cfg.cfUserName === Store.adminUser) {
+    
+    const isCloudflare = cfg.provider === "cloudflare";
+    const remoteAdmin = Store.adminUser ? Store.adminUser.trim().toLowerCase() : null;
+    const localUser = cfg.cfUserName ? cfg.cfUserName.trim().toLowerCase() : null;
+    
+    if (isCloudflare && remoteAdmin && localUser && remoteAdmin === localUser) {
       adminBtn.style.display = "block";
     } else {
       adminBtn.style.display = "none";
