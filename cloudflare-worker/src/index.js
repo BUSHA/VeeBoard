@@ -177,11 +177,18 @@ export default {
                   const contentChanged =
                     stableStringify(comparableCardContent(oldEntry.card)) !==
                     stableStringify(comparableCardContent(newEntry.card));
+                  const columnChanged = oldEntry.colId !== newEntry.colId;
+                  const indexChanged = oldEntry.index !== newEntry.index;
+                  const passiveReindexOnly =
+                    !contentChanged &&
+                    !columnChanged &&
+                    indexChanged;
                   const moveOnly =
                     !contentChanged &&
+                    columnChanged &&
                     oldAssignee === sentAdminUser;
 
-                  if (!moveOnly) {
+                  if (!moveOnly && !passiveReindexOnly) {
                     return new Response(JSON.stringify({ error: "You can edit or delete only your own cards." }), {
                       status: 403,
                       headers: { ...headers, "Content-Type": "application/json" }
