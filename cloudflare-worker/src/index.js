@@ -1,3 +1,60 @@
+function decodeUserHeader(request) {
+  const sentUserEncoded = request.headers.get("X-Admin-User-Encoded");
+  let sentUser = request.headers.get("X-Admin-User");
+  if (sentUserEncoded) {
+    try {
+      sentUser = decodeURIComponent(sentUserEncoded);
+    } catch {
+      sentUser = sentUserEncoded;
+    }
+  }
+  return (sentUser || "").trim();
+}
+
+function normalizeColumnShells(columns = []) {
+  return JSON.stringify(columns.map((col) => ({
+    id: col.id || "",
+    title: col.title || "",
+    isDone: !!col.isDone,
+    isArchive: !!col.isArchive,
+  })));
+}
+
+function flattenCards(state = {}) {
+  const byId = new Map();
+  for (const col of state.columns || []) {
+    (col.cards || []).forEach((card, index) => {
+      byId.set(card.id, { card, colId: col.id, index });
+    });
+  }
+  return byId;
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function comparableCardContent(card = {}) {
+  return {
+    title: card.title || "",
+    description: card.description || "",
+    tags: card.tags || [],
+    due: card.due || "",
+    assignedUser: card.assignedUser || null,
+    attachments: card.attachments || [],
+    createdBy: card.createdBy || "",
+    createdAt: card.createdAt || "",
+    contentChangedAt: card.contentChangedAt || "",
+  };
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -48,15 +105,7 @@ export default {
         
         // Basic Security Check: only admin can modify the `users` array
         if (env.ADMIN_USER) {
-          const sentAdminUserEncoded = request.headers.get("X-Admin-User-Encoded");
-          let sentAdminUser = request.headers.get("X-Admin-User");
-          if (sentAdminUserEncoded) {
-            try {
-              sentAdminUser = decodeURIComponent(sentAdminUserEncoded);
-            } catch {
-              sentAdminUser = sentAdminUserEncoded;
-            }
-          }
+          const sentAdminUser = decodeUserHeader(request);
           const existingRow = await env.DB.prepare(
             "SELECT data FROM boards WHERE id = ?"
           ).bind(boardId).first();
@@ -90,6 +139,72 @@ export default {
                   status: 403, 
                   headers: { ...headers, "Content-Type": "application/json" } 
                 });
+              }
+            }
+
+            if (sentAdminUser !== env.ADMIN_USER) {
+              if (normalizeColumnShells(existingData.columns) !== normalizeColumnShells(body.columns)) {
+                return new Response(JSON.stringify({ error: "Only admin can modify board structure." }), {
+                  status: 403,
+                  headers: { ...headers, "Content-Type": "application/json" }
+                });
+              }
+
+              const oldCards = flattenCards(existingData);
+              const newCards = flattenCards(body);
+
+              for (const [cardId, oldEntry] of oldCards.entries()) {
+                const newEntry = newCards.get(cardId);
+                const oldOwner = (oldEntry.card.createdBy || "").trim();
+                const oldAssignee = (oldEntry.card.assignedUser?.name || "").trim();
+
+                if (!newEntry) {
+                  if (oldOwner !== sentAdminUser) {
+                    return new Response(JSON.stringify({ error: "You can edit or delete only your own cards." }), {
+                      status: 403,
+                      headers: { ...headers, "Content-Type": "application/json" }
+                    });
+                  }
+                  continue;
+                }
+
+                const cardChanged =
+                  JSON.stringify(oldEntry.card) !== JSON.stringify(newEntry.card) ||
+                  oldEntry.colId !== newEntry.colId ||
+                  oldEntry.index !== newEntry.index;
+
+                if (cardChanged && oldOwner !== sentAdminUser) {
+                  const contentChanged =
+                    stableStringify(comparableCardContent(oldEntry.card)) !==
+                    stableStringify(comparableCardContent(newEntry.card));
+                  const moveOnly =
+                    !contentChanged &&
+                    oldAssignee === sentAdminUser;
+
+                  if (!moveOnly) {
+                    return new Response(JSON.stringify({ error: "You can edit or delete only your own cards." }), {
+                      status: 403,
+                      headers: { ...headers, "Content-Type": "application/json" }
+                    });
+                  }
+                }
+
+                if ((newEntry.card.createdBy || "").trim() !== oldOwner) {
+                  return new Response(JSON.stringify({ error: "Card author cannot be changed." }), {
+                    status: 403,
+                    headers: { ...headers, "Content-Type": "application/json" }
+                  });
+                }
+              }
+
+              for (const [cardId, newEntry] of newCards.entries()) {
+                if (oldCards.has(cardId)) continue;
+                if ((newEntry.card.createdBy || "").trim() !== sentAdminUser) {
+                  return new Response(JSON.stringify({ error: "New cards must belong to the current user." }), {
+                    status: 403,
+                    headers: { ...headers, "Content-Type": "application/json" }
+                  });
+                }
               }
             }
           }

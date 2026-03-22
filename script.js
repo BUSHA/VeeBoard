@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.5.1"
+  version: "0.5.2"
 }
 
 /* Live sync echo guard */
@@ -305,7 +305,21 @@ const CloudflareBackend = {
       },
       body: JSON.stringify(state),
     })
-    if (!response.ok) throw new Error("Cloudflare save failed")
+    if (!response.ok) {
+      let message = "Cloudflare save failed"
+      try {
+        const data = await response.json()
+        if (data?.error) message = data.error
+      } catch {
+        try {
+          const text = await response.text()
+          if (text) message = text
+        } catch {}
+      }
+      const error = new Error(message)
+      error.status = response.status
+      throw error
+    }
   },
   async subscribe(config, handler) {
     // Cloudflare D1 doesn't support push.
@@ -437,10 +451,48 @@ const Store = {
         await CloudflareBackend.save(this.state, cfg)
         return
       } catch (e) {
+        if (e?.status === 401 || e?.status === 403) {
+          console.warn("Cloudflare save rejected:", e)
+          if (typeof UI !== "undefined" && UI.showAlert) {
+            UI.showAlert(e.message || "Cloudflare save failed")
+          }
+          return
+        }
         console.warn("Cloudflare save failed; also saving locally:", e)
       }
     }
     await IndexedDBBackend.save(this.state)
+  },
+
+  getCurrentUserName() {
+    const cfg = DbSettings.get()
+    return cfg.provider === "cloudflare" ? (cfg.cfUserName || "").trim() : ""
+  },
+
+  isCurrentUserAdmin() {
+    const cfg = DbSettings.get()
+    return cfg.provider === "cloudflare" &&
+      !!Store.adminUser &&
+      (cfg.cfUserName || "").trim() === Store.adminUser
+  },
+
+  canCurrentUserEditCard(card) {
+    const cfg = DbSettings.get()
+    if (cfg.provider !== "cloudflare") return true
+    if (this.isCurrentUserAdmin()) return true
+    const currentUser = this.getCurrentUserName()
+    return !!currentUser && !!card && (card.createdBy || "").trim() === currentUser
+  },
+
+  canCurrentUserMoveCard(card) {
+    const cfg = DbSettings.get()
+    if (cfg.provider !== "cloudflare") return true
+    if (this.isCurrentUserAdmin()) return true
+    const currentUser = this.getCurrentUserName()
+    if (!currentUser || !card) return false
+    const owner = (card.createdBy || "").trim()
+    const assignee = (card.assignedUser?.name || "").trim()
+    return owner === currentUser || assignee === currentUser
   },
 
   findColumn(colId) {
@@ -1159,15 +1211,30 @@ const UI = {
     }
 
     const markDoneBtn = Utils.qs("#markDoneBtn", form)
+    const descriptionEditor = Utils.qs("#descriptionEditor", form)
+    const saveBtn = Utils.qs('.actions-main .btn.primary', form)
+    const addAttachmentBtn = Utils.qs("#addAttachmentBtn", form)
+    const canEdit = !card || Store.canCurrentUserEditCard(card)
+    const canMove = !card || Store.canCurrentUserMoveCard(card)
+
+    form.elements.title.readOnly = !canEdit
+    form.elements.tags.readOnly = !canEdit
+    form.elements.due.disabled = !canEdit
+    form.elements.user.readOnly = !canEdit
+    descriptionEditor.contentEditable = canEdit ? "true" : "false"
+    descriptionEditor.setAttribute("aria-readonly", canEdit ? "false" : "true")
+    if (clearUserBtn) clearUserBtn.disabled = !canEdit
+    if (saveBtn) saveBtn.disabled = !canEdit
+    if (addAttachmentBtn) addAttachmentBtn.disabled = !canEdit
+
     if (card) {
       const { col } = Store.findCard(card.id)
-      markDoneBtn.parentElement.style.display = ""
+      markDoneBtn.parentElement.style.display = canMove ? "" : "none"
       markDoneBtn.textContent = col.isDone ? I18n.t("undone") : I18n.t("mark_as_done")
     } else {
       markDoneBtn.parentElement.style.display = "none"
     }
 
-    this.showDialog(this.editor)
     this.showDialog(this.editor)
     this.updateEditorAttachments(card ? card.attachments : [], card?.id)
   },
@@ -1176,6 +1243,8 @@ const UI = {
     const container = Utils.qs("#editorAttachments")
     if (!container) return
     container.innerHTML = ""
+    const { card } = cardId ? Store.findCard(cardId) : { card: null }
+    const canEdit = !card || Store.canCurrentUserEditCard(card)
     
     const section = container.parentElement
     section.style.display = "block"
@@ -1202,7 +1271,9 @@ const UI = {
       delBtn.type = "button"
       delBtn.className = "editor-attachment-delete"
       delBtn.innerHTML = "&times;"
+      delBtn.disabled = !canEdit
       delBtn.addEventListener("click", async (e) => {
+        if (!canEdit) return
         e.preventDefault()
         const choice = await this.showConfirm(I18n.t("image_delete_confirm"), {
           title: I18n.t("delete"),
@@ -1681,6 +1752,8 @@ const Dnd = {
     if (interactive) return
 
     const cardEl = e.currentTarget.closest(".card")
+    const { card } = Store.findCard(cardEl?.dataset.id)
+    if (card && !Store.canCurrentUserMoveCard(card)) return
     const rect = cardEl.getBoundingClientRect()
 
     Dnd.cardDrag = {
@@ -2316,7 +2389,12 @@ const App = {
     const addAttBtn = Utils.qs("#addAttachmentBtn")
     const attInput = Utils.qs("#attachmentInput")
     if (addAttBtn && attInput) {
-      addAttBtn.addEventListener("click", () => attInput.click())
+      addAttBtn.addEventListener("click", () => {
+        const cardId = Utils.qs("#editorForm").dataset.cardId
+        const { card } = cardId ? Store.findCard(cardId) : { card: null }
+        if (card && !Store.canCurrentUserEditCard(card)) return
+        attInput.click()
+      })
       attInput.addEventListener("change", (e) => {
         const cardId = Utils.qs("#editorForm").dataset.cardId
         if (!cardId) {
@@ -2459,6 +2537,10 @@ const App = {
 
     const { card, col: fromCol } = Store.findCard(cardId)
     if (!card || !fromCol) return
+    if (!Store.canCurrentUserMoveCard(card)) {
+      UI.showAlert(I18n.t("own_card_only_error"))
+      return
+    }
 
     if (fromCol.isDone) {
       // If already in a Done column, we need to move it back to the first non-done, non-archive column
@@ -2494,6 +2576,10 @@ const App = {
 
     // Preserve existing attachments
     const { card: existingCard } = cardId ? Store.findCard(cardId) : { card: null }
+    if (existingCard && !Store.canCurrentUserEditCard(existingCard)) {
+      UI.showAlert(I18n.t("own_card_only_error"))
+      return
+    }
     
     // Helper to check if HTML has meaningful content
     const hasMeaningfulContent = (html) => {
@@ -2552,6 +2638,10 @@ const App = {
   async promptDeleteOrArchive(cardId) {
     const { card, col } = Store.findCard(cardId)
     if (!card) return
+    if (!Store.canCurrentUserEditCard(card)) {
+      UI.showAlert(I18n.t("own_card_only_error"))
+      return
+    }
 
     const context = col.isArchive
       ? {
@@ -2758,6 +2848,8 @@ const App = {
 
     const cardId = Utils.qs("#editorForm").dataset.cardId
     if (!cardId) return
+    const { card } = Store.findCard(cardId)
+    if (card && !Store.canCurrentUserEditCard(card)) return
 
     const items = (e.clipboardData || e.originalEvent.clipboardData).items
     for (const item of items) {
@@ -2779,6 +2871,8 @@ const App = {
 
     const cardId = Utils.qs("#editorForm").dataset.cardId
     if (!cardId) return
+    const { card } = Store.findCard(cardId)
+    if (card && !Store.canCurrentUserEditCard(card)) return
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       Array.from(e.dataTransfer.files).forEach(file => {
