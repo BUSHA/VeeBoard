@@ -389,7 +389,7 @@ body.dialog-open {
   padding: 12px;
   outline: none;
   transition: transform .12s ease, box-shadow .2s ease;
-  touch-action: none;
+  touch-action: auto;
   cursor: pointer;
   word-wrap: break-word;
 }
