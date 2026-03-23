@@ -980,6 +980,41 @@ dialog:focus-visible {
     /* iOS Safari Fix: use a large solid box-shadow to fill any gaps below the footer */
     box-shadow: 0 100px 0 0 var(--panel);
   }
+
+  /* Compact form elements for mobile */
+  .editor-form {
+    gap: 10px !important;
+  }
+
+  .editor-form h3 {
+    font-size: 16px !important;
+    padding-bottom: 8px !important;
+  }
+
+  .editor-form label {
+    font-size: 13px !important;
+    gap: 4px !important;
+  }
+
+  .editor-form input,
+  .editor-form textarea {
+    font-size: 14px !important;
+    padding: 8px 10px !important;
+    border-radius: 10px !important;
+  }
+
+  .editor-form textarea {
+    min-height: 80px !important;
+  }
+
+  .editor-actions {
+    gap: 8px !important;
+    padding-top: 8px !important;
+  }
+
+  .actions-extra, .actions-main {
+    gap: 8px !important;
+  }
 }
 
 /* Ensure alerts/choice dialogs stay compact and centered */
