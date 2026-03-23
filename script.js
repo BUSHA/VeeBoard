@@ -22,7 +22,8 @@ const ICONS = {
   EDIT: `<svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`,
   DELETE: `<svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
   SEND: `<svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="transform: translate(-1px, 1px);"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`,
-  CHECK: `<svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`
+  CHECK: `<svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
+  CANCEL: `<svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`
 }
 //  Modules:
 //  - Utils: Helper functions (qs, qsa, uid, etc.)
@@ -1695,7 +1696,12 @@ const UI = {
       saveBtn.title = I18n.t("add_comment")
       saveBtn.setAttribute("aria-label", I18n.t("add_comment"))
     }
-    if (cancelBtn) cancelBtn.style.display = "none"
+    if (cancelBtn) {
+      cancelBtn.style.display = "none"
+      cancelBtn.innerHTML = ICONS.CANCEL
+      cancelBtn.title = I18n.t("cancel")
+      cancelBtn.setAttribute("aria-label", I18n.t("cancel"))
+    }
     if (replyEl) {
       replyEl.textContent = ""
       replyEl.style.display = "none"
@@ -2659,7 +2665,9 @@ const App = {
         Utils.qs("#saveCommentBtn").title = I18n.t("add_comment")
         Utils.qs("#saveCommentBtn").setAttribute("aria-label", I18n.t("add_comment"))
         Utils.qs("#cancelCommentEditBtn").style.display = ""
-        Utils.qs("#commentInput").focus()
+        const input = Utils.qs("#commentInput")
+        input.focus()
+        input.scrollIntoView({ behavior: "smooth", block: "center" })
         return
       }
 
@@ -2669,12 +2677,14 @@ const App = {
           return
         }
         UI.editingCommentId = comment.id
-        Utils.qs("#commentInput").value = comment.text || ""
+        const input = Utils.qs("#commentInput")
+        input.value = comment.text || ""
         Utils.qs("#saveCommentBtn").innerHTML = ICONS.CHECK
         Utils.qs("#saveCommentBtn").title = I18n.t("save_comment")
         Utils.qs("#saveCommentBtn").setAttribute("aria-label", I18n.t("save_comment"))
         Utils.qs("#cancelCommentEditBtn").style.display = ""
-        Utils.qs("#commentInput").focus()
+        input.focus()
+        input.scrollIntoView({ behavior: "smooth", block: "center" })
         return
       }
 
@@ -3306,6 +3316,7 @@ const App = {
     UI.updateCard(fresh)
     UI.renderEditorComments(fresh)
     UI.resetCommentComposer()
+    Utils.qs("#commentInput")?.scrollIntoView({ behavior: "smooth", block: "center" })
   },
 
   async handleDeleteComment(cardId, commentId) {
@@ -3329,6 +3340,7 @@ const App = {
     UI.updateCard(fresh)
     UI.renderEditorComments(fresh)
     UI.resetCommentComposer()
+    Utils.qs("#commentInput")?.scrollIntoView({ behavior: "smooth", block: "center" })
   },
 
   async promptDeleteOrArchive(cardId) {

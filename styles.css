@@ -94,6 +94,7 @@ body.dialog-open {
   font-size: clamp(18px, 2.2vw, 22px);
   font-weight: 700;
   margin-right: 8px;
+  font-size: 18px;
 }
 
 .toolbar {
