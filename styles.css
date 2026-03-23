@@ -373,7 +373,23 @@ body.dialog-open {
 }
 
 .btn-add-card {
-  align-self: stretch
+  align-self: center;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  box-shadow: none;
+  font-weight: 500;
+  font-size: 12px;
+  padding: 2px 12px;
+  margin: 0;
+  width: auto;
+  cursor: pointer;
+  text-align: center;
+}
+
+.btn-add-card:hover {
+  text-decoration: underline;
+  background: transparent;
 }
 
 .btn-del-card,
@@ -1360,7 +1376,7 @@ dialog:focus-visible {
 
 .comment-item-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 8px;
@@ -1370,6 +1386,7 @@ dialog:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
   min-width: 0;
   flex-wrap: wrap;
 }
@@ -1381,12 +1398,26 @@ dialog:focus-visible {
 
 .comment-item-actions {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 4px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .comment-item-actions .btn-link {
-  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  text-decoration: none !important;
+  opacity: 0.7;
+}
+
+.comment-item-actions .btn-link:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--primary), transparent 90%);
 }
 
 .comment-replying-to {
@@ -1421,8 +1452,9 @@ dialog:focus-visible {
   height: 32px;
   padding: 0;
   border-radius: 999px;
-  font-size: 18px;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 

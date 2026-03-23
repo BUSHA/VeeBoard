@@ -16,6 +16,14 @@ const Sync = {
     return Date.now() < this.suppressEchoUntil
   },
 }
+
+const ICONS = {
+  REPLY: `<svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>`,
+  EDIT: `<svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`,
+  DELETE: `<svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
+  SEND: `<svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="transform: translate(-1px, 1px);"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`,
+  CHECK: `<svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`
+}
 //  Modules:
 //  - Utils: Helper functions (qs, qsa, uid, etc.)
 //  - Store: State management (data and persistence)
@@ -1422,9 +1430,11 @@ const UI = {
 
     if (column.isArchive) {
       node.classList.add("column--archive")
-      Utils.qs(".column-actions", node).remove()
-      Utils.qs('[data-action="add-card"]', node).remove()
-      Utils.qs(".drag-handle", node).remove()
+      const actions = Utils.qs(".column-actions", node)
+      if (actions) actions.remove()
+      Utils.qsa('[data-action="add-card"]', node).forEach(el => el.remove())
+      const dragHandle = Utils.qs(".drag-handle", node)
+      if (dragHandle) dragHandle.remove()
     } else if (!canManageStructure) {
       const actions = Utils.qs(".column-actions", node)
       const dragHandle = Utils.qs(".drag-handle", node)
@@ -1549,7 +1559,9 @@ const UI = {
       ? card.description || ""
       : ""
     form.elements.tags.value = card ? (card.tags || []).join(", ") : ""
-    form.elements.user.value = card?.assignedUser ? (card.assignedUser.name || "") : ""
+    
+    const currentUser = Store.getCurrentUserName()
+    form.elements.user.value = card ? (card.assignedUser?.name || "") : (currentUser || "")
 
     const clearUserBtn = Utils.qs('#clearUserBtn', form)
     if (clearUserBtn) {
@@ -1677,8 +1689,9 @@ const UI = {
     const cancelBtn = Utils.qs("#cancelCommentEditBtn")
     const replyEl = Utils.qs("#commentReplyingTo")
     if (input) input.value = ""
+
     if (saveBtn) {
-      saveBtn.textContent = "➤"
+      saveBtn.innerHTML = ICONS.SEND
       saveBtn.title = I18n.t("add_comment")
       saveBtn.setAttribute("aria-label", I18n.t("add_comment"))
     }
@@ -1743,7 +1756,9 @@ const UI = {
         replyBtn.className = "btn-link"
         replyBtn.dataset.commentAction = "reply"
         replyBtn.dataset.commentId = comment.id
-        replyBtn.textContent = I18n.t("reply_comment")
+        replyBtn.innerHTML = ICONS.REPLY
+        replyBtn.title = I18n.t("reply_comment")
+        replyBtn.setAttribute("aria-label", I18n.t("reply_comment"))
         actions.append(replyBtn)
       }
 
@@ -1753,14 +1768,18 @@ const UI = {
         editBtn.className = "btn-link"
         editBtn.dataset.commentAction = "edit"
         editBtn.dataset.commentId = comment.id
-        editBtn.textContent = I18n.t("edit_comment")
+        editBtn.innerHTML = ICONS.EDIT
+        editBtn.title = I18n.t("edit_comment")
+        editBtn.setAttribute("aria-label", I18n.t("edit_comment"))
 
         const deleteBtn = document.createElement("button")
         deleteBtn.type = "button"
         deleteBtn.className = "btn-link"
         deleteBtn.dataset.commentAction = "delete"
         deleteBtn.dataset.commentId = comment.id
-        deleteBtn.textContent = I18n.t("delete_comment")
+        deleteBtn.innerHTML = ICONS.DELETE
+        deleteBtn.title = I18n.t("delete_comment")
+        deleteBtn.setAttribute("aria-label", I18n.t("delete_comment"))
 
         actions.append(editBtn, deleteBtn)
       }
@@ -2636,7 +2655,7 @@ const App = {
         replyEl.textContent = I18n.t("replying_to", { name: comment.author || "" })
         replyEl.style.display = ""
         Utils.qs("#commentInput").value = ""
-        Utils.qs("#saveCommentBtn").textContent = "➤"
+        Utils.qs("#saveCommentBtn").innerHTML = ICONS.SEND
         Utils.qs("#saveCommentBtn").title = I18n.t("add_comment")
         Utils.qs("#saveCommentBtn").setAttribute("aria-label", I18n.t("add_comment"))
         Utils.qs("#cancelCommentEditBtn").style.display = ""
@@ -2651,7 +2670,7 @@ const App = {
         }
         UI.editingCommentId = comment.id
         Utils.qs("#commentInput").value = comment.text || ""
-        Utils.qs("#saveCommentBtn").textContent = "✓"
+        Utils.qs("#saveCommentBtn").innerHTML = ICONS.CHECK
         Utils.qs("#saveCommentBtn").title = I18n.t("save_comment")
         Utils.qs("#saveCommentBtn").setAttribute("aria-label", I18n.t("save_comment"))
         Utils.qs("#cancelCommentEditBtn").style.display = ""
