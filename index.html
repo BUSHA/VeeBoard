@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, viewport-fit=cover" />
   <title>VeeBoard</title>
 
-  <link rel="stylesheet" href="styles.css?v=0.7.0">
+  <link rel="stylesheet" href="styles.css?v=0.8.0">
 
   <link rel="icon" type="image/png" href="favicon/favicon-96x96.png" sizes="96x96" />
   <link rel="icon" type="image/svg+xml" href="favicon/favicon.svg" />
@@ -16,8 +16,8 @@
   <link rel="manifest" href="favicon/site.webmanifest" />
 
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
-  <script src="translations.js?v=0.7.0"></script>
-  <script src="script.js?v=0.7.0" defer></script>
+  <script src="translations.js?v=0.8.0"></script>
+  <script src="script.js?v=0.8.0" defer></script>
 
 </head>
 
@@ -65,8 +65,8 @@
         <button class="drag-handle" aria-label="Drag column" title="Drag to reorder" data-i18n-title="drag_to_reorder">⠿</button>
         <h2 class="column-title" tabindex="0"></h2>
         <div class="column-actions">
-          <button class="btn btn-rename" title="Rename column" data-action="rename-column" data-i18n-title="rename_column">✎</button>
-          <button class="btn btn-del-col" title="Delete column" data-action="delete-column" data-i18n-title="delete_column">✕</button>
+          <button class="btn btn-rename" title="Rename column" data-action="rename-column" data-i18n-title="rename_column"><svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+          <button class="btn btn-del-col" title="Delete column" data-action="delete-column" data-i18n-title="delete_column"><svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
         </div>
       </header>
       <button class="btn btn-add-card" title="Add task" data-action="add-card" data-i18n="add_task" data-i18n-title="add_task">+ Add task</button>
