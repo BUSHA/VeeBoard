@@ -1450,16 +1450,16 @@ dialog:focus-visible {
    Editor Upload Area
    ================================= */
 .editor-attachments-section {
-  margin-top: 10px;
+  margin-top: 4px;
 }
 
 .editor-comments-section {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-top: 10px;
+  margin-top: 4px;
   padding-bottom: 8px;
-  padding-top: 4px;
+  /* padding-top: 4px; */
   /* border-top: 1px solid color-mix(in srgb, var(--border), transparent 20%); */
 }
 
@@ -1537,6 +1537,14 @@ dialog:focus-visible {
   white-space: pre-wrap;
   color: var(--text);
   line-height: 1.45;
+}
+
+.comment-empty-message {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+  padding: 4px 0;
+  opacity: 0.8;
 }
 
 .comment-composer-actions {

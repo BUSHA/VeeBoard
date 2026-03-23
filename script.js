@@ -1804,7 +1804,7 @@ const UI = {
 
     if (comments.length === 0) {
       const empty = document.createElement("div")
-      empty.className = "comment-item-text"
+      empty.className = "comment-empty-message"
       empty.textContent = I18n.t("no_comments")
       list.append(empty)
     } else {
