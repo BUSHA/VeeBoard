@@ -1015,6 +1015,10 @@ dialog:focus-visible {
   .actions-extra, .actions-main {
     gap: 8px !important;
   }
+
+  .column {
+    width: calc(100vw - 28px);
+  }
 }
 
 /* Ensure alerts/choice dialogs stay compact and centered */
