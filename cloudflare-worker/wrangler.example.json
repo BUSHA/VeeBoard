@@ -6,7 +6,7 @@
 		{
 			"binding": "DB",
 			"database_name": "veeboard_db",
-			"database_id": "86c56261-974e-430e-a8aa-c09b329053fb"
+			"database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
 		}
 	],
 	"r2_buckets": [
