@@ -3,3 +3,33 @@ CREATE TABLE IF NOT EXISTS boards (
   data TEXT,
   updated_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS board_users (
+  board_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  avatar_url TEXT DEFAULT '',
+  avatar_key TEXT DEFAULT '',
+  updated_at TEXT,
+  PRIMARY KEY (board_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS board_user_credentials (
+  board_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  pin_hash TEXT NOT NULL,
+  pin_salt TEXT NOT NULL,
+  updated_at TEXT,
+  PRIMARY KEY (board_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS board_sessions (
+  token TEXT PRIMARY KEY,
+  board_id TEXT NOT NULL,
+  user_name TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_board_users_board_id ON board_users(board_id);
+CREATE INDEX IF NOT EXISTS idx_board_user_credentials_board_id ON board_user_credentials(board_id);
+CREATE INDEX IF NOT EXISTS idx_board_sessions_board_id ON board_sessions(board_id);

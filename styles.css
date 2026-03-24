@@ -16,6 +16,7 @@
   --radius-xs: 8px;
   --radius-sm: 10px;
   --stripe-mix: 4%;
+  --comment-border: #f1f1f1;
 }
 
 html[data-theme="dark"] {
@@ -29,6 +30,7 @@ html[data-theme="dark"] {
   --error: #812b2b;
   --alert: #da8a4d;
   --shadow: 0 8px 24px rgba(0, 0, 0, .45);
+  --comment-border: #2b3442;
 
   .card-desc::-webkit-scrollbar {
     width: 8px;
@@ -908,6 +910,14 @@ dialog:focus-visible {
   display: none;
 }
 
+.field-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
 .content-editor {
   font: inherit;
   color: var(--text);
@@ -946,10 +956,18 @@ dialog:focus-visible {
   color: var(--muted);
 }
 
+.hotkey-hints--inline {
+  justify-content: flex-end;
+  flex: 0 1 auto;
+  white-space: nowrap;
+  gap: 8px;
+  font-size: 10px;
+}
+
 .hotkey-hints kbd {
   font-family: monospace;
   background-color: var(--border);
-  padding: 4px 6px;
+  padding: 3px 5px;
   border-radius: 6px;
   line-height: 1;
   font-size: 10px;
@@ -962,6 +980,10 @@ dialog:focus-visible {
    ================================= */
 
 @media (max-width:640px) {
+  .field-label-row {
+    display: block;
+  }
+
   .hotkey-hints {
     display: none;
   }
@@ -1099,7 +1121,7 @@ dialog:focus-visible {
 }
 
 #adminDialog .editor-form {
-  width: 400px;
+  width: 640px;
   max-width: 90vw;
 }
 
@@ -1569,7 +1591,7 @@ dialog:focus-visible {
 }
 
 .comment-item {
-  border: 1px solid #f1f1f1;
+  border: 1px solid var(--comment-border);
   border-radius: 12px;
   padding: 10px 12px;
   background: color-mix(in srgb, var(--panel), var(--bg) 35%);

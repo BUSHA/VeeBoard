@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, viewport-fit=cover" />
   <title>VeeBoard</title>
 
-  <link rel="stylesheet" href="styles.css?v=0.8.0">
+  <link rel="stylesheet" href="styles.css?v=0.9.0">
 
   <link rel="icon" type="image/png" href="favicon/favicon-96x96.png" sizes="96x96" />
   <link rel="icon" type="image/svg+xml" href="favicon/favicon.svg" />
@@ -16,8 +16,8 @@
   <link rel="manifest" href="favicon/site.webmanifest" />
 
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
-  <script src="translations.js?v=0.8.0"></script>
-  <script src="script.js?v=0.8.0" defer></script>
+  <script src="translations.js?v=0.9.0"></script>
+  <script src="script.js?v=0.9.0" defer></script>
 
 </head>
 
@@ -102,15 +102,16 @@
       <label data-i18n="title_label">Title
         <input name="title" required maxlength="160" />
       </label>
-      <label data-i18n="description_label">Description
+      <label>
+        <span class="field-label-row">
+          <span data-i18n="description_label">Description</span>
+          <span class="hotkey-hints hotkey-hints--inline">
+            <span><kbd>Cmd/Ctrl</kbd> + <kbd>V</kbd> - <span data-i18n="hotkey_add_link">add link</span>,</span>
+            <span><kbd>Cmd/Ctrl</kbd> + <kbd>K</kbd> - <span data-i18n="hotkey_remove_link">remove link</span></span>
+          </span>
+        </span>
         <div id="descriptionEditor" class="content-editor" contenteditable="true" role="textbox"></div>
       </label>
-      <div class="hotkey-hints">
-        <!-- <span><kbd>Cmd/Ctrl</kbd> + <kbd>B</kbd> - <span data-i18n="hotkey_bold">bold</span>,</span>
-        <span><kbd>Cmd/Ctrl</kbd> + <kbd>I</kbd> - <span data-i18n="hotkey_italic">italic</span>,</span> -->
-        <span><kbd>Cmd/Ctrl</kbd> + <kbd>V</kbd> - <span data-i18n="hotkey_add_link">add link</span>,</span>
-        <span><kbd>Cmd/Ctrl</kbd> + <kbd>K</kbd> - <span data-i18n="hotkey_remove_link">remove link</span></span>
-      </div>
       <div class="editor-form-row">
         <label class="editor-meta-tags" data-i18n="tags_label">Tags (comma-separated)
           <div class="tags-input-wrapper">

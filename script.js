@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.8.0"
+  version: "0.9.0"
 }
 
 /* Live sync echo guard */
@@ -239,7 +239,8 @@ const DbSettings = {
         cfBoardId: "default",
         cfApiKey: "",
         cfUserName: "",
-        cfPinCode: ""
+        cfPinCode: "",
+        cfUserToken: ""
       }
       const saved = JSON.parse(localStorage.getItem(this.KEY)) || {}
       
@@ -250,7 +251,7 @@ const DbSettings = {
       
       return { ...defaults, ...saved }
     } catch {
-      return { provider: "local", cfWorkerUrl: "", cfBoardId: "default", cfApiKey: "", cfUserName: "", cfPinCode: "" }
+      return { provider: "local", cfWorkerUrl: "", cfBoardId: "default", cfApiKey: "", cfUserName: "", cfPinCode: "", cfUserToken: "" }
     }
   },
   set(v) {
@@ -306,16 +307,24 @@ const IndexedDBBackend = {
 }
 
 const CloudflareBackend = {
+  buildHeaders(config, extra = {}) {
+    const headers = {
+      "X-Board-ID": config.cfBoardId || "default",
+      "X-API-Key": config.cfApiKey || "",
+      ...extra,
+    }
+    if (config.cfUserToken) {
+      headers["X-User-Token"] = config.cfUserToken
+    }
+    return headers
+  },
   async load(config) {
-    let { cfWorkerUrl, cfBoardId, cfApiKey } = config
+    let { cfWorkerUrl } = config
     if (!cfWorkerUrl) return null
     cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "") // Remove trailing slashes
 
     const response = await fetch(`${cfWorkerUrl}/load`, {
-      headers: { 
-        "X-Board-ID": cfBoardId || "default",
-        "X-API-Key": cfApiKey || ""
-      }
+      headers: this.buildHeaders(config)
     })
     if (!response.ok) throw new Error("Cloudflare load failed")
     
@@ -333,18 +342,28 @@ const CloudflareBackend = {
 
     return await response.json()
   },
+  async authenticate(config, name, pinCode) {
+    let { cfWorkerUrl } = config
+    if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
+    cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
+    const response = await fetch(`${cfWorkerUrl}/auth`, {
+      method: "POST",
+      headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ name, pinCode }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      throw new Error(data?.error || "Authentication failed")
+    }
+    return data
+  },
   async save(state, config) {
-    let { cfWorkerUrl, cfBoardId, cfApiKey, cfUserName } = config
+    let { cfWorkerUrl } = config
     if (!cfWorkerUrl) return
     cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "") // Remove trailing slashes
     const response = await fetch(`${cfWorkerUrl}/save`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Board-ID": cfBoardId || "default",
-        "X-API-Key": cfApiKey || "",
-        "X-Admin-User-Encoded": encodeURIComponent(cfUserName || "")
-      },
+      headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
       body: JSON.stringify(state),
     })
     if (!response.ok) {
@@ -369,16 +388,12 @@ const CloudflareBackend = {
     return () => {}
   },
   async uploadImage(file, config) {
-    let { cfWorkerUrl, cfBoardId, cfApiKey } = config
+    let { cfWorkerUrl } = config
     if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
     cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
     const response = await fetch(`${cfWorkerUrl}/upload`, {
       method: "POST",
-      headers: {
-        "X-Board-ID": cfBoardId || "default",
-        "X-API-Key": cfApiKey || "",
-        "Content-Type": file.type
-      },
+      headers: this.buildHeaders(config, { "Content-Type": file.type }),
       body: file,
     })
     if (!response.ok) {
@@ -388,16 +403,38 @@ const CloudflareBackend = {
     return await response.json()
   },
   async deleteImage(key, config) {
-    let { cfWorkerUrl, cfBoardId, cfApiKey } = config
+    let { cfWorkerUrl } = config
     if (!cfWorkerUrl) return
     cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
     await fetch(`${cfWorkerUrl}/delete-image?key=${encodeURIComponent(key)}`, {
       method: "DELETE",
-      headers: {
-        "X-Board-ID": cfBoardId || "default",
-        "X-API-Key": cfApiKey || ""
-      }
+      headers: this.buildHeaders(config)
     })
+  },
+  async upsertUser(user, config, previousName = "") {
+    let { cfWorkerUrl } = config
+    if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
+    cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
+    const response = await fetch(`${cfWorkerUrl}/user`, {
+      method: "POST",
+      headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ ...user, previousName }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "User save failed")
+    return data
+  },
+  async deleteUser(name, config) {
+    let { cfWorkerUrl, cfBoardId, cfApiKey } = config
+    if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
+    cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
+    const response = await fetch(`${cfWorkerUrl}/user?name=${encodeURIComponent(name)}&boardId=${encodeURIComponent(cfBoardId || "default")}${cfApiKey ? `&apiKey=${encodeURIComponent(cfApiKey)}` : ""}`, {
+      method: "DELETE",
+      headers: this.buildHeaders(config),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "User delete failed")
+    return data
   }
 }
 
@@ -1200,9 +1237,9 @@ const UI = {
       nameInp.style.flex = "1";
       
       const pinInp = document.createElement("input");
-      pinInp.type = "text";
-      pinInp.value = u.pinCode || "";
-      pinInp.placeholder = I18n.t("pin_code") || "Pin-code";
+      pinInp.type = "password";
+      pinInp.value = "";
+      pinInp.placeholder = `${I18n.t("pin_code") || "Pin-code"}${u.name ? " (leave blank to keep)" : ""}`;
       pinInp.style.flex = "1";
       
       const delBtn = document.createElement("button");
@@ -1216,21 +1253,54 @@ const UI = {
       row.appendChild(pinInp);
       row.appendChild(delBtn);
       
-      const saveChanges = () => {
-         u.name = nameInp.value.trim();
-         u.pinCode = pinInp.value.trim();
-         Store.saveState();
+      const saveChanges = async () => {
+        const nextName = nameInp.value.trim();
+        const nextPin = pinInp.value.trim();
+        if (!nextName) return;
+
+        if (cfg.provider === "cloudflare" && cfg.cfWorkerUrl) {
+          try {
+            const result = await CloudflareBackend.upsertUser({
+              name: nextName,
+              pinCode: nextPin || undefined,
+              avatarUrl: u.avatarUrl || "",
+              avatarKey: u.avatarKey || "",
+            }, cfg, u.name || "");
+            Store.state.users = result.users || Store.state.users;
+            pinInp.value = "";
+            UI.renderAdminUsers();
+          } catch (err) {
+            UI.showAlert(err.message || "Failed to save user");
+          }
+          return;
+        }
+
+        u.name = nextName;
+        u.pinCode = nextPin;
+        Store.saveState();
       };
       
-      nameInp.addEventListener("change", saveChanges);
-      pinInp.addEventListener("change", saveChanges);
+      nameInp.addEventListener("change", () => { saveChanges(); });
+      pinInp.addEventListener("change", () => { saveChanges(); });
       
       delBtn.addEventListener("click", () => {
         if (confirm(`${I18n.t("delete_user") || "Remove user"} ${u.name}?`)) {
           const avatarKey = u.avatarKey
+          if (cfg.provider === "cloudflare" && cfg.cfWorkerUrl) {
+            CloudflareBackend.deleteUser(u.name, cfg)
+              .then((result) => {
+                Store.state.users = result.users || [];
+                UI.renderAdminUsers();
+                UI.updateMenuButtonAvatar();
+                if (avatarKey) {
+                  CloudflareBackend.deleteImage(avatarKey, cfg).catch(console.error)
+                }
+              })
+              .catch((err) => UI.showAlert(err.message || "Failed to delete user"));
+            return;
+          }
           Store.state.users.splice(i, 1);
           Promise.resolve(Store.saveState()).then(() => {
-            const cfg = DbSettings.get()
             if (cfg.provider === "cloudflare" && avatarKey) {
               CloudflareBackend.deleteImage(avatarKey, cfg).catch(console.error)
             }
@@ -2898,8 +2968,7 @@ const App = {
       const addBtn = Utils.qs(".btn-add-user", adminDialog);
       if (addBtn) {
         addBtn.addEventListener("click", () => {
-          Store.state.users.push({ name: "New User", pinCode: "0000" });
-          Store.saveState();
+          Store.state.users.push({ name: "New User", avatarUrl: "", avatarKey: "" });
           UI.renderAdminUsers();
         });
       }
@@ -3006,6 +3075,13 @@ const App = {
          }
          newCfg.cfUserName = userName;
          newCfg.cfPinCode = pinCode;
+         try {
+           const auth = await CloudflareBackend.authenticate(newCfg, userName, pinCode)
+           newCfg.cfUserToken = auth.token || ""
+         } catch (err) {
+           UI.showAlert(err.message || (I18n.t("incorrect_pin") || "Incorrect pin-code for this name"))
+           return
+         }
          
          let remoteData = null;
          if (newCfg.cfWorkerUrl) {
@@ -3023,24 +3099,6 @@ const App = {
          const existingUser = remoteData.users.find(u => u.name === userName);
          let avatarTouched = false
          let oldAvatarKey = existingUser?.avatarKey || ""
-         if (existingUser) {
-           if (existingUser.pinCode !== pinCode) {
-             UI.showAlert(I18n.t("incorrect_pin") || "Incorrect pin-code for this name");
-             return;
-           }
-         } else {
-           remoteData.users.push({ name: userName, pinCode });
-           avatarTouched = true
-           if (newCfg.cfWorkerUrl) {
-             try {
-               await CloudflareBackend.save(remoteData, newCfg);
-             } catch(err) {
-               console.warn(err);
-               UI.showAlert(err.message || (I18n.t("db_init_failed") || "Failed to initialize new provider. Staying on current one."));
-               return;
-             }
-           }
-         }
 
          const targetUser = remoteData.users.find(u => u.name === userName)
          if (targetUser) {
@@ -3064,7 +3122,12 @@ const App = {
 
          if (avatarTouched && newCfg.cfWorkerUrl) {
            try {
-             await CloudflareBackend.save(remoteData, newCfg)
+             const result = await CloudflareBackend.upsertUser({
+               name: userName,
+               avatarUrl: targetUser?.avatarUrl || "",
+               avatarKey: targetUser?.avatarKey || "",
+             }, newCfg)
+             remoteData.users = result.users || remoteData.users
              if (oldAvatarKey && (!targetUser?.avatarKey || oldAvatarKey !== targetUser.avatarKey)) {
                CloudflareBackend.deleteImage(oldAvatarKey, newCfg).catch(console.error)
              }

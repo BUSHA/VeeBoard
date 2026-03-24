@@ -1,15 +1,5 @@
-function decodeUserHeader(request) {
-  const sentUserEncoded = request.headers.get("X-Admin-User-Encoded");
-  let sentUser = request.headers.get("X-Admin-User");
-  if (sentUserEncoded) {
-    try {
-      sentUser = decodeURIComponent(sentUserEncoded);
-    } catch {
-      sentUser = sentUserEncoded;
-    }
-  }
-  return (sentUser || "").trim();
-}
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+const LEGACY_PBKDF2_ITERATIONS = 100000;
 
 function normalizeColumnShells(columns = []) {
   return JSON.stringify(columns.map((col) => ({
@@ -67,53 +57,21 @@ function normalizeComments(comments = []) {
   }));
 }
 
-function normalizeUserRecord(user = {}) {
+function normalizePublicUserRecord(user = {}) {
   return {
-    name: user.name || "",
-    pinCode: user.pinCode || "",
+    name: (user.name || "").trim(),
     avatarUrl: user.avatarUrl || "",
     avatarKey: user.avatarKey || "",
   };
 }
 
-function isAllowedSelfUserMutation(oldUsersList = [], newUsersList = [], currentUser = "") {
-  if (!currentUser) return false;
-
-  const oldUsers = oldUsersList.map(normalizeUserRecord);
-  const newUsers = newUsersList.map(normalizeUserRecord);
-  const oldByName = new Map(oldUsers.map((user) => [user.name, user]));
-  const newByName = new Map(newUsers.map((user) => [user.name, user]));
-
-  const added = newUsers.filter((user) => !oldByName.has(user.name));
-  const removed = oldUsers.filter((user) => !newByName.has(user.name));
-
-  const changed = [];
-  for (const oldUser of oldUsers) {
-    const next = newByName.get(oldUser.name);
-    if (!next) continue;
-    if (stableStringify(oldUser) !== stableStringify(next)) {
-      changed.push({ oldUser, newUser: next });
-    }
-  }
-
-  const isSelfRegistration =
-    added.length === 1 &&
-    removed.length === 0 &&
-    changed.length === 0 &&
-    added[0].name === currentUser;
-
-  if (isSelfRegistration) return true;
-
-  if (added.length !== 0 || removed.length !== 0 || changed.length !== 1) return false;
-
-  const { oldUser, newUser } = changed[0];
-  if (oldUser.name !== currentUser || newUser.name !== currentUser) return false;
-  if (oldUser.pinCode !== newUser.pinCode) return false;
-
-  return (
-    oldUser.name === newUser.name &&
-    oldUser.pinCode === newUser.pinCode
-  );
+function normalizeLegacyUserRecord(user = {}) {
+  return {
+    name: (user.name || "").trim(),
+    pinCode: user.pinCode || "",
+    avatarUrl: user.avatarUrl || "",
+    avatarKey: user.avatarKey || "",
+  };
 }
 
 function commentsChangeAllowed(oldComments = [], newComments = [], currentUser = "") {
@@ -147,17 +105,216 @@ function commentsChangeAllowed(oldComments = [], newComments = [], currentUser =
   return true;
 }
 
+function getApiKey(request, url) {
+  return request.headers.get("X-API-Key") || url.searchParams.get("apiKey");
+}
+
+function getBoardId(request, url) {
+  return request.headers.get("X-Board-ID") || url.searchParams.get("boardId") || "default";
+}
+
+function getUserToken(request, url) {
+  return request.headers.get("X-User-Token") || url.searchParams.get("token") || "";
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  bytes.forEach((b) => {
+    binary += String.fromCharCode(b);
+  });
+  return btoa(binary);
+}
+
+function base64ToBytes(value) {
+  return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+}
+
+async function hashPin(pinCode, saltBase64) {
+  const combined = `${saltBase64}:${pinCode}`;
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(combined));
+  return `sha256:${bytesToBase64(new Uint8Array(digest))}`;
+}
+
+async function hashPinLegacyPbkdf2(pinCode, saltBase64) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(pinCode),
+    { name: "PBKDF2" },
+    false,
+    ["deriveBits"]
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt: base64ToBytes(saltBase64),
+      iterations: LEGACY_PBKDF2_ITERATIONS,
+      hash: "SHA-256",
+    },
+    key,
+    256
+  );
+  return `pbkdf2:${bytesToBase64(new Uint8Array(bits))}`;
+}
+
+async function verifyPin(pinCode, saltBase64, storedHash) {
+  if (!storedHash) return false;
+  if (storedHash.startsWith("sha256:")) {
+    return (await hashPin(pinCode, saltBase64)) === storedHash;
+  }
+  if (storedHash.startsWith("pbkdf2:")) {
+    return (await hashPinLegacyPbkdf2(pinCode, saltBase64)) === storedHash;
+  }
+  const legacyRaw = await hashPinLegacyPbkdf2(pinCode, saltBase64);
+  return legacyRaw.slice("pbkdf2:".length) === storedHash;
+}
+
+async function makeCredential(pinCode) {
+  const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+  const saltBase64 = bytesToBase64(saltBytes);
+  const pinHash = await hashPin(pinCode, saltBase64);
+  return { pinHash, pinSalt: saltBase64 };
+}
+
+async function readBoardRow(env, boardId) {
+  return env.DB.prepare("SELECT data FROM boards WHERE id = ?").bind(boardId).first();
+}
+
+async function listPublicUsers(env, boardId) {
+  const result = await env.DB.prepare(
+    "SELECT name, avatar_url AS avatarUrl, avatar_key AS avatarKey FROM board_users WHERE board_id = ? ORDER BY name COLLATE NOCASE"
+  ).bind(boardId).all();
+  return (result.results || []).map(normalizePublicUserRecord);
+}
+
+async function getUserCredential(env, boardId, name) {
+  return env.DB.prepare(
+    "SELECT name, pin_hash AS pinHash, pin_salt AS pinSalt FROM board_user_credentials WHERE board_id = ? AND name = ?"
+  ).bind(boardId, name).first();
+}
+
+async function upsertUserRecord(env, boardId, user, pinCode = null) {
+  const normalized = normalizePublicUserRecord(user);
+  if (!normalized.name) throw new Error("User name is required");
+  const now = new Date().toISOString();
+
+  await env.DB.prepare(
+    "INSERT OR REPLACE INTO board_users (board_id, name, avatar_url, avatar_key, updated_at) VALUES (?, ?, ?, ?, ?)"
+  ).bind(boardId, normalized.name, normalized.avatarUrl, normalized.avatarKey, now).run();
+
+  if (typeof pinCode === "string" && pinCode.trim()) {
+    const { pinHash, pinSalt } = await makeCredential(pinCode.trim());
+    await env.DB.prepare(
+      "INSERT OR REPLACE INTO board_user_credentials (board_id, name, pin_hash, pin_salt, updated_at) VALUES (?, ?, ?, ?, ?)"
+    ).bind(boardId, normalized.name, pinHash, pinSalt, now).run();
+  }
+}
+
+async function renameUserRecords(env, boardId, previousName, nextName) {
+  if (!previousName || previousName === nextName) return;
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    "UPDATE board_users SET name = ?, updated_at = ? WHERE board_id = ? AND name = ?"
+  ).bind(nextName, now, boardId, previousName).run();
+  await env.DB.prepare(
+    "UPDATE board_user_credentials SET name = ?, updated_at = ? WHERE board_id = ? AND name = ?"
+  ).bind(nextName, now, boardId, previousName).run();
+}
+
+async function deleteUserRecords(env, boardId, name) {
+  await env.DB.prepare("DELETE FROM board_users WHERE board_id = ? AND name = ?").bind(boardId, name).run();
+  await env.DB.prepare("DELETE FROM board_user_credentials WHERE board_id = ? AND name = ?").bind(boardId, name).run();
+}
+
+async function createSession(env, boardId, userName) {
+  const token = crypto.randomUUID();
+  const now = Date.now();
+  const expiresAt = new Date(now + SESSION_TTL_MS).toISOString();
+  await env.DB.prepare(
+    "INSERT OR REPLACE INTO board_sessions (token, board_id, user_name, created_at, expires_at) VALUES (?, ?, ?, ?, ?)"
+  ).bind(token, boardId, userName, new Date(now).toISOString(), expiresAt).run();
+  return { token, expiresAt };
+}
+
+async function getSessionUser(env, boardId, token) {
+  if (!token) return "";
+  const row = await env.DB.prepare(
+    "SELECT user_name AS userName, expires_at AS expiresAt FROM board_sessions WHERE token = ? AND board_id = ?"
+  ).bind(token, boardId).first();
+  if (!row) return "";
+  if (row.expiresAt && Date.parse(row.expiresAt) <= Date.now()) {
+    await env.DB.prepare("DELETE FROM board_sessions WHERE token = ?").bind(token).run();
+    return "";
+  }
+  return (row.userName || "").trim();
+}
+
+async function ensureUserTablesFromLegacyBoard(env, boardId, state) {
+  const publicUsers = await listPublicUsers(env, boardId);
+  if (publicUsers.length > 0) return publicUsers;
+
+  const legacyUsers = Array.isArray(state?.users) ? state.users.map(normalizeLegacyUserRecord).filter((user) => user.name) : [];
+  if (!legacyUsers.length) return [];
+
+  for (const legacyUser of legacyUsers) {
+    await upsertUserRecord(env, boardId, legacyUser, legacyUser.pinCode || null);
+  }
+  return listPublicUsers(env, boardId);
+}
+
+function findLegacyUser(state, name) {
+  if (!Array.isArray(state?.users)) return null;
+  return state.users
+    .map(normalizeLegacyUserRecord)
+    .find((user) => user.name === name) || null;
+}
+
+function sanitizedState(state = {}, publicUsers = []) {
+  return {
+    ...state,
+    users: publicUsers.map(normalizePublicUserRecord),
+  };
+}
+
+async function loadSanitizedBoard(env, boardId) {
+  const row = await readBoardRow(env, boardId);
+  const rawState = row?.data ? JSON.parse(row.data) : null;
+  if (!rawState) return null;
+  const publicUsers = await ensureUserTablesFromLegacyBoard(env, boardId, rawState);
+  return sanitizedState(rawState, publicUsers);
+}
+
+async function persistBoardState(env, boardId, state) {
+  const data = JSON.stringify(state);
+  await env.DB.prepare(
+    "INSERT OR REPLACE INTO boards (id, data, updated_at) VALUES (?, ?, ?)"
+  ).bind(boardId, data, new Date().toISOString()).run();
+}
+
+async function parseJson(request) {
+  try {
+    return await request.json();
+  } catch {
+    throw new Error("Invalid JSON");
+  }
+}
+
+function jsonResponse(body, headers, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...headers, "Content-Type": "application/json" },
+  });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const path = url.pathname.replace(/\/+/g, "/"); // Normalize slashes
+    const path = url.pathname.replace(/\/+/g, "/");
     const method = request.method;
 
-    // Basic CORS
     const headers = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, X-Board-ID, X-API-Key, X-Admin-User, X-Admin-User-Encoded",
+      "Access-Control-Allow-Headers": "Content-Type, X-Board-ID, X-API-Key, X-Admin-User, X-Admin-User-Encoded, X-User-Token",
       "Access-Control-Expose-Headers": "X-Admin-User, X-Admin-User-Encoded",
     };
 
@@ -165,212 +322,275 @@ export default {
       return new Response(null, { headers });
     }
 
-    const boardId = request.headers.get("X-Board-ID") || url.searchParams.get("boardId") || "default";
-    const apiKey = request.headers.get("X-API-Key") || url.searchParams.get("apiKey");
+    const boardId = getBoardId(request, url);
+    const apiKey = getApiKey(request, url);
 
-    // Protection: If API_KEY is set in wrangler secrets, require it
     if (env.API_KEY && apiKey !== env.API_KEY) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { 
-        status: 401, 
-        headers: { ...headers, "Content-Type": "application/json" }
-      });
+      return jsonResponse({ error: "Unauthorized" }, headers, 401);
     }
 
     try {
       if (path === "/load" && method === "GET") {
-        const result = await env.DB.prepare(
-          "SELECT data FROM boards WHERE id = ?"
-        ).bind(boardId).first();
-        
-        const responseHeaders = { ...headers, "Content-Type": "application/json" };
+        const responseHeaders = { ...headers };
         if (env.ADMIN_USER) {
           responseHeaders["X-Admin-User-Encoded"] = encodeURIComponent(env.ADMIN_USER);
         }
+        const state = await loadSanitizedBoard(env, boardId);
+        return jsonResponse(state, responseHeaders);
+      }
 
-        return new Response(JSON.stringify(result ? JSON.parse(result.data) : null), { 
-          headers: responseHeaders 
-        });
+      if (path === "/auth" && method === "POST") {
+        const body = await parseJson(request);
+        const name = (body.name || "").trim();
+        const pinCode = (body.pinCode || "").trim();
+        if (!name || !pinCode) {
+          return jsonResponse({ error: "Name and PIN are required." }, headers, 400);
+        }
+
+        const credential = await getUserCredential(env, boardId, name);
+        if (credential) {
+          const isValid = await verifyPin(pinCode, credential.pinSalt, credential.pinHash);
+          if (!isValid) {
+            return jsonResponse({ error: "Incorrect pin-code for this name" }, headers, 403);
+          }
+        } else {
+          const existingRow = await readBoardRow(env, boardId);
+          const existingState = existingRow?.data ? JSON.parse(existingRow.data) : null;
+          const legacyUser = findLegacyUser(existingState, name);
+          if (legacyUser) {
+            if ((legacyUser.pinCode || "").trim() !== pinCode) {
+              return jsonResponse({ error: "Incorrect pin-code for this name" }, headers, 403);
+            }
+            await upsertUserRecord(env, boardId, legacyUser, pinCode);
+          } else {
+            if (env.ADMIN_USER && name === env.ADMIN_USER) {
+              return jsonResponse({ error: "Admin user must be provisioned separately." }, headers, 403);
+            }
+            await upsertUserRecord(env, boardId, { name }, pinCode);
+          }
+        }
+
+        const publicUsers = await listPublicUsers(env, boardId);
+        const publicUser = publicUsers.find((user) => user.name === name) || { name, avatarUrl: "", avatarKey: "" };
+        const session = await createSession(env, boardId, name);
+        return jsonResponse({
+          success: true,
+          user: publicUser,
+          token: session.token,
+          expiresAt: session.expiresAt,
+          isAdmin: !!env.ADMIN_USER && name === env.ADMIN_USER,
+        }, headers);
+      }
+
+      if (path === "/user" && method === "POST") {
+        const currentUser = await getSessionUser(env, boardId, getUserToken(request, url));
+        if (!currentUser) {
+          return jsonResponse({ error: "Unauthorized" }, headers, 401);
+        }
+
+        const body = await parseJson(request);
+        const previousName = (body.previousName || "").trim();
+        const nextName = (body.name || "").trim();
+        const pinCode = typeof body.pinCode === "string" ? body.pinCode.trim() : "";
+        const isAdmin = !!env.ADMIN_USER && currentUser === env.ADMIN_USER;
+
+        if (!nextName) {
+          return jsonResponse({ error: "User name is required." }, headers, 400);
+        }
+
+        if (!isAdmin) {
+          if (previousName && previousName !== currentUser) {
+            return jsonResponse({ error: "Only admin can modify other users." }, headers, 403);
+          }
+          if (nextName !== currentUser) {
+            return jsonResponse({ error: "Only admin can rename users." }, headers, 403);
+          }
+          if (pinCode) {
+            return jsonResponse({ error: "Only admin can change pin-codes." }, headers, 403);
+          }
+        }
+
+        if (env.ADMIN_USER) {
+          if ((previousName === env.ADMIN_USER && nextName !== env.ADMIN_USER) || (nextName === env.ADMIN_USER && previousName !== env.ADMIN_USER)) {
+            return jsonResponse({ error: "Admin user name cannot be renamed." }, headers, 403);
+          }
+        }
+
+        if (isAdmin && previousName && previousName !== nextName) {
+          await renameUserRecords(env, boardId, previousName, nextName);
+        }
+        await upsertUserRecord(env, boardId, body, pinCode || null);
+
+        return jsonResponse({ success: true, users: await listPublicUsers(env, boardId) }, headers);
+      }
+
+      if (path === "/user" && method === "DELETE") {
+        const currentUser = await getSessionUser(env, boardId, getUserToken(request, url));
+        if (!currentUser || !env.ADMIN_USER || currentUser !== env.ADMIN_USER) {
+          return jsonResponse({ error: "Only admin can delete users." }, headers, 403);
+        }
+        const name = (url.searchParams.get("name") || "").trim();
+        if (!name) {
+          return jsonResponse({ error: "Missing user name." }, headers, 400);
+        }
+        if (name === env.ADMIN_USER) {
+          return jsonResponse({ error: "Admin user cannot be deleted." }, headers, 403);
+        }
+        await deleteUserRecords(env, boardId, name);
+        return jsonResponse({ success: true, users: await listPublicUsers(env, boardId) }, headers);
       }
 
       if (path === "/save" && method === "POST") {
-        const body = await request.json();
-        
-        // Basic Security Check: only admin can modify the `users` array
-        if (env.ADMIN_USER) {
-          const sentAdminUser = decodeUserHeader(request);
-          const existingRow = await env.DB.prepare(
-            "SELECT data FROM boards WHERE id = ?"
-          ).bind(boardId).first();
-          
-          if (existingRow && existingRow.data) {
-            const existingData = JSON.parse(existingRow.data);
-            const oldUsersList = existingData.users || [];
-            const newUsersList = body.users || [];
-            const oldUsers = stableStringify(oldUsersList.map(normalizeUserRecord));
-            const newUsers = stableStringify(newUsersList.map(normalizeUserRecord));
-            
-            if (oldUsers !== newUsers && sentAdminUser !== env.ADMIN_USER) {
-              if (!isAllowedSelfUserMutation(oldUsersList, newUsersList, sentAdminUser)) {
-                return new Response(JSON.stringify({ error: "Only admin can modify users list." }), { 
-                  status: 403, 
-                  headers: { ...headers, "Content-Type": "application/json" } 
-                });
+        const currentUser = await getSessionUser(env, boardId, getUserToken(request, url));
+        if (!currentUser) {
+          return jsonResponse({ error: "Unauthorized" }, headers, 401);
+        }
+
+        const body = await parseJson(request);
+        const existingRow = await readBoardRow(env, boardId);
+        const existingRawState = existingRow?.data ? JSON.parse(existingRow.data) : null;
+        if (existingRawState) {
+          await ensureUserTablesFromLegacyBoard(env, boardId, existingRawState);
+        }
+        const existingState = existingRawState
+          ? sanitizedState(existingRawState, await listPublicUsers(env, boardId))
+          : { columns: [], users: [] };
+        const sentUsers = Array.isArray(body.users) ? body.users.map(normalizePublicUserRecord) : [];
+        let currentUsers = await listPublicUsers(env, boardId);
+        if (!existingRawState && Array.isArray(body.users) && body.users.length) {
+          for (const legacyUser of body.users.map(normalizeLegacyUserRecord).filter((user) => user.name)) {
+            await upsertUserRecord(env, boardId, legacyUser, legacyUser.pinCode || null);
+          }
+          currentUsers = await listPublicUsers(env, boardId);
+        }
+        const sentUsersStable = stableStringify(sentUsers);
+        const currentUsersStable = stableStringify(currentUsers);
+        const isAdmin = !!env.ADMIN_USER && currentUser === env.ADMIN_USER;
+
+        if (sentUsersStable !== currentUsersStable && !isAdmin) {
+          return jsonResponse({ error: "Only admin can modify users list." }, headers, 403);
+        }
+
+        if (!isAdmin) {
+          if (normalizeColumnShells(existingState.columns) !== normalizeColumnShells(body.columns)) {
+            return jsonResponse({ error: "Only admin can modify board structure." }, headers, 403);
+          }
+
+          const oldCards = flattenCards(existingState);
+          const newCards = flattenCards(body);
+
+          for (const [cardId, oldEntry] of oldCards.entries()) {
+            const newEntry = newCards.get(cardId);
+            const oldOwner = (oldEntry.card.createdBy || "").trim();
+            const oldAssignee = (oldEntry.card.assignedUser?.name || "").trim();
+
+            if (!newEntry) {
+              if (oldOwner !== currentUser) {
+                return jsonResponse({ error: "You can edit or delete only your own cards." }, headers, 403);
+              }
+              continue;
+            }
+
+            const commentsChanged =
+              stableStringify(normalizeComments(oldEntry.card.comments)) !==
+              stableStringify(normalizeComments(newEntry.card.comments));
+
+            if (commentsChanged && !commentsChangeAllowed(oldEntry.card.comments, newEntry.card.comments, currentUser)) {
+              return jsonResponse({ error: "You can edit or delete only your own comments." }, headers, 403);
+            }
+
+            const cardChanged =
+              JSON.stringify(oldEntry.card) !== JSON.stringify(newEntry.card) ||
+              oldEntry.colId !== newEntry.colId ||
+              oldEntry.index !== newEntry.index;
+
+            if (cardChanged && oldOwner !== currentUser) {
+              const contentChanged =
+                stableStringify(comparableCardContent(oldEntry.card)) !==
+                stableStringify(comparableCardContent(newEntry.card));
+              const columnChanged = oldEntry.colId !== newEntry.colId;
+              const indexChanged = oldEntry.index !== newEntry.index;
+              const passiveReindexOnly =
+                !contentChanged &&
+                !commentsChanged &&
+                !columnChanged &&
+                indexChanged;
+              const moveOnly =
+                !contentChanged &&
+                !commentsChanged &&
+                columnChanged &&
+                oldAssignee === currentUser;
+              const commentsOnly =
+                !contentChanged &&
+                !columnChanged &&
+                !indexChanged &&
+                commentsChanged &&
+                commentsChangeAllowed(oldEntry.card.comments, newEntry.card.comments, currentUser);
+              const moveWithAllowedComments =
+                !contentChanged &&
+                columnChanged &&
+                commentsChanged &&
+                oldAssignee === currentUser &&
+                commentsChangeAllowed(oldEntry.card.comments, newEntry.card.comments, currentUser);
+
+              if (!moveOnly && !passiveReindexOnly && !commentsOnly && !moveWithAllowedComments) {
+                return jsonResponse({ error: "You can edit or delete only your own cards." }, headers, 403);
               }
             }
 
-            if (sentAdminUser !== env.ADMIN_USER) {
-              if (normalizeColumnShells(existingData.columns) !== normalizeColumnShells(body.columns)) {
-                return new Response(JSON.stringify({ error: "Only admin can modify board structure." }), {
-                  status: 403,
-                  headers: { ...headers, "Content-Type": "application/json" }
-                });
-              }
+            if ((newEntry.card.createdBy || "").trim() !== oldOwner) {
+              return jsonResponse({ error: "Card author cannot be changed." }, headers, 403);
+            }
+          }
 
-              const oldCards = flattenCards(existingData);
-              const newCards = flattenCards(body);
-
-              for (const [cardId, oldEntry] of oldCards.entries()) {
-                const newEntry = newCards.get(cardId);
-                const oldOwner = (oldEntry.card.createdBy || "").trim();
-                const oldAssignee = (oldEntry.card.assignedUser?.name || "").trim();
-
-                if (!newEntry) {
-                  if (oldOwner !== sentAdminUser) {
-                    return new Response(JSON.stringify({ error: "You can edit or delete only your own cards." }), {
-                      status: 403,
-                      headers: { ...headers, "Content-Type": "application/json" }
-                    });
-                  }
-                  continue;
-                }
-
-                const commentsChanged =
-                  stableStringify(normalizeComments(oldEntry.card.comments)) !==
-                  stableStringify(normalizeComments(newEntry.card.comments));
-
-                if (commentsChanged && !commentsChangeAllowed(oldEntry.card.comments, newEntry.card.comments, sentAdminUser)) {
-                  return new Response(JSON.stringify({ error: "You can edit or delete only your own comments." }), {
-                    status: 403,
-                    headers: { ...headers, "Content-Type": "application/json" }
-                  });
-                }
-
-                const cardChanged =
-                  JSON.stringify(oldEntry.card) !== JSON.stringify(newEntry.card) ||
-                  oldEntry.colId !== newEntry.colId ||
-                  oldEntry.index !== newEntry.index;
-
-                if (cardChanged && oldOwner !== sentAdminUser) {
-                  const contentChanged =
-                    stableStringify(comparableCardContent(oldEntry.card)) !==
-                    stableStringify(comparableCardContent(newEntry.card));
-                  const columnChanged = oldEntry.colId !== newEntry.colId;
-                  const indexChanged = oldEntry.index !== newEntry.index;
-                  const passiveReindexOnly =
-                    !contentChanged &&
-                    !commentsChanged &&
-                    !columnChanged &&
-                    indexChanged;
-                  const moveOnly =
-                    !contentChanged &&
-                    !commentsChanged &&
-                    columnChanged &&
-                    oldAssignee === sentAdminUser;
-                  const commentsOnly =
-                    !contentChanged &&
-                    !columnChanged &&
-                    !indexChanged &&
-                    commentsChanged &&
-                    commentsChangeAllowed(oldEntry.card.comments, newEntry.card.comments, sentAdminUser);
-                  const moveWithAllowedComments =
-                    !contentChanged &&
-                    columnChanged &&
-                    commentsChanged &&
-                    oldAssignee === sentAdminUser &&
-                    commentsChangeAllowed(oldEntry.card.comments, newEntry.card.comments, sentAdminUser);
-
-                  if (!moveOnly && !passiveReindexOnly && !commentsOnly && !moveWithAllowedComments) {
-                    return new Response(JSON.stringify({ error: "You can edit or delete only your own cards." }), {
-                      status: 403,
-                      headers: { ...headers, "Content-Type": "application/json" }
-                    });
-                  }
-                }
-
-                if ((newEntry.card.createdBy || "").trim() !== oldOwner) {
-                  return new Response(JSON.stringify({ error: "Card author cannot be changed." }), {
-                    status: 403,
-                    headers: { ...headers, "Content-Type": "application/json" }
-                  });
-                }
-              }
-
-              for (const [cardId, newEntry] of newCards.entries()) {
-                if (oldCards.has(cardId)) continue;
-                if ((newEntry.card.createdBy || "").trim() !== sentAdminUser) {
-                  return new Response(JSON.stringify({ error: "New cards must belong to the current user." }), {
-                    status: 403,
-                    headers: { ...headers, "Content-Type": "application/json" }
-                  });
-                }
-                const newComments = normalizeComments(newEntry.card.comments);
-                if (newComments.some((comment) => (comment.author || "").trim() !== sentAdminUser)) {
-                  return new Response(JSON.stringify({ error: "You can add only your own comments." }), {
-                    status: 403,
-                    headers: { ...headers, "Content-Type": "application/json" }
-                  });
-                }
-              }
+          for (const [cardId, newEntry] of newCards.entries()) {
+            if (oldCards.has(cardId)) continue;
+            if ((newEntry.card.createdBy || "").trim() !== currentUser) {
+              return jsonResponse({ error: "New cards must belong to the current user." }, headers, 403);
+            }
+            const newComments = normalizeComments(newEntry.card.comments);
+            if (newComments.some((comment) => (comment.author || "").trim() !== currentUser)) {
+              return jsonResponse({ error: "You can add only your own comments." }, headers, 403);
             }
           }
         }
-        
-        const data = JSON.stringify(body);
-        
-        await env.DB.prepare(
-          "INSERT OR REPLACE INTO boards (id, data, updated_at) VALUES (?, ?, ?)"
-        ).bind(boardId, data, new Date().toISOString()).run();
-        
-        return new Response(JSON.stringify({ success: true }), { 
-          headers: { ...headers, "Content-Type": "application/json" } 
-        });
+
+        const nextState = sanitizedState(body, currentUsers);
+        await persistBoardState(env, boardId, nextState);
+        return jsonResponse({ success: true }, headers);
       }
 
       if (path === "/upload" && method === "POST") {
         if (!env.BUCKET) return new Response("R2 Bucket not configured", { status: 500, headers });
-        
+        const currentUser = await getSessionUser(env, boardId, getUserToken(request, url));
+        if (!currentUser) return jsonResponse({ error: "Unauthorized" }, headers, 401);
+
         const contentType = request.headers.get("content-type") || "";
         if (!contentType.startsWith("image/")) {
           return new Response("Only images are allowed", { status: 400, headers });
         }
 
-        const contentLength = parseInt(request.headers.get("content-length") || "0");
-        if (contentLength > 1 * 1024 * 1024) { // 1MB limit
+        const contentLength = parseInt(request.headers.get("content-length") || "0", 10);
+        if (contentLength > 1 * 1024 * 1024) {
           return new Response("Image too large (max 1MB)", { status: 413, headers });
         }
 
         const extension = contentType.split("/")[1] || "png";
         const filename = `${boardId}/${crypto.randomUUID()}.${extension}`;
         const blob = await request.blob();
-        
+
         await env.BUCKET.put(filename, blob, {
           httpMetadata: { contentType },
         });
 
-        // We return the relative path. The frontend will prepend the worker URL if needed,
-        // or we can return a full URL if R2 is public.
-        // For simplicity, let's return the URL that can be used to GET the file from this worker.
         const fileUrl = `${url.origin}/image?key=${encodeURIComponent(filename)}&boardId=${encodeURIComponent(boardId)}${env.API_KEY ? `&apiKey=${encodeURIComponent(apiKey)}` : ""}`;
-        
-        return new Response(JSON.stringify({ url: fileUrl, key: filename }), { 
-          headers: { ...headers, "Content-Type": "application/json" } 
-        });
+        return jsonResponse({ url: fileUrl, key: filename }, headers);
       }
 
       if (path === "/image" && method === "GET") {
         const key = url.searchParams.get("key");
         if (!key) return new Response("Missing key", { status: 400, headers });
-        
+
         const object = await env.BUCKET.get(key);
         if (!object) return new Response("Not Found", { status: 404, headers });
 
@@ -378,31 +598,25 @@ export default {
         object.writeHttpMetadata(imageHeaders);
         imageHeaders.set("etag", object.httpEtag);
         imageHeaders.set("Cache-Control", "public, max-age=31536000");
-
         return new Response(object.body, { headers: imageHeaders });
       }
 
       if (path === "/delete-image" && method === "DELETE") {
         const key = url.searchParams.get("key");
         if (!key) return new Response("Missing key", { status: 400, headers });
-        
-        // Ensure the key belongs to this board (basic security)
+        const currentUser = await getSessionUser(env, boardId, getUserToken(request, url));
+        if (!currentUser) return jsonResponse({ error: "Unauthorized" }, headers, 401);
         if (!key.startsWith(`${boardId}/`)) {
           return new Response("Unauthorized", { status: 401, headers });
         }
 
         await env.BUCKET.delete(key);
-        return new Response(JSON.stringify({ success: true }), { 
-          headers: { ...headers, "Content-Type": "application/json" } 
-        });
+        return jsonResponse({ success: true }, headers);
       }
 
       return new Response("Not Found", { status: 404, headers });
     } catch (err) {
-      return new Response(JSON.stringify({ error: err.message }), { 
-        status: 500, 
-        headers: { ...headers, "Content-Type": "application/json" } 
-      });
+      return jsonResponse({ error: err.message }, headers, 500);
     }
   },
 };
