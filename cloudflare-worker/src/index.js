@@ -106,10 +106,6 @@ function commentsChangeAllowed(oldComments = [], newComments = [], currentUser =
   return true;
 }
 
-function getApiKey(request, url) {
-  return request.headers.get("X-API-Key") || url.searchParams.get("apiKey");
-}
-
 function getBoardId(request, url) {
   return request.headers.get("X-Board-ID") || url.searchParams.get("boardId") || "default";
 }
@@ -327,7 +323,7 @@ export default {
     const headers = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, X-Board-ID, X-API-Key, X-User-Token",
+      "Access-Control-Allow-Headers": "Content-Type, X-Board-ID, X-User-Token",
     };
 
     if (method === "OPTIONS") {
@@ -335,11 +331,6 @@ export default {
     }
 
     const boardId = getBoardId(request, url);
-    const apiKey = getApiKey(request, url);
-
-    if (env.API_KEY && apiKey !== env.API_KEY) {
-      return jsonResponse({ error: "Unauthorized" }, headers, 401);
-    }
 
     try {
       if (path === "/load" && method === "GET") {
@@ -596,7 +587,7 @@ export default {
           httpMetadata: { contentType },
         });
 
-        const fileUrl = `${url.origin}/image?key=${encodeURIComponent(filename)}&boardId=${encodeURIComponent(boardId)}${env.API_KEY ? `&apiKey=${encodeURIComponent(apiKey)}` : ""}`;
+        const fileUrl = `${url.origin}/image?key=${encodeURIComponent(filename)}&boardId=${encodeURIComponent(boardId)}`;
         return jsonResponse({ url: fileUrl, key: filename }, headers);
       }
 

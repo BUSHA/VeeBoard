@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.9.1"
+  version: "0.9.2"
 }
 
 /* Live sync echo guard */
@@ -237,7 +237,6 @@ const DbSettings = {
         provider: "local", // 'local', 'cloudflare'
         cfWorkerUrl: "",
         cfBoardId: "default",
-        cfApiKey: "",
         cfUserName: "",
         cfPinCode: "",
         cfUserToken: ""
@@ -251,7 +250,7 @@ const DbSettings = {
       
       return { ...defaults, ...saved }
     } catch {
-      return { provider: "local", cfWorkerUrl: "", cfBoardId: "default", cfApiKey: "", cfUserName: "", cfPinCode: "", cfUserToken: "" }
+      return { provider: "local", cfWorkerUrl: "", cfBoardId: "default", cfUserName: "", cfPinCode: "", cfUserToken: "" }
     }
   },
   set(v) {
@@ -310,7 +309,6 @@ const CloudflareBackend = {
   buildHeaders(config, extra = {}) {
     const headers = {
       "X-Board-ID": config.cfBoardId || "default",
-      "X-API-Key": config.cfApiKey || "",
       ...extra,
     }
     if (config.cfUserToken) {
@@ -413,10 +411,10 @@ const CloudflareBackend = {
     return data
   },
   async deleteUser(name, config) {
-    let { cfWorkerUrl, cfBoardId, cfApiKey } = config
+    let { cfWorkerUrl, cfBoardId } = config
     if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
     cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
-    const response = await fetch(`${cfWorkerUrl}/user?name=${encodeURIComponent(name)}&boardId=${encodeURIComponent(cfBoardId || "default")}${cfApiKey ? `&apiKey=${encodeURIComponent(cfApiKey)}` : ""}`, {
+    const response = await fetch(`${cfWorkerUrl}/user?name=${encodeURIComponent(name)}&boardId=${encodeURIComponent(cfBoardId || "default")}`, {
       method: "DELETE",
       headers: this.buildHeaders(config),
     })
@@ -2974,7 +2972,6 @@ const App = {
     const cloudflareSettings = Utils.qs("#cloudflareSettings", dbDialog)
     const cfUrlInput = Utils.qs("#cfWorkerUrl", dbDialog)
     const cfIdInput = Utils.qs("#cfBoardId", dbDialog)
-    const cfKeyInput = Utils.qs("#cfApiKey", dbDialog)
     const profileAvatarInput = Utils.qs("#profileAvatarInput", dbDialog)
     const changeAvatarBtn = Utils.qs("#changeAvatarBtn", dbDialog)
     const removeAvatarBtn = Utils.qs("#removeAvatarBtn", dbDialog)
@@ -2992,7 +2989,6 @@ const App = {
       const cfg = DbSettings.get()
       cfUrlInput.value = cfg.cfWorkerUrl || ""
       cfIdInput.value = cfg.cfBoardId || ""
-      cfKeyInput.value = cfg.cfApiKey || ""
       
       const cfUserNameInput = Utils.qs("#cfUserName", dbDialog)
       const cfPinCodeInput = Utils.qs("#cfPinCode", dbDialog)
@@ -3048,7 +3044,6 @@ const App = {
         provider,
         cfWorkerUrl: cfUrlInput.value.trim(),
         cfBoardId: cfIdInput.value.trim() || "default",
-        cfApiKey: cfKeyInput.value.trim()
       }
 
       if (provider === "cloudflare") {
