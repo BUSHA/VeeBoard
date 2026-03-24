@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.9.0"
+  version: "0.9.1"
 }
 
 /* Live sync echo guard */
@@ -327,18 +327,6 @@ const CloudflareBackend = {
       headers: this.buildHeaders(config)
     })
     if (!response.ok) throw new Error("Cloudflare load failed")
-    
-    const encodedAdminUser = response.headers.get("X-Admin-User-Encoded")
-    if (encodedAdminUser) {
-      try {
-        Store.adminUser = decodeURIComponent(encodedAdminUser)
-      } catch {
-        Store.adminUser = encodedAdminUser
-      }
-    } else {
-      Store.adminUser = response.headers.get("X-Admin-User") || null
-    }
-    if (typeof UI !== "undefined" && UI.updateAdminPanelVisibility) UI.updateAdminPanelVisibility()
 
     return await response.json()
   },
@@ -444,6 +432,7 @@ const CloudflareBackend = {
  */
 const Store = {
   STORAGE_KEY: "vee-board-state-v1",
+  isAdmin: false,
   state: {
     columns: [],
     users: [],
@@ -495,7 +484,9 @@ const Store = {
       ...user,
       avatarUrl: user.avatarUrl || "",
       avatarKey: user.avatarKey || "",
+      isAdmin: !!user.isAdmin,
     }))
+    this.isAdmin = !!this.findUserByName(this.getCurrentUserName())?.isAdmin
 
     this.state.columns.forEach((col) => {
       col.cards.forEach((card) => this.normalizeCard(card))
@@ -583,9 +574,7 @@ const Store = {
 
   isCurrentUserAdmin() {
     const cfg = DbSettings.get()
-    return cfg.provider === "cloudflare" &&
-      !!Store.adminUser &&
-      (cfg.cfUserName || "").trim() === Store.adminUser
+    return cfg.provider === "cloudflare" && !!this.isAdmin
   },
 
   canCurrentUserEditCard(card) {
@@ -1143,12 +1132,8 @@ const UI = {
     const adminBtn = Utils.qs("#adminPanelBtn");
     if (!adminBtn) return;
     const cfg = DbSettings.get();
-    
-    const isCloudflare = cfg.provider === "cloudflare";
-    const remoteAdmin = Store.adminUser ? Store.adminUser.trim().toLowerCase() : null;
-    const localUser = cfg.cfUserName ? cfg.cfUserName.trim().toLowerCase() : null;
-    
-    if (isCloudflare && remoteAdmin && localUser && remoteAdmin === localUser) {
+
+    if (cfg.provider === "cloudflare" && Store.isAdmin) {
       adminBtn.style.display = "block";
     } else {
       adminBtn.style.display = "none";
@@ -1210,7 +1195,7 @@ const UI = {
     
     // Security check to prevent rendering if not admin
     const cfg = DbSettings.get();
-    if (cfg.provider !== "cloudflare" || !Store.adminUser || cfg.cfUserName !== Store.adminUser) {
+    if (cfg.provider !== "cloudflare" || !Store.isAdmin) {
       return;
     }
 
@@ -2954,7 +2939,7 @@ const App = {
     if (adminPanelBtn && adminDialog) {
       adminPanelBtn.addEventListener("click", (e) => {
         const cfg = DbSettings.get();
-        if (cfg.provider !== "cloudflare" || !Store.adminUser || cfg.cfUserName !== Store.adminUser) {
+        if (cfg.provider !== "cloudflare" || !Store.isAdmin) {
           e.preventDefault();
           e.stopPropagation();
           return;
@@ -3078,6 +3063,7 @@ const App = {
          try {
            const auth = await CloudflareBackend.authenticate(newCfg, userName, pinCode)
            newCfg.cfUserToken = auth.token || ""
+           Store.isAdmin = !!auth.isAdmin
          } catch (err) {
            UI.showAlert(err.message || (I18n.t("incorrect_pin") || "Incorrect pin-code for this name"))
            return

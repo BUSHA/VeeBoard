@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS board_users (
   name TEXT NOT NULL,
   avatar_url TEXT DEFAULT '',
   avatar_key TEXT DEFAULT '',
+  is_admin INTEGER DEFAULT 0,
   updated_at TEXT,
   PRIMARY KEY (board_id, name)
 );

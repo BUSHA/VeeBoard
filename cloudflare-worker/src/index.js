@@ -62,6 +62,7 @@ function normalizePublicUserRecord(user = {}) {
     name: (user.name || "").trim(),
     avatarUrl: user.avatarUrl || "",
     avatarKey: user.avatarKey || "",
+    isAdmin: !!user.isAdmin,
   };
 }
 
@@ -181,9 +182,16 @@ async function readBoardRow(env, boardId) {
 
 async function listPublicUsers(env, boardId) {
   const result = await env.DB.prepare(
-    "SELECT name, avatar_url AS avatarUrl, avatar_key AS avatarKey FROM board_users WHERE board_id = ? ORDER BY name COLLATE NOCASE"
+    "SELECT name, avatar_url AS avatarUrl, avatar_key AS avatarKey, is_admin AS isAdmin FROM board_users WHERE board_id = ? ORDER BY name COLLATE NOCASE"
   ).bind(boardId).all();
   return (result.results || []).map(normalizePublicUserRecord);
+}
+
+async function getPublicUser(env, boardId, name) {
+  const row = await env.DB.prepare(
+    "SELECT name, avatar_url AS avatarUrl, avatar_key AS avatarKey, is_admin AS isAdmin FROM board_users WHERE board_id = ? AND name = ?"
+  ).bind(boardId, name).first();
+  return row ? normalizePublicUserRecord(row) : null;
 }
 
 async function getUserCredential(env, boardId, name) {
@@ -198,8 +206,8 @@ async function upsertUserRecord(env, boardId, user, pinCode = null) {
   const now = new Date().toISOString();
 
   await env.DB.prepare(
-    "INSERT OR REPLACE INTO board_users (board_id, name, avatar_url, avatar_key, updated_at) VALUES (?, ?, ?, ?, ?)"
-  ).bind(boardId, normalized.name, normalized.avatarUrl, normalized.avatarKey, now).run();
+    "INSERT OR REPLACE INTO board_users (board_id, name, avatar_url, avatar_key, is_admin, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(boardId, normalized.name, normalized.avatarUrl, normalized.avatarKey, normalized.isAdmin ? 1 : 0, now).run();
 
   if (typeof pinCode === "string" && pinCode.trim()) {
     const { pinHash, pinSalt } = await makeCredential(pinCode.trim());
@@ -246,6 +254,11 @@ async function getSessionUser(env, boardId, token) {
     return "";
   }
   return (row.userName || "").trim();
+}
+
+async function isUserAdmin(env, boardId, name) {
+  const user = await getPublicUser(env, boardId, name);
+  return !!user?.isAdmin;
 }
 
 async function ensureUserTablesFromLegacyBoard(env, boardId, state) {
@@ -314,8 +327,7 @@ export default {
     const headers = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, X-Board-ID, X-API-Key, X-Admin-User, X-Admin-User-Encoded, X-User-Token",
-      "Access-Control-Expose-Headers": "X-Admin-User, X-Admin-User-Encoded",
+      "Access-Control-Allow-Headers": "Content-Type, X-Board-ID, X-API-Key, X-User-Token",
     };
 
     if (method === "OPTIONS") {
@@ -331,12 +343,8 @@ export default {
 
     try {
       if (path === "/load" && method === "GET") {
-        const responseHeaders = { ...headers };
-        if (env.ADMIN_USER) {
-          responseHeaders["X-Admin-User-Encoded"] = encodeURIComponent(env.ADMIN_USER);
-        }
         const state = await loadSanitizedBoard(env, boardId);
-        return jsonResponse(state, responseHeaders);
+        return jsonResponse(state, headers);
       }
 
       if (path === "/auth" && method === "POST") {
@@ -363,22 +371,18 @@ export default {
             }
             await upsertUserRecord(env, boardId, legacyUser, pinCode);
           } else {
-            if (env.ADMIN_USER && name === env.ADMIN_USER) {
-              return jsonResponse({ error: "Admin user must be provisioned separately." }, headers, 403);
-            }
             await upsertUserRecord(env, boardId, { name }, pinCode);
           }
         }
 
-        const publicUsers = await listPublicUsers(env, boardId);
-        const publicUser = publicUsers.find((user) => user.name === name) || { name, avatarUrl: "", avatarKey: "" };
+        const publicUser = await getPublicUser(env, boardId, name) || { name, avatarUrl: "", avatarKey: "", isAdmin: false };
         const session = await createSession(env, boardId, name);
         return jsonResponse({
           success: true,
           user: publicUser,
           token: session.token,
           expiresAt: session.expiresAt,
-          isAdmin: !!env.ADMIN_USER && name === env.ADMIN_USER,
+          isAdmin: !!publicUser.isAdmin,
         }, headers);
       }
 
@@ -392,7 +396,7 @@ export default {
         const previousName = (body.previousName || "").trim();
         const nextName = (body.name || "").trim();
         const pinCode = typeof body.pinCode === "string" ? body.pinCode.trim() : "";
-        const isAdmin = !!env.ADMIN_USER && currentUser === env.ADMIN_USER;
+        const isAdmin = await isUserAdmin(env, boardId, currentUser);
 
         if (!nextName) {
           return jsonResponse({ error: "User name is required." }, headers, 400);
@@ -410,30 +414,39 @@ export default {
           }
         }
 
-        if (env.ADMIN_USER) {
-          if ((previousName === env.ADMIN_USER && nextName !== env.ADMIN_USER) || (nextName === env.ADMIN_USER && previousName !== env.ADMIN_USER)) {
-            return jsonResponse({ error: "Admin user name cannot be renamed." }, headers, 403);
-          }
+        const previousUser = previousName ? await getPublicUser(env, boardId, previousName) : null;
+        if (previousUser?.isAdmin && previousName && previousName !== nextName) {
+          return jsonResponse({ error: "Admin user name cannot be renamed." }, headers, 403);
         }
+        if (!isAdmin && body.isAdmin !== undefined) {
+          return jsonResponse({ error: "Only admin can change admin role." }, headers, 403);
+        }
+        const existingTargetUser = await getPublicUser(env, boardId, nextName);
+        const nextUserPayload = {
+          ...body,
+          isAdmin: body.isAdmin !== undefined
+            ? !!body.isAdmin
+            : !!(previousUser?.isAdmin || existingTargetUser?.isAdmin),
+        };
 
         if (isAdmin && previousName && previousName !== nextName) {
           await renameUserRecords(env, boardId, previousName, nextName);
         }
-        await upsertUserRecord(env, boardId, body, pinCode || null);
+        await upsertUserRecord(env, boardId, nextUserPayload, pinCode || null);
 
         return jsonResponse({ success: true, users: await listPublicUsers(env, boardId) }, headers);
       }
 
       if (path === "/user" && method === "DELETE") {
         const currentUser = await getSessionUser(env, boardId, getUserToken(request, url));
-        if (!currentUser || !env.ADMIN_USER || currentUser !== env.ADMIN_USER) {
+        if (!currentUser || !(await isUserAdmin(env, boardId, currentUser))) {
           return jsonResponse({ error: "Only admin can delete users." }, headers, 403);
         }
         const name = (url.searchParams.get("name") || "").trim();
         if (!name) {
           return jsonResponse({ error: "Missing user name." }, headers, 400);
         }
-        if (name === env.ADMIN_USER) {
+        if (await isUserAdmin(env, boardId, name)) {
           return jsonResponse({ error: "Admin user cannot be deleted." }, headers, 403);
         }
         await deleteUserRecords(env, boardId, name);
@@ -465,7 +478,7 @@ export default {
         }
         const sentUsersStable = stableStringify(sentUsers);
         const currentUsersStable = stableStringify(currentUsers);
-        const isAdmin = !!env.ADMIN_USER && currentUser === env.ADMIN_USER;
+        const isAdmin = await isUserAdmin(env, boardId, currentUser);
 
         if (sentUsersStable !== currentUsersStable && !isAdmin) {
           return jsonResponse({ error: "Only admin can modify users list." }, headers, 403);
