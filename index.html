@@ -112,16 +112,16 @@
         <span><kbd>Cmd/Ctrl</kbd> + <kbd>K</kbd> - <span data-i18n="hotkey_remove_link">remove link</span></span>
       </div>
       <div class="editor-form-row">
-        <label data-i18n="tags_label">Tags (comma-separated)
+        <label class="editor-meta-tags" data-i18n="tags_label">Tags (comma-separated)
           <div class="tags-input-wrapper">
             <input name="tags" placeholder="ui, bug, research" autocomplete="off" data-i18n-placeholder="tags_placeholder" />
             <div id="tagAutocomplete" class="autocomplete-suggestions"></div>
           </div>
         </label>
-        <label data-i18n="due_date_label">Due date
+        <label class="editor-meta-due" data-i18n="due_date_label">Due date
           <input name="due" type="datetime-local" />
         </label>
-        <label data-i18n="assigned_user_label">Assigned user
+        <label class="editor-meta-user" data-i18n="assigned_user_label">Assigned user
           <div class="user-input-wrapper">
             <input name="user" placeholder="Type name..." autocomplete="off" data-i18n-placeholder="users_placeholder" />
             <button type="button" id="clearUserBtn" class="clear-input-btn" title="Clear user" aria-label="Clear user">&times;</button>

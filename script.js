@@ -1102,7 +1102,6 @@ const UI = {
 
     return columns
   },
-
   updateAdminPanelVisibility() {
     const adminBtn = Utils.qs("#adminPanelBtn");
     if (!adminBtn) return;
@@ -2247,8 +2246,8 @@ const Dnd = {
   // Suppress click after drag to prevent unwanted card editing
   suppressClick: false,
   // Touch drag configuration
-  touchLongPressMs: 300, // delay before drag can start on touch
-  touchCancelThreshold: 10, // px of movement before long-press that cancels potential drag
+  touchLongPressMs: 450, // delay before drag can start on touch
+  touchCancelThreshold: 14, // px of movement before long-press that cancels potential drag
 
   // --- AutoScroll ---
   startAutoScroll() {
@@ -2321,6 +2320,8 @@ const Dnd = {
       cardEl,
       startX: e.clientX,
       startY: e.clientY,
+      lastX: e.clientX,
+      lastY: e.clientY,
       offsetX: e.clientX - rect.left,
       offsetY: e.clientY - rect.top,
       started: false,
@@ -2339,7 +2340,11 @@ const Dnd = {
     if (isTouch) {
       Dnd.cardDrag.timerId = setTimeout(() => {
         if (Dnd.cardDrag && !Dnd.cardDrag.started) {
-          Dnd.beginCardDrag(e)
+          Dnd.beginCardDrag({
+            pointerId: Dnd.cardDrag.pointerId,
+            clientX: Dnd.cardDrag.lastX,
+            clientY: Dnd.cardDrag.lastY,
+          })
         }
       }, Dnd.touchLongPressMs)
     }
@@ -2353,6 +2358,8 @@ const Dnd = {
     if (!Dnd.cardDrag || e.pointerId !== Dnd.cardDrag.pointerId) return
     Dnd.lastPointerX = e.clientX
     Dnd.lastPointerY = e.clientY
+    Dnd.cardDrag.lastX = e.clientX
+    Dnd.cardDrag.lastY = e.clientY
 
     // For touch: if finger moves before long-press, cancel potential drag to allow page/board scrolling
     if (Dnd.cardDrag && !Dnd.cardDrag.started && Dnd.cardDrag.isTouch) {

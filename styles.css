@@ -71,6 +71,11 @@ body.dialog-open {
   overflow: hidden;
 }
 
+input {
+  max-height: 42px;
+  height: 42px;
+}
+
 /* =================================
    Header & Toolbar
    ================================= */
@@ -719,7 +724,7 @@ dialog:focus-visible {
   appearance: none;
   box-sizing: border-box;
   /* Reduced padding for mobile browsers that add internal clutter */
-  padding: 10px 8px; 
+  padding: 10px 8px;
 }
 
 .editor-form textarea {
@@ -814,6 +819,21 @@ dialog:focus-visible {
   max-width: 100%;
   flex: 1;
   box-sizing: border-box;
+}
+
+.editor-meta-tags {
+  flex: 1.4;
+  order: 1;
+}
+
+.editor-meta-due {
+  flex: 1 0 100%;
+  order: 3;
+}
+
+.editor-meta-user {
+  flex: 1;
+  order: 2;
 }
 
 /* =================================
@@ -1097,6 +1117,31 @@ dialog:focus-visible {
 .editor-form-row {
   flex-direction: column;
 }
+
+@media (max-width:639px) {
+  .editor-form-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    grid-template-areas:
+      "tags user"
+      "due due";
+    gap: 12px;
+    align-items: start;
+  }
+
+  .editor-meta-tags {
+    grid-area: tags;
+  }
+
+  .editor-meta-user {
+    grid-area: user;
+  }
+
+  .editor-meta-due {
+    grid-area: due;
+  }
+}
+
 @media (min-width:640px) {
   .editor-form-row {
     flex-direction: row;
