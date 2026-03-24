@@ -350,7 +350,7 @@ export default {
         if (credential) {
           const isValid = await verifyPin(pinCode, credential.pinSalt, credential.pinHash);
           if (!isValid) {
-            return jsonResponse({ error: "Incorrect pin-code for this name" }, headers, 403);
+            return jsonResponse({ error: "Incorrect password for this name" }, headers, 403);
           }
         } else {
           const existingRow = await readBoardRow(env, boardId);
@@ -358,7 +358,7 @@ export default {
           const legacyUser = findLegacyUser(existingState, name);
           if (legacyUser) {
             if ((legacyUser.pinCode || "").trim() !== pinCode) {
-              return jsonResponse({ error: "Incorrect pin-code for this name" }, headers, 403);
+              return jsonResponse({ error: "Incorrect password for this name" }, headers, 403);
             }
             await upsertUserRecord(env, boardId, legacyUser, pinCode);
           } else {
@@ -401,7 +401,7 @@ export default {
             return jsonResponse({ error: "Only admin can rename users." }, headers, 403);
           }
           if (pinCode) {
-            return jsonResponse({ error: "Only admin can change pin-codes." }, headers, 403);
+            return jsonResponse({ error: "Only admin can change passwords." }, headers, 403);
           }
         }
 

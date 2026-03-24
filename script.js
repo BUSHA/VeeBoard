@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.9.2"
+  version: "0.9.3"
 }
 
 /* Live sync echo guard */
@@ -238,7 +238,6 @@ const DbSettings = {
         cfWorkerUrl: "",
         cfBoardId: "default",
         cfUserName: "",
-        cfPinCode: "",
         cfUserToken: ""
       }
       const saved = JSON.parse(localStorage.getItem(this.KEY)) || {}
@@ -250,7 +249,7 @@ const DbSettings = {
       
       return { ...defaults, ...saved }
     } catch {
-      return { provider: "local", cfWorkerUrl: "", cfBoardId: "default", cfUserName: "", cfPinCode: "", cfUserToken: "" }
+      return { provider: "local", cfWorkerUrl: "", cfBoardId: "default", cfUserName: "", cfUserToken: "" }
     }
   },
   set(v) {
@@ -324,7 +323,16 @@ const CloudflareBackend = {
     const response = await fetch(`${cfWorkerUrl}/load`, {
       headers: this.buildHeaders(config)
     })
-    if (!response.ok) throw new Error("Cloudflare load failed")
+    if (!response.ok) {
+      let message = "Cloudflare load failed"
+      try {
+        const data = await response.json()
+        if (data?.error) message = data.error
+      } catch {}
+      const error = new Error(message)
+      error.status = response.status
+      throw error
+    }
 
     return await response.json()
   },
@@ -449,8 +457,15 @@ const Store = {
           await CloudflareBackend.save(data, cfg)
         }
       } catch (e) {
-        console.warn("Cloudflare load failed, fallback to Browser Storage:", e)
-        data = await this.loadLocal()
+        if (e?.status === 401 || e?.status === 403) {
+          console.warn("Cloudflare session rejected during load:", e)
+          if (typeof UI !== "undefined" && UI.clearCloudflareSession) {
+            UI.clearCloudflareSession()
+          }
+        } else {
+          console.warn("Cloudflare load failed, fallback to Browser Storage:", e)
+          data = await this.loadLocal()
+        }
       }
     } else {
       data = await this.loadLocal()
@@ -530,6 +545,10 @@ const Store = {
       } catch (e) {
         if (e?.status === 401 || e?.status === 403) {
           console.warn("Cloudflare save rejected:", e)
+          if (typeof UI !== "undefined" && UI.clearCloudflareSession) {
+            UI.clearCloudflareSession()
+            if (UI.renderBoard) UI.renderBoard()
+          }
           if (typeof UI !== "undefined" && UI.showAlert) {
             UI.showAlert(e.message || "Cloudflare save failed")
           }
@@ -567,7 +586,17 @@ const Store = {
 
   getCurrentUserName() {
     const cfg = DbSettings.get()
-    return cfg.provider === "cloudflare" ? (cfg.cfUserName || "").trim() : ""
+    return cfg.provider === "cloudflare" && cfg.cfUserToken ? (cfg.cfUserName || "").trim() : ""
+  },
+
+  hasCloudflareSession() {
+    const cfg = DbSettings.get()
+    return cfg.provider === "cloudflare" && !!cfg.cfWorkerUrl && !!cfg.cfUserToken
+  },
+
+  requiresCloudflareLogin() {
+    const cfg = DbSettings.get()
+    return cfg.provider === "cloudflare" && !!cfg.cfWorkerUrl && !cfg.cfUserToken
   },
 
   isCurrentUserAdmin() {
@@ -1085,6 +1114,7 @@ const UI = {
   menuBtn: Utils.qs("#menuBtn"),
   menuContent: Utils.qs("#menuContent"),
   toggleArchiveBtn: Utils.qs("#toggleArchiveBtn"),
+  logoutBtn: Utils.qs("#logoutBtn"),
 
   // State for filtering
   activeTagFilters: new Set(),
@@ -1126,6 +1156,36 @@ const UI = {
 
     return columns
   },
+  updateAuthButtonsVisibility() {
+    const cfg = DbSettings.get()
+    const showAuth = cfg.provider === "cloudflare" && !!cfg.cfWorkerUrl
+    if (this.logoutBtn) this.logoutBtn.style.display = showAuth && Store.hasCloudflareSession() ? "" : "none"
+  },
+
+  updateBoardActionsVisibility() {
+    const cfg = DbSettings.get()
+    const isCloudflareLoggedOut = cfg.provider === "cloudflare" && !!cfg.cfWorkerUrl && !Store.hasCloudflareSession()
+    const addColumnBtn = Utils.qs("#addColumnBtn")
+    const toggleArchiveBtn = Utils.qs("#toggleArchiveBtn")
+    if (addColumnBtn) addColumnBtn.style.display = isCloudflareLoggedOut ? "none" : ""
+    if (toggleArchiveBtn) toggleArchiveBtn.style.display = isCloudflareLoggedOut ? "none" : ""
+  },
+
+  clearCloudflareSession({ keepUserName = true } = {}) {
+    const cfg = DbSettings.get()
+    const nextCfg = {
+      ...cfg,
+      cfUserToken: "",
+    }
+    if (!keepUserName) nextCfg.cfUserName = ""
+    DbSettings.set(nextCfg)
+    Store.isAdmin = false
+    this.updateAdminPanelVisibility()
+    this.updateAuthButtonsVisibility()
+    this.updateMenuButtonAvatar()
+    this.updateCloudflareProfileSettingsVisibility()
+  },
+
   updateAdminPanelVisibility() {
     const adminBtn = Utils.qs("#adminPanelBtn");
     if (!adminBtn) return;
@@ -1141,8 +1201,9 @@ const UI = {
   updateMenuButtonAvatar() {
     if (!this.menuBtn) return
     const cfg = DbSettings.get()
-    if (cfg.provider !== "cloudflare") {
+    if (cfg.provider !== "cloudflare" || !cfg.cfUserToken) {
       this.menuBtn.textContent = "☰"
+      this.menuBtn.innerHTML = "☰"
       return
     }
     const currentUser = Store.findUserByName(cfg.cfUserName || "")
@@ -1165,6 +1226,56 @@ const UI = {
       preview.innerHTML = ""
     }
     if (removeBtn) removeBtn.disabled = !avatarUrl && !this.pendingProfileAvatarFile
+  },
+
+  updateCloudflareProfileSettingsVisibility() {
+    const section = Utils.qs(".profile-avatar-settings", Utils.qs("#cloudflareSettings"))
+    if (!section) return
+    section.style.display = Store.hasCloudflareSession() ? "" : "none"
+  },
+
+  updateBackupActionsVisibility() {
+    const cfg = DbSettings.get()
+    const isLocal = cfg.provider !== "cloudflare"
+    const exportBtn = Utils.qs("#exportBtn")
+    const importLabel = Utils.qs("#importInput")?.closest("label")
+    if (exportBtn) exportBtn.style.display = isLocal ? "" : "none"
+    if (importLabel) importLabel.style.display = isLocal ? "" : "none"
+  },
+
+  renderLoginGate() {
+    const cfg = DbSettings.get()
+    this.board.innerHTML = `
+      <section class="board-login-gate">
+        <h2>${I18n.t("login_title")}</h2>
+        <p>${I18n.t("login_required")}</p>
+        <form id="boardLoginForm" class="board-login-form">
+          <label>
+            <span>${I18n.t("your_name")}</span>
+            <input id="boardLoginUserName" type="text" autocomplete="off">
+          </label>
+          <label>
+            <span>${I18n.t("pin_code")}</span>
+            <input id="boardLoginPinCode" type="password" placeholder="XXXX">
+          </label>
+          <button type="submit" class="btn primary">${I18n.t("login")}</button>
+        </form>
+      </section>
+    `
+    const userInput = Utils.qs("#boardLoginUserName", this.board)
+    if (userInput) userInput.value = cfg.cfUserName || ""
+    const boardLoginForm = Utils.qs("#boardLoginForm", this.board)
+    if (boardLoginForm) {
+      boardLoginForm.addEventListener("submit", App.handleCloudflareLogin.bind(App))
+    }
+    this.updateTagFilters()
+    this.applyFilters()
+    this.updateMenuButtonAvatar()
+    this.updateAuthButtonsVisibility()
+    this.updateBoardActionsVisibility()
+    this.updateBackupActionsVisibility()
+    this.updateAdminPanelVisibility()
+    if (typeof I18n !== "undefined") I18n.updatePage()
   },
 
   createAvatarNode(user, options = {}) {
@@ -1222,7 +1333,7 @@ const UI = {
       const pinInp = document.createElement("input");
       pinInp.type = "password";
       pinInp.value = "";
-      pinInp.placeholder = `${I18n.t("pin_code") || "Pin-code"}${u.name ? " (leave blank to keep)" : ""}`;
+      pinInp.placeholder = `${I18n.t("pin_code") || "Password"}${u.name ? " (leave blank to keep)" : ""}`;
       pinInp.style.flex = "1";
       
       const delBtn = document.createElement("button");
@@ -1549,6 +1660,10 @@ const UI = {
 
   // --- Board Rendering ---
   renderBoard() {
+    if (Store.requiresCloudflareLogin()) {
+      this.renderLoginGate()
+      return
+    }
     this.board.innerHTML = ""
     Store.state.columns.forEach((col) => {
       this.board.append(this.createColumnElement(col))
@@ -1558,6 +1673,10 @@ const UI = {
     this.updateTagFilters()
     this.applyFilters()
     this.updateMenuButtonAvatar()
+    this.updateAuthButtonsVisibility()
+    this.updateBoardActionsVisibility()
+    this.updateBackupActionsVisibility()
+    this.updateAdminPanelVisibility()
     if (typeof I18n !== "undefined") I18n.updatePage()
   },
 
@@ -2029,6 +2148,13 @@ const UI = {
   updateTagFilters() {
     const tagBox = Utils.qs("#tagFilters")
     const userBox = Utils.qs("#userFilters")
+    if (Store.requiresCloudflareLogin()) {
+      tagBox.innerHTML = ""
+      userBox.innerHTML = ""
+      tagBox.style.display = "none"
+      userBox.style.display = "none"
+      return
+    }
     const allTags = new Set()
     const allUsers = new Map() // name -> user object
 
@@ -2683,11 +2809,49 @@ const App = {
     if (versionEl) versionEl.textContent = `v${CONFIG.version}`
 
     await Store.loadState()
-    if (typeof UI !== "undefined" && UI.updateAdminPanelVisibility) UI.updateAdminPanelVisibility()
+    if (typeof UI !== "undefined") {
+      UI.updateAdminPanelVisibility()
+      UI.updateAuthButtonsVisibility()
+    }
 
     UI.renderBoard()
     UI.updateMenuButtonAvatar()
     Store.startRealtime()
+  },
+
+  async handleCloudflareLogin(e) {
+    e.preventDefault()
+    const form = e.currentTarget
+    const cfg = DbSettings.get()
+    const userName = (Utils.qs("#boardLoginUserName", form)?.value || "").trim()
+    const pinCode = (Utils.qs("#boardLoginPinCode", form)?.value || "").trim()
+
+    if (!cfg.cfWorkerUrl) {
+      UI.showAlert(I18n.t("cloudflare_hint"))
+      return
+    }
+    if (!userName || !pinCode) {
+      UI.showAlert(I18n.t("name_pin_required"))
+      return
+    }
+
+    try {
+      const auth = await CloudflareBackend.authenticate(cfg, userName, pinCode)
+      DbSettings.set({
+        ...cfg,
+        cfUserName: userName,
+        cfUserToken: auth.token || "",
+      })
+      Store.isAdmin = !!auth.isAdmin
+      await Store.loadState()
+      UI.renderBoard()
+      UI.updateMenuButtonAvatar()
+      UI.updateAuthButtonsVisibility()
+      UI.updateCloudflareProfileSettingsVisibility()
+      form.closest("dialog")?.close()
+    } catch (err) {
+      UI.showAlert(err.message || (I18n.t("incorrect_pin") || "Incorrect password for this name"))
+    }
   },
 
   setupEventListeners() {
@@ -2983,22 +3147,18 @@ const App = {
         tab.classList.toggle("active", tab.dataset.provider === provider)
       })
       Utils.qs("#dbProviderInput").value = provider
+      UI.updateCloudflareProfileSettingsVisibility()
     }
 
     dbBtn.addEventListener("click", () => {
       const cfg = DbSettings.get()
       cfUrlInput.value = cfg.cfWorkerUrl || ""
       cfIdInput.value = cfg.cfBoardId || ""
-      
-      const cfUserNameInput = Utils.qs("#cfUserName", dbDialog)
-      const cfPinCodeInput = Utils.qs("#cfPinCode", dbDialog)
-      if (cfUserNameInput) cfUserNameInput.value = cfg.cfUserName || ""
-      if (cfPinCodeInput) cfPinCodeInput.value = cfg.cfPinCode || ""
       UI.pendingProfileAvatarFile = null
       UI.pendingProfileAvatarRemoved = false
       const currentUser = Store.findUserByName(cfg.cfUserName || "")
       UI.updateProfileAvatarPreview(currentUser?.avatarUrl || "")
-      
+
       updateDbSettingsVisibility(cfg.provider)
       UI.showDialog(dbDialog)
     })
@@ -3029,6 +3189,16 @@ const App = {
       })
     })
 
+    if (UI.logoutBtn) {
+      UI.logoutBtn.addEventListener("click", async () => {
+        UI.clearCloudflareSession()
+        await Store.loadState()
+        UI.renderBoard()
+        UI.updateMenuButtonAvatar()
+        UI.logoutBtn.closest(".dropdown-content")?.classList.remove("show")
+      })
+    }
+
     const addColumnBtn = Utils.qs("#addColumnBtn")
     if (addColumnBtn) {
       addColumnBtn.disabled = !Store.canCurrentUserManageBoardStructure()
@@ -3039,85 +3209,72 @@ const App = {
       const prevCfg = DbSettings.get()
       const formData = new FormData(dbForm)
       const provider = formData.get("dbProvider")
-      
+
       const newCfg = {
         provider,
         cfWorkerUrl: cfUrlInput.value.trim(),
         cfBoardId: cfIdInput.value.trim() || "default",
+        cfUserName: prevCfg.cfUserName || "",
+        cfUserToken: prevCfg.cfUserToken || "",
       }
 
       if (provider === "cloudflare") {
-         const userName = Utils.qs("#cfUserName", dbDialog).value.trim()
-         const pinCode = Utils.qs("#cfPinCode", dbDialog).value.trim()
-         if (!userName || !pinCode) {
-            UI.showAlert(I18n.t("name_pin_required") || "Name and Pin-code are required for D1.");
-            return;
-         }
-         newCfg.cfUserName = userName;
-         newCfg.cfPinCode = pinCode;
-         try {
-           const auth = await CloudflareBackend.authenticate(newCfg, userName, pinCode)
-           newCfg.cfUserToken = auth.token || ""
-           Store.isAdmin = !!auth.isAdmin
-         } catch (err) {
-           UI.showAlert(err.message || (I18n.t("incorrect_pin") || "Incorrect pin-code for this name"))
-           return
-         }
-         
-         let remoteData = null;
-         if (newCfg.cfWorkerUrl) {
-           try {
-             remoteData = await CloudflareBackend.load(newCfg);
-           } catch(err) {
-             console.warn(err);
-           }
-         }
-         if (!remoteData) {
-           const local = await Store.loadLocal();
-           remoteData = local || Store.getDemoState();
-         }
-         remoteData.users = remoteData.users || [];
-         const existingUser = remoteData.users.find(u => u.name === userName);
-         let avatarTouched = false
-         let oldAvatarKey = existingUser?.avatarKey || ""
+        const cloudflareChanged =
+          provider !== prevCfg.provider ||
+          newCfg.cfWorkerUrl !== (prevCfg.cfWorkerUrl || "") ||
+          newCfg.cfBoardId !== (prevCfg.cfBoardId || "default")
+        if (cloudflareChanged) {
+          newCfg.cfUserToken = ""
+          Store.isAdmin = false
+        }
 
-         const targetUser = remoteData.users.find(u => u.name === userName)
-         if (targetUser) {
-           if (UI.pendingProfileAvatarFile && newCfg.cfWorkerUrl) {
-             try {
-               const uploadedAvatar = await CloudflareBackend.uploadImage(UI.pendingProfileAvatarFile, newCfg)
-               targetUser.avatarUrl = uploadedAvatar.url
-               targetUser.avatarKey = uploadedAvatar.key
-               avatarTouched = true
-             } catch (err) {
-               console.warn(err)
-               UI.showAlert(I18n.t("picture_upload_failed"))
-               return
-             }
-           } else if (UI.pendingProfileAvatarRemoved) {
-             targetUser.avatarUrl = ""
-             targetUser.avatarKey = ""
-             avatarTouched = true
-           }
-         }
+        const currentUserName = (newCfg.cfUserName || "").trim()
+        const currentUser = Store.findUserByName(currentUserName)
+        const canUpdateAvatar = !!currentUserName && !!newCfg.cfUserToken && !!newCfg.cfWorkerUrl
+        const avatarTouched = UI.pendingProfileAvatarFile || UI.pendingProfileAvatarRemoved
 
-         if (avatarTouched && newCfg.cfWorkerUrl) {
-           try {
-             const result = await CloudflareBackend.upsertUser({
-               name: userName,
-               avatarUrl: targetUser?.avatarUrl || "",
-               avatarKey: targetUser?.avatarKey || "",
-             }, newCfg)
-             remoteData.users = result.users || remoteData.users
-             if (oldAvatarKey && (!targetUser?.avatarKey || oldAvatarKey !== targetUser.avatarKey)) {
-               CloudflareBackend.deleteImage(oldAvatarKey, newCfg).catch(console.error)
-             }
-           } catch (err) {
-             console.warn(err)
-             UI.showAlert(err.message || (I18n.t("db_init_failed") || "Failed to initialize new provider. Staying on current one."))
-             return
-           }
-         }
+        if (avatarTouched && !canUpdateAvatar) {
+          UI.showAlert(I18n.t("login_required"))
+          return
+        }
+
+        if (avatarTouched && currentUser) {
+          let nextAvatarUrl = currentUser.avatarUrl || ""
+          let nextAvatarKey = currentUser.avatarKey || ""
+          const oldAvatarKey = currentUser.avatarKey || ""
+
+          if (UI.pendingProfileAvatarFile) {
+            try {
+              const uploadedAvatar = await CloudflareBackend.uploadImage(UI.pendingProfileAvatarFile, newCfg)
+              nextAvatarUrl = uploadedAvatar.url
+              nextAvatarKey = uploadedAvatar.key
+            } catch (err) {
+              console.warn(err)
+              UI.showAlert(I18n.t("picture_upload_failed"))
+              return
+            }
+          } else if (UI.pendingProfileAvatarRemoved) {
+            nextAvatarUrl = ""
+            nextAvatarKey = ""
+          }
+
+          try {
+            const result = await CloudflareBackend.upsertUser({
+              name: currentUserName,
+              avatarUrl: nextAvatarUrl,
+              avatarKey: nextAvatarKey,
+              isAdmin: !!currentUser.isAdmin,
+            }, newCfg)
+            Store.state.users = result.users || Store.state.users
+            if (oldAvatarKey && oldAvatarKey !== nextAvatarKey) {
+              CloudflareBackend.deleteImage(oldAvatarKey, newCfg).catch(console.error)
+            }
+          } catch (err) {
+            console.warn(err)
+            UI.showAlert(err.message || (I18n.t("db_init_failed") || "Failed to save profile changes."))
+            return
+          }
+        }
       }
 
       // Logic for seeding/migrating data when switching providers
@@ -3146,6 +3303,8 @@ const App = {
       await Store.loadState()
       UI.renderBoard()
       UI.updateMenuButtonAvatar()
+      UI.updateAuthButtonsVisibility()
+      UI.updateCloudflareProfileSettingsVisibility()
       dbDialog.close()
     })
 

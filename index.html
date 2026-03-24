@@ -44,6 +44,7 @@
               <button id="dbSettingsBtn" class="btn" title="Database & sync" data-i18n="db_sync" data-i18n-title="db_sync">Database & sync</button>
               <button id="themeToggle" class="btn" title="Dark/light theme" data-i18n-title="theme_toggle">Theme mode</button>
               <button id="adminPanelBtn" class="btn" title="Admin panel" data-i18n="admin_panel" data-i18n-title="admin_panel" style="display:none;">Admin panel</button>
+              <button id="logoutBtn" class="btn" title="Logout" data-i18n="logout" data-i18n-title="logout" style="display:none;">Logout</button>
 
               <div id="appVersion" style="text-align: center; font-size: 10px; color: var(--text-dim); margin-top: 2px; opacity: 0.6;"></div>
             </div>
@@ -244,14 +245,6 @@
         <label data-i18n="board_id">Board ID (optional)
           <input id="cfBoardId" type="text" placeholder="default" />
         </label>
-        <div class="editor-form-row">
-          <label data-i18n="your_name">Your name
-            <input id="cfUserName" type="text" placeholder="Your name" autocomplete="off" />
-          </label>
-          <label data-i18n="pin_code">Pin-code
-            <input id="cfPinCode" type="password" placeholder="XXXX" />
-          </label>
-        </div>
         <div class="profile-avatar-settings">
           <div id="profileAvatarPreview" class="profile-avatar-preview"></div>
           <div class="profile-avatar-actions">
