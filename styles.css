@@ -393,6 +393,37 @@ body.dialog-open {
   background: transparent;
 }
 
+.column--empty .btn-add-card:first-of-type {
+  display: none;
+}
+
+.column--empty .cards {
+  min-height: 0;
+  flex-grow: 0;
+}
+
+.column--empty .btn-add-card:last-of-type {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 12px;
+  border: 1px dashed color-mix(in srgb, var(--border) 72%, var(--primary) 28%);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary-light) 70%, var(--panel) 30%), var(--panel));
+  color: color-mix(in srgb, var(--muted) 55%, var(--text) 45%);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.column--empty .btn-add-card:last-of-type:hover {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary-light) 85%, var(--panel) 15%), var(--panel));
+  color: var(--primary);
+  text-decoration: none;
+}
+
 .btn-del-card,
 .btn-del-col,
 .btn-rename {

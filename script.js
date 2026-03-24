@@ -1427,6 +1427,7 @@ const UI = {
     const node = this.columnTemplate.content.firstElementChild.cloneNode(true)
     node.dataset.id = column.id
     Utils.qs(".column-title", node).textContent = column.title
+    this.syncColumnEmptyState(node, column.cards.length === 0)
     const canManageStructure = Store.canCurrentUserManageBoardStructure()
 
     if (column.isArchive) {
@@ -1455,6 +1456,11 @@ const UI = {
     }
 
     return node
+  },
+
+  syncColumnEmptyState(colEl, isEmpty) {
+    if (!colEl) return
+    colEl.classList.toggle("column--empty", isEmpty)
   },
 
   // --- Board Rendering ---
@@ -1527,6 +1533,7 @@ const UI = {
     if (colEl && colData) {
       const cardEl = this.createCardElement(card, colData)
       Utils.qs(".cards", colEl).prepend(cardEl)
+      this.syncColumnEmptyState(colEl, false)
       this.applyFiltersToCard(cardEl)
     }
     this.updateTagFilters()
@@ -1544,7 +1551,14 @@ const UI = {
 
   deleteCard(cardId) {
     const cardEl = Utils.qs(`.card[data-id="${cardId}"]`)
-    if (cardEl) cardEl.remove()
+    if (cardEl) {
+      const colEl = cardEl.closest(".column")
+      cardEl.remove()
+      if (colEl) {
+        const hasCards = Utils.qs(".cards", colEl)?.children.length > 0
+        this.syncColumnEmptyState(colEl, !hasCards)
+      }
+    }
     this.updateTagFilters()
   },
 
@@ -2382,7 +2396,8 @@ const Dnd = {
     Dnd.positionGhost(e.clientX, e.clientY)
 
     const el = document.elementFromPoint(e.clientX, e.clientY)
-    const list = el ? el.closest(".cards") : null
+    const column = el ? el.closest(".column") : null
+    const list = el?.closest(".cards") || column?.querySelector(".cards")
     if (!list) return
 
     const siblings = Utils.qsa(".card:not(.dragging)", list)
@@ -2407,8 +2422,10 @@ const Dnd = {
       const toList = placeholder.closest(".cards")
 
       if (toList) {
-        const fromColId = cardEl.closest(".column").dataset.id
-        const toColId = toList.closest(".column").dataset.id
+        const fromColEl = cardEl.closest(".column")
+        const toColEl = toList.closest(".column")
+        const fromColId = fromColEl.dataset.id
+        const toColId = toColEl.dataset.id
         const cardId = cardEl.dataset.id
         const toIndex = [...toList.children].indexOf(placeholder)
 
@@ -2416,6 +2433,8 @@ const Dnd = {
         UI.updateTagFilters()
 
         toList.insertBefore(cardEl, placeholder)
+        UI.syncColumnEmptyState(fromColEl, Utils.qs(".cards", fromColEl)?.children.length === 0)
+        UI.syncColumnEmptyState(toColEl, Utils.qs(".cards", toColEl)?.children.length === 0)
 
         const { card, col } = Store.findCard(cardId)
         if (card && col) {
