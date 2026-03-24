@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.9.3"
+  version: "0.9.4"
 }
 
 /* Live sync echo guard */
@@ -543,12 +543,19 @@ const Store = {
         await CloudflareBackend.save(this.state, cfg)
         return
       } catch (e) {
-        if (e?.status === 401 || e?.status === 403) {
+        if (e?.status === 401) {
           console.warn("Cloudflare save rejected:", e)
           if (typeof UI !== "undefined" && UI.clearCloudflareSession) {
             UI.clearCloudflareSession()
             if (UI.renderBoard) UI.renderBoard()
           }
+          if (typeof UI !== "undefined" && UI.showAlert) {
+            UI.showAlert(e.message || "Cloudflare save failed")
+          }
+          return
+        }
+        if (e?.status === 403) {
+          console.warn("Cloudflare save forbidden:", e)
           if (typeof UI !== "undefined" && UI.showAlert) {
             UI.showAlert(e.message || "Cloudflare save failed")
           }
@@ -809,7 +816,6 @@ const Store = {
       if (!parentEntry.comment) return null
       parentEntry.comment.replies = parentEntry.comment.replies || []
       parentEntry.comment.replies.push(comment)
-      parentEntry.comment.updatedAt = now
     } else {
       card.comments = card.comments || []
       card.comments.push(comment)

@@ -57,6 +57,23 @@ function normalizeComments(comments = []) {
   }));
 }
 
+function flattenComments(comments = [], parentId = "") {
+  const normalized = normalizeComments(comments);
+  const items = [];
+  for (const comment of normalized) {
+    items.push({
+      id: comment.id || "",
+      text: comment.text || "",
+      author: comment.author || "",
+      createdAt: comment.createdAt || "",
+      updatedAt: comment.updatedAt || comment.createdAt || "",
+      parentId: parentId || "",
+    });
+    items.push(...flattenComments(comment.replies || [], comment.id || ""));
+  }
+  return items;
+}
+
 function normalizePublicUserRecord(user = {}) {
   return {
     name: (user.name || "").trim(),
@@ -76,8 +93,8 @@ function normalizeLegacyUserRecord(user = {}) {
 }
 
 function commentsChangeAllowed(oldComments = [], newComments = [], currentUser = "") {
-  const oldList = normalizeComments(oldComments);
-  const newList = normalizeComments(newComments);
+  const oldList = flattenComments(oldComments);
+  const newList = flattenComments(newComments);
   const oldById = new Map(oldList.map((comment) => [comment.id, comment]));
   const newById = new Map(newList.map((comment) => [comment.id, comment]));
 
@@ -89,7 +106,20 @@ function commentsChangeAllowed(oldComments = [], newComments = [], currentUser =
     }
     if ((next.author || "").trim() !== (oldComment.author || "").trim()) return false;
     if ((next.createdAt || "") !== (oldComment.createdAt || "")) return false;
-    if (stableStringify(oldComment) !== stableStringify(next) && (oldComment.author || "").trim() !== currentUser) {
+    if ((next.parentId || "") !== (oldComment.parentId || "")) return false;
+    const oldComparable = {
+      text: oldComment.text || "",
+      author: oldComment.author || "",
+      createdAt: oldComment.createdAt || "",
+      updatedAt: oldComment.updatedAt || oldComment.createdAt || "",
+    };
+    const nextComparable = {
+      text: next.text || "",
+      author: next.author || "",
+      createdAt: next.createdAt || "",
+      updatedAt: next.updatedAt || next.createdAt || "",
+    };
+    if (stableStringify(oldComparable) !== stableStringify(nextComparable) && (oldComment.author || "").trim() !== currentUser) {
       return false;
     }
   }
@@ -552,7 +582,7 @@ export default {
             if ((newEntry.card.createdBy || "").trim() !== currentUser) {
               return jsonResponse({ error: "New cards must belong to the current user." }, headers, 403);
             }
-            const newComments = normalizeComments(newEntry.card.comments);
+            const newComments = flattenComments(newEntry.card.comments);
             if (newComments.some((comment) => (comment.author || "").trim() !== currentUser)) {
               return jsonResponse({ error: "You can add only your own comments." }, headers, 403);
             }
