@@ -1071,6 +1071,38 @@ const UI = {
   pendingProfileAvatarFile: null,
   pendingProfileAvatarRemoved: false,
 
+  getMoveToColumns(cardId) {
+    const { col } = Store.findCard(cardId)
+    if (!col) return []
+    return Store.state.columns.filter((targetCol) => {
+      return !targetCol.isDone && !targetCol.isArchive && targetCol.id !== col.id
+    })
+  },
+
+  hideMoveToMenu() {
+    const menu = Utils.qs("#moveToMenu")
+    if (menu) menu.classList.remove("show")
+  },
+
+  renderMoveToMenu(cardId) {
+    const menu = Utils.qs("#moveToMenu")
+    if (!menu) return []
+    menu.innerHTML = ""
+
+    const columns = this.getMoveToColumns(cardId)
+    columns.forEach((col) => {
+      const btn = document.createElement("button")
+      btn.type = "button"
+      btn.className = "btn secondary"
+      btn.dataset.moveToColId = col.id
+      btn.setAttribute("role", "menuitem")
+      btn.textContent = col.title
+      menu.append(btn)
+    })
+
+    return columns
+  },
+
   updateAdminPanelVisibility() {
     const adminBtn = Utils.qs("#adminPanelBtn");
     if (!adminBtn) return;
@@ -1594,6 +1626,7 @@ const UI = {
     }
 
     const markDoneBtn = Utils.qs("#markDoneBtn", form)
+    const moveToWrap = Utils.qs("#moveToWrap", form)
     const descriptionEditor = Utils.qs("#descriptionEditor", form)
     const saveBtn = Utils.qs('.actions-main .btn.primary', form)
     const addAttachmentBtn = Utils.qs("#addAttachmentBtn", form)
@@ -1613,12 +1646,16 @@ const UI = {
 
     if (card) {
       const { col } = Store.findCard(card.id)
+      const moveTargets = this.renderMoveToMenu(card.id)
       markDoneBtn.parentElement.style.display = canMove ? "" : "none"
+      if (moveToWrap) moveToWrap.style.display = canMove && moveTargets.length ? "" : "none"
       markDoneBtn.textContent = col.isDone ? I18n.t("undone") : I18n.t("mark_as_done")
     } else {
       markDoneBtn.parentElement.style.display = "none"
+      if (moveToWrap) moveToWrap.style.display = "none"
     }
 
+    this.hideMoveToMenu()
     this.resetCommentComposer()
     this.showDialog(this.editor)
     this.updateEditorAttachments(card ? card.attachments : [], card?.id)
@@ -2646,6 +2683,25 @@ const App = {
       this.handleMarkAsDone(e.target.closest("form"))
     })
 
+    Utils.qs("#moveToBtn").addEventListener("click", (e) => {
+      e.stopPropagation()
+      const form = e.target.closest("form")
+      const cardId = form?.dataset.cardId
+      if (!cardId) return
+      const moveToWrap = Utils.qs("#moveToWrap", form)
+      const moveToMenu = Utils.qs("#moveToMenu", form)
+      const moveTargets = UI.renderMoveToMenu(cardId)
+      if (!moveToWrap || !moveToMenu || !moveTargets.length) return
+      moveToWrap.style.display = ""
+      moveToMenu.classList.toggle("show")
+    })
+
+    Utils.qs("#moveToMenu").addEventListener("click", (e) => {
+      const moveToItem = e.target.closest("[data-move-to-col-id]")
+      if (!moveToItem) return
+      this.handleMoveCardTo(Utils.qs("#editorForm"), moveToItem.dataset.moveToColId)
+    })
+
     Utils.qs("#saveCommentBtn").addEventListener("click", () => {
       this.handleSaveComment()
     })
@@ -2763,6 +2819,10 @@ const App = {
       }
       if (e.target !== userInput && !userAutocomplete.contains(e.target)) {
         userAutocomplete.classList.remove("show")
+      }
+      const moveToWrap = Utils.qs("#moveToWrap")
+      if (moveToWrap && !moveToWrap.contains(e.target)) {
+        UI.hideMoveToMenu()
       }
     })
 
@@ -3090,6 +3150,7 @@ const App = {
       })
       dialog.addEventListener("close", () => {
         document.body.classList.remove("dialog-open")
+        if (dialog === UI.editor) UI.hideMoveToMenu()
       })
     })
 
@@ -3234,6 +3295,25 @@ const App = {
     }
 
     UI.renderBoard()
+    form.closest("dialog").close()
+  },
+
+  handleMoveCardTo(form, toColId) {
+    const cardId = form.dataset.cardId
+    if (!cardId || !toColId) return
+
+    const { card, col: fromCol } = Store.findCard(cardId)
+    const toCol = Store.findColumn(toColId)
+    if (!card || !fromCol || !toCol) return
+    if (!Store.canCurrentUserMoveCard(card)) {
+      UI.showAlert(I18n.t("own_card_only_error"))
+      return
+    }
+    if (toCol.isDone || toCol.isArchive || toCol.id === fromCol.id) return
+
+    Store.moveCard(cardId, fromCol.id, toCol.id, -1)
+    UI.renderBoard()
+    UI.hideMoveToMenu()
     form.closest("dialog").close()
   },
 
