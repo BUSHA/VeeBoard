@@ -1424,7 +1424,7 @@ const UI = {
     const node = this.cardTemplate.content.firstElementChild.cloneNode(true)
     node.dataset.id = card.id
 
-    // Add pointerdown listener on the whole card for drag-and-drop
+    // Add pointerdown listener on the whole card for drag-and-drop (mouse only)
     node.addEventListener("pointerdown", Dnd.startCardPotentialDrag)
 
     this.updateCardElement(node, card, column)
@@ -2428,11 +2428,7 @@ const Dnd = {
   autoScrollInterval: null,
   lastPointerX: null,
   lastPointerY: null,
-  // Suppress click after drag to prevent unwanted card editing
   suppressClick: false,
-  // Touch drag configuration
-  touchLongPressMs: 450, // delay before drag can start on touch
-  touchCancelThreshold: 14, // px of movement before long-press that cancels potential drag
 
   // --- AutoScroll ---
   startAutoScroll() {
@@ -2485,9 +2481,9 @@ const Dnd = {
 
   // --- Card DnD ---
   startCardPotentialDrag(e) {
-    if (e.pointerType === "mouse" && e.button !== 0) return
-
-    const isTouch = e.pointerType !== "mouse"
+    if (e.button !== 0) return
+    // Only support mouse drag on desktop, skip touch
+    if (e.pointerType !== "mouse") return
 
     // Prevent drag from interactive elements (links, buttons, inputs, tags, etc.)
     const interactive = e.target.closest(
@@ -2505,34 +2501,11 @@ const Dnd = {
       cardEl,
       startX: e.clientX,
       startY: e.clientY,
-      lastX: e.clientX,
-      lastY: e.clientY,
       offsetX: e.clientX - rect.left,
       offsetY: e.clientY - rect.top,
       started: false,
-      timerId: null,
-      isTouch,
     }
-    if (isTouch) {
-      // Allow natural vertical/horizontal panning until drag actually begins
-      cardEl.style.touchAction = "auto"
-    }
-
-    if (!isTouch) {
-      cardEl.setPointerCapture(e.pointerId)
-    }
-
-    if (isTouch) {
-      Dnd.cardDrag.timerId = setTimeout(() => {
-        if (Dnd.cardDrag && !Dnd.cardDrag.started) {
-          Dnd.beginCardDrag({
-            pointerId: Dnd.cardDrag.pointerId,
-            clientX: Dnd.cardDrag.lastX,
-            clientY: Dnd.cardDrag.lastY,
-          })
-        }
-      }, Dnd.touchLongPressMs)
-    }
+    cardEl.setPointerCapture(e.pointerId)
 
     document.addEventListener("pointermove", Dnd.onCardPotentialMove)
     document.addEventListener("pointerup", Dnd.onCardDragEnd)
@@ -2543,31 +2516,12 @@ const Dnd = {
     if (!Dnd.cardDrag || e.pointerId !== Dnd.cardDrag.pointerId) return
     Dnd.lastPointerX = e.clientX
     Dnd.lastPointerY = e.clientY
-    Dnd.cardDrag.lastX = e.clientX
-    Dnd.cardDrag.lastY = e.clientY
-
-    // For touch: if finger moves before long-press, cancel potential drag to allow page/board scrolling
-    if (Dnd.cardDrag && !Dnd.cardDrag.started && Dnd.cardDrag.isTouch) {
-      const dx0 = Math.abs(e.clientX - Dnd.cardDrag.startX)
-      const dy0 = Math.abs(e.clientY - Dnd.cardDrag.startY)
-      if (dx0 > Dnd.touchCancelThreshold || dy0 > Dnd.touchCancelThreshold) {
-        clearTimeout(Dnd.cardDrag.timerId)
-        // Do NOT preventDefault here; we want native scrolling/gestures
-        document.removeEventListener("pointermove", Dnd.onCardPotentialMove)
-        document.removeEventListener("pointerup", Dnd.onCardDragEnd)
-        document.removeEventListener("pointercancel", Dnd.onCardDragEnd)
-        Dnd.cardDrag = null
-        return
-      }
-    }
 
     const dx = e.clientX - Dnd.cardDrag.startX
     const dy = e.clientY - Dnd.cardDrag.startY
     const dist = Math.hypot(dx, dy)
-    const threshold = e.pointerType === "mouse" ? 6 : 8
 
-    if (dist > threshold && !Dnd.cardDrag.started && !Dnd.cardDrag.isTouch) {
-      clearTimeout(Dnd.cardDrag.timerId)
+    if (dist > 6 && !Dnd.cardDrag.started) {
       Dnd.beginCardDrag(e)
     }
 
@@ -2579,18 +2533,10 @@ const Dnd = {
 
   beginCardDrag(e) {
     Dnd.cardDrag.started = true
-    // Set flag to suppress click after drag
     Dnd.suppressClick = true
     document.body.classList.add("dragging-ui")
 
     const { cardEl } = Dnd.cardDrag
-    // On drag start, capture pointer and disable native panning for this element
-    if (Dnd.cardDrag.isTouch) {
-      try {
-        cardEl.setPointerCapture(e.pointerId)
-      } catch (_) {}
-      cardEl.style.touchAction = "none"
-    }
     const ghost = cardEl.cloneNode(true)
     const rect = cardEl.getBoundingClientRect()
 
@@ -2644,7 +2590,6 @@ const Dnd = {
 
   onCardDragEnd(e) {
     if (!Dnd.cardDrag || e.pointerId !== Dnd.cardDrag.pointerId) return
-    clearTimeout(Dnd.cardDrag.timerId)
 
     if (Dnd.cardDrag.started) {
       const { cardEl, ghost, placeholder } = Dnd.cardDrag
@@ -2682,9 +2627,6 @@ const Dnd = {
     document.removeEventListener("pointerup", Dnd.onCardDragEnd)
     document.removeEventListener("pointercancel", Dnd.onCardDragEnd)
 
-    if (Dnd.cardDrag && Dnd.cardDrag.cardEl) {
-      Dnd.cardDrag.cardEl.style.touchAction = ""
-    }
     Dnd.cardDrag = null
     Dnd.stopAutoScroll()
     Dnd.lastPointerX = null

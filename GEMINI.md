@@ -75,5 +75,4 @@ Required only if cloud synchronization is enabled.
 - **Forms & Buttons:** Editor dialogues use `display: flex; flex-direction: column` for main structural layout, with `.actions-main` and `.actions-extra` container classes to robustly segment secondary operators (Archive, Mark Done) from primary operators (Save, Cancel). This avoids grid-related visual bugs, enforcing a consistent layout across mobile displays.
 
 ## Roadmap / TODOs
-- [ ] Add more comprehensive mobile touch support for drag-and-drop.
 - [ ] Enhance data export/import validation.

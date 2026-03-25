@@ -469,7 +469,6 @@ input {
   padding: 12px;
   outline: none;
   transition: transform .12s ease, box-shadow .2s ease;
-  touch-action: auto;
   cursor: pointer;
   word-wrap: break-word;
 }
@@ -569,29 +568,6 @@ input {
   border-radius: 50%
 }
 
-.card-grip {
-  width: 16px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--muted);
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-  padding: 0px;
-}
-
-.card-grip:active {
-  cursor: grabbing
-}
-
-/* =================================
-   Drag & Drop States
-   ================================= */
 .card.dragging {
   display: none;
 }

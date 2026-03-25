@@ -12,7 +12,7 @@ No frameworks, no backend — works entirely in the browser with **IndexedDB** p
 ## Features
 
 - **Columns & Cards** — Create, rename, reorder, and delete columns. Add, edit, move, archive and delete cards.
-- **Drag & Drop** — Move cards and columns using native HTML5 drag-and-drop.
+- **Drag & Drop** — Move cards and reorder columns by dragging (desktop only).
 - **Due Date Tracking** — Set a precise due date and time for any card to track deadlines. All content is sanitized for security.
 - **Rich Text Description** — The card description supports bold text (**Cmd/Ctrl+B**) and hyperlinks. Create links by pasting a URL onto selected text, and remove them with **Cmd/Ctrl+K**. All content is sanitized for security.
 - **Card Editor** — A simple popup form for editing a card's title, rich text description, due date, users, and tags.
