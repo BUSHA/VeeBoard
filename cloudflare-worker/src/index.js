@@ -5,10 +5,6 @@ function normalizeEmail(value = "") {
   return String(value || "").trim().toLowerCase();
 }
 
-function displayNameForUser(user = {}) {
-  return (user.name || "").trim() || normalizeEmail(user.email || "");
-}
-
 function normalizeColumnShells(columns = []) {
   return JSON.stringify(columns.map((col) => ({
     id: col.id || "",
@@ -93,16 +89,6 @@ function normalizePublicUserRecord(user = {}) {
     avatarKey: user.avatarKey || "",
     isAdmin: !!user.isAdmin,
     isApproved: user.isApproved === undefined ? true : !!user.isApproved,
-  };
-}
-
-function normalizeLegacyUserRecord(user = {}) {
-  return {
-    email: normalizeEmail(user.email || ""),
-    name: (user.name || "").trim(),
-    pinCode: user.pinCode || "",
-    avatarUrl: user.avatarUrl || "",
-    avatarKey: user.avatarKey || "",
   };
 }
 
@@ -241,12 +227,6 @@ async function getTableColumns(env, tableName) {
   return new Set((result.results || []).map((row) => row.name));
 }
 
-async function addColumnIfMissing(env, tableName, columnName, definition) {
-  const columns = await getTableColumns(env, tableName);
-  if (columns.has(columnName)) return;
-  await env.DB.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`).run();
-}
-
 let schemaReady = null;
 
 async function ensureSchema(env) {
@@ -265,26 +245,6 @@ async function ensureSchema(env) {
     await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_board_users_board_id ON board_users(board_id)").run();
     await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_board_user_credentials_board_id ON board_user_credentials(board_id)").run();
     await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_board_sessions_board_id ON board_sessions(board_id)").run();
-
-    await addColumnIfMissing(env, "board_users", "email", "TEXT");
-    await addColumnIfMissing(env, "board_users", "name", "TEXT DEFAULT ''");
-    await addColumnIfMissing(env, "board_users", "is_approved", "INTEGER DEFAULT 1");
-    await addColumnIfMissing(env, "board_user_credentials", "email", "TEXT");
-    await addColumnIfMissing(env, "board_sessions", "user_email", "TEXT");
-
-    const boardUserColumns = await getTableColumns(env, "board_users");
-    const credentialColumns = await getTableColumns(env, "board_user_credentials");
-    const sessionColumns = await getTableColumns(env, "board_sessions");
-    if (boardUserColumns.has("name")) {
-      await env.DB.prepare("UPDATE board_users SET email = LOWER(TRIM(name)) WHERE email IS NULL OR TRIM(email) = ''").run();
-    }
-    if (credentialColumns.has("name")) {
-      await env.DB.prepare("UPDATE board_user_credentials SET email = LOWER(TRIM(name)) WHERE email IS NULL OR TRIM(email) = ''").run();
-    }
-    if (sessionColumns.has("user_name")) {
-      await env.DB.prepare("UPDATE board_sessions SET user_email = LOWER(TRIM(user_name)) WHERE user_email IS NULL OR TRIM(user_email) = ''").run();
-    }
-    await env.DB.prepare("UPDATE board_users SET is_approved = 1 WHERE is_approved IS NULL").run();
   })();
   return schemaReady;
 }
@@ -316,48 +276,10 @@ async function getUserCredential(env, boardId, email) {
   ).bind(boardId, normalizeEmail(email)).first();
 }
 
-async function getPublicUserByLogin(env, boardId, login) {
-  const normalizedLogin = normalizeEmail(login);
-  let row = await getPublicUser(env, boardId, normalizedLogin);
-  if (row) return row;
-
-  const boardUserColumns = await getTableColumns(env, "board_users");
-  if (!boardUserColumns.has("name")) return null;
-  const legacyRow = await env.DB.prepare(
-    "SELECT email, name, avatar_url AS avatarUrl, avatar_key AS avatarKey, is_admin AS isAdmin, is_approved AS isApproved FROM board_users WHERE board_id = ? AND LOWER(TRIM(name)) = ?"
-  ).bind(boardId, normalizedLogin).first();
-  if (!legacyRow) return null;
-  return normalizePublicUserRecord({ ...legacyRow, email: legacyRow.email || normalizedLogin });
-}
-
-async function getUserCredentialByLogin(env, boardId, login) {
-  const normalizedLogin = normalizeEmail(login);
-  let row = await getUserCredential(env, boardId, normalizedLogin);
-  if (row) return row;
-
-  const credentialColumns = await getTableColumns(env, "board_user_credentials");
-  const publicUser = await getPublicUserByLogin(env, boardId, normalizedLogin);
-  if (!credentialColumns.has("name")) return null;
-
-  let legacyRow = await env.DB.prepare(
-    "SELECT email, pin_hash AS pinHash, pin_salt AS pinSalt FROM board_user_credentials WHERE board_id = ? AND LOWER(TRIM(name)) = ?"
-  ).bind(boardId, normalizedLogin).first();
-
-  if (!legacyRow && publicUser?.name) {
-    legacyRow = await env.DB.prepare(
-      "SELECT email, pin_hash AS pinHash, pin_salt AS pinSalt FROM board_user_credentials WHERE board_id = ? AND LOWER(TRIM(name)) = ?"
-    ).bind(boardId, normalizeEmail(publicUser.name)).first();
-  }
-
-  if (!legacyRow) return null;
-  return { ...legacyRow, email: legacyRow.email || publicUser?.email || normalizedLogin };
-}
-
 async function upsertUserRecord(env, boardId, user, pinCode = null) {
   const normalized = normalizePublicUserRecord(user);
   if (!normalized.email) throw new Error("User email is required");
   const now = new Date().toISOString();
-
   await env.DB.prepare(
     "INSERT OR REPLACE INTO board_users (board_id, email, name, avatar_url, avatar_key, is_admin, is_approved, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
   ).bind(
@@ -391,29 +313,17 @@ async function createSession(env, boardId, userEmail) {
   const now = Date.now();
   const expiresAt = new Date(now + SESSION_TTL_MS).toISOString();
   const normalizedEmail = normalizeEmail(userEmail);
-  const sessionColumns = await getTableColumns(env, "board_sessions");
   const createdAt = new Date(now).toISOString();
-
-  if (sessionColumns.has("user_name")) {
-    await env.DB.prepare(
-      "INSERT OR REPLACE INTO board_sessions (token, board_id, user_name, user_email, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)"
-    ).bind(token, boardId, normalizedEmail, normalizedEmail, createdAt, expiresAt).run();
-  } else {
-    await env.DB.prepare(
-      "INSERT OR REPLACE INTO board_sessions (token, board_id, user_email, created_at, expires_at) VALUES (?, ?, ?, ?, ?)"
-    ).bind(token, boardId, normalizedEmail, createdAt, expiresAt).run();
-  }
+  await env.DB.prepare(
+    "INSERT OR REPLACE INTO board_sessions (token, board_id, user_email, created_at, expires_at) VALUES (?, ?, ?, ?, ?)"
+  ).bind(token, boardId, normalizedEmail, createdAt, expiresAt).run();
   return { token, expiresAt };
 }
 
 async function getSessionUser(env, boardId, token) {
   if (!token) return "";
-  const sessionColumns = await getTableColumns(env, "board_sessions");
-  const userSelect = sessionColumns.has("user_name")
-    ? "COALESCE(user_email, LOWER(TRIM(user_name))) AS userEmail, expires_at AS expiresAt"
-    : "user_email AS userEmail, expires_at AS expiresAt";
   const row = await env.DB.prepare(
-    `SELECT ${userSelect} FROM board_sessions WHERE token = ? AND board_id = ?`
+    "SELECT user_email AS userEmail, expires_at AS expiresAt FROM board_sessions WHERE token = ? AND board_id = ?"
   ).bind(token, boardId).first();
   if (!row) return "";
   if (row.expiresAt && Date.parse(row.expiresAt) <= Date.now()) {
@@ -428,33 +338,6 @@ async function isUserAdmin(env, boardId, email) {
   return !!user?.isAdmin;
 }
 
-async function ensureUserTablesFromLegacyBoard(env, boardId, state) {
-  const publicUsers = await listPublicUsers(env, boardId);
-  if (publicUsers.length > 0) return publicUsers;
-
-  const legacyUsers = Array.isArray(state?.users)
-    ? state.users
-        .map(normalizeLegacyUserRecord)
-        .map((user) => ({ ...user, email: normalizeEmail(user.email || user.name || "") }))
-        .filter((user) => user.email)
-    : [];
-  if (!legacyUsers.length) return [];
-
-  for (const legacyUser of legacyUsers) {
-    await upsertUserRecord(env, boardId, legacyUser, legacyUser.pinCode || null);
-  }
-  return listPublicUsers(env, boardId);
-}
-
-function findLegacyUser(state, email) {
-  if (!Array.isArray(state?.users)) return null;
-  const normalizedEmail = normalizeEmail(email);
-  return state.users
-    .map(normalizeLegacyUserRecord)
-    .map((user) => ({ ...user, email: normalizeEmail(user.email || user.name || "") }))
-    .find((user) => user.email === normalizedEmail) || null;
-}
-
 function sanitizedState(state = {}, publicUsers = []) {
   return {
     ...state,
@@ -466,7 +349,7 @@ async function loadSanitizedBoard(env, boardId) {
   const row = await readBoardRow(env, boardId);
   const rawState = row?.data ? JSON.parse(row.data) : null;
   if (!rawState) return null;
-  const publicUsers = await ensureUserTablesFromLegacyBoard(env, boardId, rawState);
+  const publicUsers = await listPublicUsers(env, boardId);
   return sanitizedState(rawState, publicUsers);
 }
 
@@ -526,41 +409,21 @@ export default {
           return jsonResponse({ error: "Email and password are required." }, headers, 400);
         }
 
-        let publicUser = await getPublicUserByLogin(env, boardId, email);
-        const credential = await getUserCredentialByLogin(env, boardId, email);
+        const publicUser = await getPublicUser(env, boardId, email);
+        const credential = await getUserCredential(env, boardId, email);
         if (credential) {
           const isValid = await verifyPin(pinCode, credential.pinSalt, credential.pinHash);
           if (!isValid) {
             return jsonResponse({ error: "Incorrect password for this email" }, headers, 403);
           }
+        } else if (publicUser) {
+          return jsonResponse({ error: "This account exists, but no password is stored for it yet." }, headers, 403);
         } else {
-          const existingRow = await readBoardRow(env, boardId);
-          const existingState = existingRow?.data ? JSON.parse(existingRow.data) : null;
-          const legacyUser = findLegacyUser(existingState, email);
-          if (legacyUser) {
-            if ((legacyUser.pinCode || "").trim() !== pinCode) {
-              return jsonResponse({ error: "Incorrect password for this email" }, headers, 403);
-            }
-            await upsertUserRecord(env, boardId, legacyUser, pinCode);
-            publicUser = await getPublicUserByLogin(env, boardId, email);
-          } else if (publicUser) {
-            return jsonResponse({ error: "This account exists, but no password is stored for it yet." }, headers, 403);
-          } else {
-            return jsonResponse({ error: "User not found." }, headers, 404);
-          }
-        }
-
-        publicUser = publicUser || await getPublicUserByLogin(env, boardId, email);
-        if (!publicUser) {
           return jsonResponse({ error: "User not found." }, headers, 404);
         }
-        if (publicUser.email !== email) {
-          await upsertUserRecord(env, boardId, {
-            ...publicUser,
-            email,
-            name: publicUser.name || displayNameForUser(publicUser),
-          }, null);
-          publicUser = await getPublicUser(env, boardId, email);
+
+        if (!publicUser) {
+          return jsonResponse({ error: "User not found." }, headers, 404);
         }
         if (!publicUser.isApproved) {
           return jsonResponse({ error: "Your account is waiting for admin approval." }, headers, 403);
@@ -588,8 +451,19 @@ export default {
         if (existingUser || existingCredential) {
           return jsonResponse({ error: "An account with this email already exists." }, headers, 409);
         }
-        await upsertUserRecord(env, boardId, { email, name, isAdmin: false, isApproved: false }, pinCode);
-        return jsonResponse({ success: true, pendingApproval: true }, headers);
+        const allUsers = await listPublicUsers(env, boardId, { includePending: true });
+        const isFirstUser = allUsers.length === 0;
+        await upsertUserRecord(env, boardId, {
+          email,
+          name,
+          isAdmin: isFirstUser,
+          isApproved: isFirstUser,
+        }, pinCode);
+        return jsonResponse({
+          success: true,
+          pendingApproval: !isFirstUser,
+          bootstrapOwner: isFirstUser,
+        }, headers);
       }
 
       if (path === "/profile" && method === "POST") {
@@ -690,20 +564,11 @@ export default {
         const body = await parseJson(request);
         const existingRow = await readBoardRow(env, boardId);
         const existingRawState = existingRow?.data ? JSON.parse(existingRow.data) : null;
-        if (existingRawState) {
-          await ensureUserTablesFromLegacyBoard(env, boardId, existingRawState);
-        }
+        const currentUsers = await listPublicUsers(env, boardId);
         const existingState = existingRawState
-          ? sanitizedState(existingRawState, await listPublicUsers(env, boardId))
+          ? sanitizedState(existingRawState, currentUsers)
           : { columns: [], users: [] };
         const sentUsers = Array.isArray(body.users) ? body.users.map(normalizePublicUserRecord) : [];
-        let currentUsers = await listPublicUsers(env, boardId);
-        if (!existingRawState && Array.isArray(body.users) && body.users.length) {
-          for (const legacyUser of body.users.map(normalizeLegacyUserRecord).filter((user) => user.name)) {
-            await upsertUserRecord(env, boardId, legacyUser, legacyUser.pinCode || null);
-          }
-          currentUsers = await listPublicUsers(env, boardId);
-        }
         const sentUsersStable = stableStringify(sentUsers);
         const currentUsersStable = stableStringify(currentUsers);
         const isAdmin = !!currentUser.isAdmin;

@@ -1331,10 +1331,11 @@ const UI = {
   renderLoginGate() {
     const cfg = DbSettings.get()
     const isSignup = this.authMode === "signup"
+    const isOwnerBootstrap = (Store.state.users || []).length === 0
     this.board.innerHTML = `
       <section class="board-login-gate">
-        <h2>${I18n.t(isSignup ? "signup_title" : "login_title")}</h2>
-        <p>${I18n.t("login_required")}</p>
+        <h2>${I18n.t(isSignup ? (isOwnerBootstrap ? "signup_owner_title" : "signup_title") : "login_title")}</h2>
+        <p>${I18n.t(isSignup ? (isOwnerBootstrap ? "signup_owner_hint" : "login_required") : "login_required")}</p>
         ${isSignup ? `
           <form id="boardSignupForm" class="board-login-form">
             <label>
@@ -1352,7 +1353,7 @@ const UI = {
             <button type="submit" class="btn primary">${I18n.t("signup_action")}</button>
           </form>
           <div class="board-auth-switch">
-            <button type="button" id="showLoginMode" class="board-auth-link">${I18n.t("go_to_login")}</button>
+            ${isOwnerBootstrap ? "" : `<button type="button" id="showLoginMode" class="board-auth-link">${I18n.t("go_to_login")}</button>`}
           </div>
         ` : `
           <form id="boardLoginForm" class="board-login-form">
@@ -1367,7 +1368,7 @@ const UI = {
             <button type="submit" class="btn primary">${I18n.t("login")}</button>
           </form>
           <div class="board-auth-switch">
-            <button type="button" id="showSignupMode" class="board-auth-link">${I18n.t("go_to_signup")}</button>
+            <button type="button" id="showSignupMode" class="board-auth-link">${I18n.t(isOwnerBootstrap ? "signup_owner_title" : "go_to_signup")}</button>
           </div>
         `}
       </section>
@@ -2999,9 +3000,12 @@ const App = {
     }
 
     try {
-      await CloudflareBackend.signup(cfg, email, pinCode, name)
+      const result = await CloudflareBackend.signup(cfg, email, pinCode, name)
       form.reset()
-      UI.showAlert(I18n.t("signup_pending"))
+      UI.authMode = "login"
+      await Store.loadState()
+      UI.renderBoard()
+      UI.showAlert(I18n.t(result?.bootstrapOwner ? "signup_owner_created" : "signup_pending"))
     } catch (err) {
       UI.showAlert(err.message || I18n.t("signup_failed"))
     }
