@@ -237,6 +237,7 @@ const DbSettings = {
         provider: "local", // 'local', 'cloudflare'
         cfWorkerUrl: "",
         cfBoardId: "default",
+        cfUserEmail: "",
         cfUserName: "",
         cfUserToken: ""
       }
@@ -249,7 +250,7 @@ const DbSettings = {
       
       return { ...defaults, ...saved }
     } catch {
-      return { provider: "local", cfWorkerUrl: "", cfBoardId: "default", cfUserName: "", cfUserToken: "" }
+      return { provider: "local", cfWorkerUrl: "", cfBoardId: "default", cfUserEmail: "", cfUserName: "", cfUserToken: "" }
     }
   },
   set(v) {
@@ -336,19 +337,32 @@ const CloudflareBackend = {
 
     return await response.json()
   },
-  async authenticate(config, name, pinCode) {
+  async authenticate(config, email, pinCode) {
     let { cfWorkerUrl } = config
     if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
     cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
     const response = await fetch(`${cfWorkerUrl}/auth`, {
       method: "POST",
       headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
-      body: JSON.stringify({ name, pinCode }),
+      body: JSON.stringify({ email, pinCode }),
     })
     const data = await response.json().catch(() => ({}))
     if (!response.ok) {
       throw new Error(data?.error || "Authentication failed")
     }
+    return data
+  },
+  async signup(config, email, pinCode, name = "") {
+    let { cfWorkerUrl } = config
+    if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
+    cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
+    const response = await fetch(`${cfWorkerUrl}/signup`, {
+      method: "POST",
+      headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ email, pinCode, name }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "Signup failed")
     return data
   },
   async save(state, config) {
@@ -405,24 +419,48 @@ const CloudflareBackend = {
       headers: this.buildHeaders(config)
     })
   },
-  async upsertUser(user, config, previousName = "") {
+  async upsertUser(user, config, previousEmail = "") {
     let { cfWorkerUrl } = config
     if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
     cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
     const response = await fetch(`${cfWorkerUrl}/user`, {
       method: "POST",
       headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
-      body: JSON.stringify({ ...user, previousName }),
+      body: JSON.stringify({ ...user, previousEmail }),
     })
     const data = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(data?.error || "User save failed")
     return data
   },
-  async deleteUser(name, config) {
+  async updateProfile(profile, config) {
+    let { cfWorkerUrl } = config
+    if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
+    cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
+    const response = await fetch(`${cfWorkerUrl}/profile`, {
+      method: "POST",
+      headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
+      body: JSON.stringify(profile),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "Profile save failed")
+    return data
+  },
+  async listUsers(config) {
+    let { cfWorkerUrl } = config
+    if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
+    cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
+    const response = await fetch(`${cfWorkerUrl}/users`, {
+      headers: this.buildHeaders(config),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "Failed to load users")
+    return data
+  },
+  async deleteUser(email, config) {
     let { cfWorkerUrl, cfBoardId } = config
     if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
     cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
-    const response = await fetch(`${cfWorkerUrl}/user?name=${encodeURIComponent(name)}&boardId=${encodeURIComponent(cfBoardId || "default")}`, {
+    const response = await fetch(`${cfWorkerUrl}/user?email=${encodeURIComponent(email)}&boardId=${encodeURIComponent(cfBoardId || "default")}`, {
       method: "DELETE",
       headers: this.buildHeaders(config),
     })
@@ -495,11 +533,13 @@ const Store = {
     }
     this.state.users = this.state.users.map((user) => ({
       ...user,
+      email: (user.email || "").trim().toLowerCase(),
       avatarUrl: user.avatarUrl || "",
       avatarKey: user.avatarKey || "",
       isAdmin: !!user.isAdmin,
+      isApproved: user.isApproved !== false,
     }))
-    this.isAdmin = !!this.findUserByName(this.getCurrentUserName())?.isAdmin
+    this.isAdmin = !!this.getCurrentUserProfile()?.isAdmin
 
     this.state.columns.forEach((col) => {
       col.cards.forEach((card) => this.normalizeCard(card))
@@ -572,6 +612,7 @@ const Store = {
       id: typeof comment.id === "string" && comment.id ? comment.id : Utils.uid(),
       text: typeof comment.text === "string" ? comment.text : "",
       author: typeof comment.author === "string" ? comment.author : "",
+      authorEmail: typeof comment.authorEmail === "string" ? comment.authorEmail.trim().toLowerCase() : "",
       createdAt: comment.createdAt || Utils.nowIso(),
       updatedAt: comment.updatedAt || comment.createdAt || Utils.nowIso(),
       replies: Array.isArray(comment.replies)
@@ -593,7 +634,26 @@ const Store = {
 
   getCurrentUserName() {
     const cfg = DbSettings.get()
-    return cfg.provider === "cloudflare" && cfg.cfUserToken ? (cfg.cfUserName || "").trim() : ""
+    if (cfg.provider !== "cloudflare" || !cfg.cfUserToken) return ""
+    return (this.getCurrentUserProfile()?.name || cfg.cfUserName || cfg.cfUserEmail || "").trim()
+  },
+
+  getCurrentUserEmail() {
+    const cfg = DbSettings.get()
+    return cfg.provider === "cloudflare" && cfg.cfUserToken ? (cfg.cfUserEmail || "").trim().toLowerCase() : ""
+  },
+
+  getCurrentUserProfile() {
+    const email = this.getCurrentUserEmail()
+    if (!email) return null
+    return this.findUserByEmail(email) || {
+      email,
+      name: (DbSettings.get().cfUserName || email).trim(),
+      avatarUrl: "",
+      avatarKey: "",
+      isAdmin: !!this.isAdmin,
+      isApproved: true,
+    }
   },
 
   hasCloudflareSession() {
@@ -615,27 +675,35 @@ const Store = {
     const cfg = DbSettings.get()
     if (cfg.provider !== "cloudflare") return true
     if (this.isCurrentUserAdmin()) return true
-    const currentUser = this.getCurrentUserName()
-    return !!currentUser && !!card && (card.createdBy || "").trim() === currentUser
+    const currentUser = this.getCurrentUserProfile()
+    return !!currentUser && !!card && (
+      ((card.createdByEmail || "").trim().toLowerCase() && (card.createdByEmail || "").trim().toLowerCase() === currentUser.email) ||
+      (!(card.createdByEmail || "").trim() && (card.createdBy || "").trim() === currentUser.name)
+    )
   },
 
   canCurrentUserMoveCard(card) {
     const cfg = DbSettings.get()
     if (cfg.provider !== "cloudflare") return true
     if (this.isCurrentUserAdmin()) return true
-    const currentUser = this.getCurrentUserName()
+    const currentUser = this.getCurrentUserProfile()
     if (!currentUser || !card) return false
-    const owner = (card.createdBy || "").trim()
-    const assignee = (card.assignedUser?.name || "").trim()
-    return owner === currentUser || assignee === currentUser
+    const ownerEmail = (card.createdByEmail || "").trim().toLowerCase()
+    const ownerName = (card.createdBy || "").trim()
+    const assigneeEmail = (card.assignedUser?.email || "").trim().toLowerCase()
+    const assigneeName = (card.assignedUser?.name || "").trim()
+    return ownerEmail === currentUser.email || (!ownerEmail && ownerName === currentUser.name) || assigneeEmail === currentUser.email || (!assigneeEmail && assigneeName === currentUser.name)
   },
 
   canCurrentUserManageComment(comment) {
     const cfg = DbSettings.get()
     if (cfg.provider !== "cloudflare") return false
     if (this.isCurrentUserAdmin()) return true
-    const currentUser = this.getCurrentUserName()
-    return !!currentUser && !!comment && (comment.author || "").trim() === currentUser
+    const currentUser = this.getCurrentUserProfile()
+    return !!currentUser && !!comment && (
+      ((comment.authorEmail || "").trim().toLowerCase() && (comment.authorEmail || "").trim().toLowerCase() === currentUser.email) ||
+      (!(comment.authorEmail || "").trim() && (comment.author || "").trim() === currentUser.name)
+    )
   },
 
   canCurrentUserComment() {
@@ -651,6 +719,10 @@ const Store = {
 
   findUserByName(name) {
     return (this.state.users || []).find((user) => (user.name || "").trim() === (name || "").trim()) || null
+  },
+
+  findUserByEmail(email) {
+    return (this.state.users || []).find((user) => (user.email || "").trim().toLowerCase() === (email || "").trim().toLowerCase()) || null
   },
 
   getCommentCount(card) {
@@ -717,6 +789,7 @@ const Store = {
     const col = this.findColumn(colId)
     if (col) {
       const cfg = DbSettings.get()
+      const currentUser = this.getCurrentUserProfile()
       const newCard = {
         id: Utils.uid(),
         title: cardData.title,
@@ -726,7 +799,8 @@ const Store = {
         assignedUser: cardData.assignedUser || null,
         attachments: cardData.attachments || [],
         comments: cardData.comments || [],
-        createdBy: cfg.provider === "cloudflare" ? (cfg.cfUserName || "").trim() : "",
+        createdBy: cfg.provider === "cloudflare" ? (currentUser?.name || currentUser?.email || "") : "",
+        createdByEmail: cfg.provider === "cloudflare" ? (currentUser?.email || "") : "",
         createdAt: Utils.nowIso(), // when the card was created (UTC ISO)
         lastChanged: Utils.nowIso(), // last modification timestamp (UTC ISO)
         lastChangedBy: Meta.clientId, // stable client identifier
@@ -747,6 +821,7 @@ const Store = {
     const { card } = this.findCard(cardId)
     if (card) {
       const cfg = DbSettings.get()
+      const currentUser = this.getCurrentUserProfile()
       card.title = cardData.title
       card.description = cardData.description
       card.tags = cardData.tags
@@ -755,7 +830,10 @@ const Store = {
       card.attachments = cardData.attachments || []
       card.comments = cardData.comments || card.comments || []
       if (!card.createdBy && cfg.provider === "cloudflare") {
-        card.createdBy = (cfg.cfUserName || "").trim()
+        card.createdBy = currentUser?.name || currentUser?.email || ""
+      }
+      if (!card.createdByEmail && cfg.provider === "cloudflare") {
+        card.createdByEmail = currentUser?.email || ""
       }
       
       if (card.assignedUser) {
@@ -801,13 +879,16 @@ const Store = {
   addComment(cardId, text, parentCommentId = "") {
     const { card } = this.findCard(cardId)
     const cfg = DbSettings.get()
-    const author = (cfg.cfUserName || "").trim()
-    if (!card || cfg.provider !== "cloudflare" || !author) return null
+    const currentUser = this.getCurrentUserProfile()
+    const author = currentUser?.name || currentUser?.email || ""
+    const authorEmail = currentUser?.email || ""
+    if (!card || cfg.provider !== "cloudflare" || !authorEmail) return null
     const now = Utils.nowIso()
     const comment = this.normalizeComment({
       id: Utils.uid(),
       text,
       author,
+      authorEmail,
       createdAt: now,
       updatedAt: now,
     })
@@ -1121,6 +1202,7 @@ const UI = {
   menuContent: Utils.qs("#menuContent"),
   toggleArchiveBtn: Utils.qs("#toggleArchiveBtn"),
   logoutBtn: Utils.qs("#logoutBtn"),
+  profileBtn: Utils.qs("#profileBtn"),
 
   // State for filtering
   activeTagFilters: new Set(),
@@ -1128,6 +1210,8 @@ const UI = {
   searchQuery: "",
   editingCommentId: "",
   replyToCommentId: "",
+  authMode: "login",
+  adminUsers: [],
   pendingProfileAvatarFile: null,
   pendingProfileAvatarRemoved: false,
 
@@ -1166,6 +1250,7 @@ const UI = {
     const cfg = DbSettings.get()
     const showAuth = cfg.provider === "cloudflare" && !!cfg.cfWorkerUrl
     if (this.logoutBtn) this.logoutBtn.style.display = showAuth && Store.hasCloudflareSession() ? "" : "none"
+    if (this.profileBtn) this.profileBtn.style.display = showAuth && Store.hasCloudflareSession() ? "" : "none"
   },
 
   updateBoardActionsVisibility() {
@@ -1181,6 +1266,7 @@ const UI = {
     const cfg = DbSettings.get()
     const nextCfg = {
       ...cfg,
+      cfUserEmail: "",
       cfUserToken: "",
     }
     if (!keepUserName) nextCfg.cfUserName = ""
@@ -1189,7 +1275,6 @@ const UI = {
     this.updateAdminPanelVisibility()
     this.updateAuthButtonsVisibility()
     this.updateMenuButtonAvatar()
-    this.updateCloudflareProfileSettingsVisibility()
   },
 
   updateAdminPanelVisibility() {
@@ -1212,7 +1297,7 @@ const UI = {
       this.menuBtn.innerHTML = "☰"
       return
     }
-    const currentUser = Store.findUserByName(cfg.cfUserName || "")
+    const currentUser = Store.getCurrentUserProfile()
     if (currentUser?.avatarUrl) {
       this.menuBtn.innerHTML = `<img src="${currentUser.avatarUrl}" alt="" class="menu-avatar-img">`
     } else {
@@ -1234,12 +1319,6 @@ const UI = {
     if (removeBtn) removeBtn.disabled = !avatarUrl && !this.pendingProfileAvatarFile
   },
 
-  updateCloudflareProfileSettingsVisibility() {
-    const section = Utils.qs(".profile-avatar-settings", Utils.qs("#cloudflareSettings"))
-    if (!section) return
-    section.style.display = Store.hasCloudflareSession() ? "" : "none"
-  },
-
   updateBackupActionsVisibility() {
     const cfg = DbSettings.get()
     const isLocal = cfg.provider !== "cloudflare"
@@ -1251,29 +1330,66 @@ const UI = {
 
   renderLoginGate() {
     const cfg = DbSettings.get()
+    const isSignup = this.authMode === "signup"
     this.board.innerHTML = `
       <section class="board-login-gate">
-        <h2>${I18n.t("login_title")}</h2>
+        <h2>${I18n.t(isSignup ? "signup_title" : "login_title")}</h2>
         <p>${I18n.t("login_required")}</p>
-        <form id="boardLoginForm" class="board-login-form">
-          <label>
-            <span>${I18n.t("your_name")}</span>
-            <input id="boardLoginUserName" type="text" autocomplete="off">
-          </label>
-          <label>
-            <span>${I18n.t("pin_code")}</span>
-            <input id="boardLoginPinCode" type="password" placeholder="XXXX">
-          </label>
-          <button type="submit" class="btn primary">${I18n.t("login")}</button>
-        </form>
+        ${isSignup ? `
+          <form id="boardSignupForm" class="board-login-form">
+            <label>
+              <span>${I18n.t("email_label")}</span>
+              <input id="boardSignupEmail" type="email" autocomplete="email">
+            </label>
+            <label>
+              <span>${I18n.t("display_name")}</span>
+              <input id="boardSignupName" type="text" autocomplete="name" data-i18n-placeholder="display_name_placeholder" placeholder="How others should see you">
+            </label>
+            <label>
+              <span>${I18n.t("new_password")}</span>
+              <input id="boardSignupPinCode" type="password" data-i18n-placeholder="signup_password_placeholder" placeholder="Choose a password">
+            </label>
+            <button type="submit" class="btn primary">${I18n.t("signup_action")}</button>
+          </form>
+          <div class="board-auth-switch">
+            <button type="button" id="showLoginMode" class="board-auth-link">${I18n.t("go_to_login")}</button>
+          </div>
+        ` : `
+          <form id="boardLoginForm" class="board-login-form">
+            <label>
+              <span>${I18n.t("email_label")}</span>
+              <input id="boardLoginEmail" type="email" autocomplete="email">
+            </label>
+            <label>
+              <span>${I18n.t("pin_code")}</span>
+              <input id="boardLoginPinCode" type="password" data-i18n-placeholder="login_password_placeholder" placeholder="Enter your password">
+            </label>
+            <button type="submit" class="btn primary">${I18n.t("login")}</button>
+          </form>
+          <div class="board-auth-switch">
+            <button type="button" id="showSignupMode" class="board-auth-link">${I18n.t("go_to_signup")}</button>
+          </div>
+        `}
       </section>
     `
-    const userInput = Utils.qs("#boardLoginUserName", this.board)
-    if (userInput) userInput.value = cfg.cfUserName || ""
+    const emailInput = Utils.qs("#boardLoginEmail", this.board)
+    if (emailInput) emailInput.value = cfg.cfUserEmail || ""
     const boardLoginForm = Utils.qs("#boardLoginForm", this.board)
     if (boardLoginForm) {
       boardLoginForm.addEventListener("submit", App.handleCloudflareLogin.bind(App))
     }
+    const signupForm = Utils.qs("#boardSignupForm", this.board)
+    if (signupForm) {
+      signupForm.addEventListener("submit", App.handleCloudflareSignup.bind(App))
+    }
+    Utils.qs("#showSignupMode", this.board)?.addEventListener("click", () => {
+      this.authMode = "signup"
+      this.renderLoginGate()
+    })
+    Utils.qs("#showLoginMode", this.board)?.addEventListener("click", () => {
+      this.authMode = "login"
+      this.renderLoginGate()
+    })
     this.updateTagFilters()
     this.applyFilters()
     this.updateMenuButtonAvatar()
@@ -1286,7 +1402,7 @@ const UI = {
 
   createAvatarNode(user, options = {}) {
     const { subtle = false } = options
-    const resolvedUser = Store.findUserByName(user?.name || "") || user || {}
+    const resolvedUser = (user?.email && Store.findUserByEmail(user.email)) || Store.findUserByName(user?.name || "") || user || {}
     if (resolvedUser.avatarUrl) {
       const img = document.createElement("img")
       img.src = resolvedUser.avatarUrl
@@ -1297,9 +1413,10 @@ const UI = {
     const dot = document.createElement("span")
     dot.className = "avatar-dot"
     if (subtle) dot.classList.add("avatar-dot--subtle")
-    const initial = (resolvedUser.name || user?.name || "?")[0]
+    const label = resolvedUser.name || resolvedUser.email || user?.name || user?.email || "?"
+    const initial = label[0]
     dot.textContent = initial
-    dot.style.background = Utils.colorFromString(resolvedUser.name || user?.name || "")
+    dot.style.background = Utils.colorFromString(label)
     return dot
   },
 
@@ -1314,11 +1431,12 @@ const UI = {
       return;
     }
 
-    (Store.state.users || []).forEach((u, i) => {
+    (this.adminUsers || []).forEach((u) => {
       const row = document.createElement("div");
       row.style.display = "flex";
       row.style.gap = "8px";
       row.style.alignItems = "center";
+      row.style.flexWrap = "wrap";
 
       const avatarPreview = document.createElement("div");
       avatarPreview.className = "profile-avatar-preview";
@@ -1331,16 +1449,45 @@ const UI = {
         avatarPreview.classList.add("placeholder");
       }
       
+      const emailInp = document.createElement("input");
+      emailInp.value = u.email || "";
+      emailInp.placeholder = I18n.t("email_label") || "Email";
+      emailInp.style.flex = "1 1 220px";
+      emailInp.type = "email";
+
       const nameInp = document.createElement("input");
       nameInp.value = u.name || "";
-      nameInp.placeholder = I18n.t("your_name") || "Your name";
+      nameInp.placeholder = I18n.t("display_name") || "Display name";
       nameInp.style.flex = "1";
       
       const pinInp = document.createElement("input");
       pinInp.type = "password";
       pinInp.value = "";
-      pinInp.placeholder = `${I18n.t("pin_code") || "Password"}${u.name ? " (leave blank to keep)" : ""}`;
-      pinInp.style.flex = "1";
+      pinInp.placeholder = `${I18n.t("new_password") || "New password"}${u.email ? " (leave blank to keep)" : ""}`;
+      pinInp.style.flex = "1 1 180px";
+
+      const approvedWrap = document.createElement("label");
+      approvedWrap.className = "toggle-switch";
+      approvedWrap.style.width = "auto";
+      approvedWrap.style.gap = "6px";
+      const approvedInp = document.createElement("input");
+      approvedInp.type = "checkbox";
+      approvedInp.checked = !!u.isApproved;
+      approvedWrap.append(approvedInp, document.createTextNode(I18n.t("approved_user")));
+
+      const adminWrap = document.createElement("label");
+      adminWrap.className = "toggle-switch";
+      adminWrap.style.width = "auto";
+      adminWrap.style.gap = "6px";
+      const adminInp = document.createElement("input");
+      adminInp.type = "checkbox";
+      adminInp.checked = !!u.isAdmin;
+      adminWrap.append(adminInp, document.createTextNode(I18n.t("admin_role")));
+
+      const saveBtn = document.createElement("button");
+      saveBtn.className = "btn primary";
+      saveBtn.type = "button";
+      saveBtn.textContent = I18n.t("save");
       
       const delBtn = document.createElement("button");
       delBtn.className = "btn error";
@@ -1349,24 +1496,34 @@ const UI = {
       delBtn.style.padding = "0 8px";
       
       row.appendChild(avatarPreview);
+      row.appendChild(emailInp);
       row.appendChild(nameInp);
       row.appendChild(pinInp);
+      row.appendChild(approvedWrap);
+      row.appendChild(adminWrap);
+      row.appendChild(saveBtn);
       row.appendChild(delBtn);
       
       const saveChanges = async () => {
+        const nextEmail = emailInp.value.trim().toLowerCase();
         const nextName = nameInp.value.trim();
         const nextPin = pinInp.value.trim();
-        if (!nextName) return;
+        if (!nextEmail) return;
 
         if (cfg.provider === "cloudflare" && cfg.cfWorkerUrl) {
           try {
             const result = await CloudflareBackend.upsertUser({
+              email: nextEmail,
               name: nextName,
+              isApproved: approvedInp.checked,
+              isAdmin: adminInp.checked,
               pinCode: nextPin || undefined,
               avatarUrl: u.avatarUrl || "",
               avatarKey: u.avatarKey || "",
-            }, cfg, u.name || "");
-            Store.state.users = result.users || Store.state.users;
+            }, cfg, u.email || "");
+            UI.adminUsers = result.users || UI.adminUsers;
+            await Store.loadState();
+            UI.renderBoard();
             pinInp.value = "";
             UI.renderAdminUsers();
           } catch (err) {
@@ -1374,22 +1531,19 @@ const UI = {
           }
           return;
         }
-
-        u.name = nextName;
-        u.pinCode = nextPin;
-        Store.saveState();
       };
       
-      nameInp.addEventListener("change", () => { saveChanges(); });
-      pinInp.addEventListener("change", () => { saveChanges(); });
+      saveBtn.addEventListener("click", () => { saveChanges(); });
       
       delBtn.addEventListener("click", () => {
-        if (confirm(`${I18n.t("delete_user") || "Remove user"} ${u.name}?`)) {
+        if (confirm(`${I18n.t("delete_user") || "Remove user"} ${u.email || u.name}?`)) {
           const avatarKey = u.avatarKey
           if (cfg.provider === "cloudflare" && cfg.cfWorkerUrl) {
-            CloudflareBackend.deleteUser(u.name, cfg)
-              .then((result) => {
-                Store.state.users = result.users || [];
+            CloudflareBackend.deleteUser(u.email, cfg)
+              .then(async (result) => {
+                UI.adminUsers = result.users || [];
+                await Store.loadState();
+                UI.renderBoard();
                 UI.renderAdminUsers();
                 UI.updateMenuButtonAvatar();
                 if (avatarKey) {
@@ -1399,14 +1553,6 @@ const UI = {
               .catch((err) => UI.showAlert(err.message || "Failed to delete user"));
             return;
           }
-          Store.state.users.splice(i, 1);
-          Promise.resolve(Store.saveState()).then(() => {
-            if (cfg.provider === "cloudflare" && avatarKey) {
-              CloudflareBackend.deleteImage(avatarKey, cfg).catch(console.error)
-            }
-          })
-          UI.renderAdminUsers();
-          UI.updateMenuButtonAvatar();
         }
       });
       list.appendChild(row);
@@ -1574,7 +1720,7 @@ const UI = {
         meta.textContent = formattedTimestamp
         creatorEl.append(
           label,
-          this.createUserBadge({ name: creatorName }, { subtle: true }),
+          this.createUserBadge({ name: creatorName, email: card.createdByEmail || "" }, { subtle: true }),
           meta
         )
         creatorEl.style.display = ""
@@ -1608,9 +1754,10 @@ const UI = {
 
   createUserBadge(user, options = {}) {
     const { subtle = false } = options
-    const resolvedUser = Store.findUserByName(user?.name || "") || user || {}
+    const resolvedUser = (user?.email && Store.findUserByEmail(user.email)) || Store.findUserByName(user?.name || "") || user || {}
     const avatar = this.createAvatarNode(resolvedUser, { subtle })
-    const nameText = document.createTextNode(user.name || "")
+    const label = resolvedUser.name || resolvedUser.email || user?.name || user?.email || ""
+    const nameText = document.createTextNode(label)
     
     const wrapper = document.createElement("span")
     wrapper.className = "card-assignee"
@@ -1619,7 +1766,7 @@ const UI = {
     wrapper.style.alignItems = "center"
     wrapper.style.gap = "6px"
     wrapper.append(avatar, nameText)
-    wrapper.title = user.name || ""
+    wrapper.title = label
     return wrapper
   },
 
@@ -1963,7 +2110,7 @@ const UI = {
 
       const meta = document.createElement("div")
       meta.className = "comment-item-meta"
-      meta.append(this.createUserBadge({ name: comment.author }, { subtle: true }))
+      meta.append(this.createUserBadge({ name: comment.author, email: comment.authorEmail || "" }, { subtle: true }))
 
       const date = document.createElement("time")
       date.className = "comment-item-date"
@@ -2341,8 +2488,8 @@ const UI = {
 
     if (Store.state.users) {
       Store.state.users.forEach((u) => {
-        if (u && u.name) {
-          allUsersMap.set(u.name, u)
+        if (u && (u.name || u.email) && u.isApproved !== false) {
+          allUsersMap.set(u.email || u.name, u)
         }
       })
     }
@@ -2350,13 +2497,13 @@ const UI = {
     Store.state.columns.forEach((c) =>
       c.cards.forEach((k) => {
         if (k.assignedUser && k.assignedUser.name) {
-          allUsersMap.set(k.assignedUser.name, k.assignedUser)
+          allUsersMap.set(k.assignedUser.email || k.assignedUser.name, k.assignedUser)
         }
       })
     )
 
     const matches = [...allUsersMap.values()]
-      .filter(u => (u.name || "").toLowerCase().includes(query))
+      .filter(u => ((u.name || "").toLowerCase().includes(query) || (u.email || "").toLowerCase().includes(query)))
       .slice(0, 5)
 
     if (matches.length === 0) {
@@ -2368,7 +2515,7 @@ const UI = {
     matches.forEach(user => {
       const item = document.createElement("div")
       item.className = "suggestion-item"
-      item.textContent = user.name
+      item.textContent = user.name || user.email
       item.addEventListener("click", (e) => {
         e.stopPropagation()
         this.selectUserSuggestion(user, input, container)
@@ -2379,7 +2526,7 @@ const UI = {
   },
 
   selectUserSuggestion(user, input, container) {
-    input.value = user.name || ""
+    input.value = user.name || user.email || ""
     container.classList.remove("show")
   },
 
@@ -2771,23 +2918,24 @@ const App = {
     e.preventDefault()
     const form = e.currentTarget
     const cfg = DbSettings.get()
-    const userName = (Utils.qs("#boardLoginUserName", form)?.value || "").trim()
+    const email = (Utils.qs("#boardLoginEmail", form)?.value || "").trim().toLowerCase()
     const pinCode = (Utils.qs("#boardLoginPinCode", form)?.value || "").trim()
 
     if (!cfg.cfWorkerUrl) {
       UI.showAlert(I18n.t("cloudflare_hint"))
       return
     }
-    if (!userName || !pinCode) {
-      UI.showAlert(I18n.t("name_pin_required"))
+    if (!email || !pinCode) {
+      UI.showAlert(I18n.t("email_pin_required"))
       return
     }
 
     try {
-      const auth = await CloudflareBackend.authenticate(cfg, userName, pinCode)
+      const auth = await CloudflareBackend.authenticate(cfg, email, pinCode)
       DbSettings.set({
         ...cfg,
-        cfUserName: userName,
+        cfUserEmail: email,
+        cfUserName: auth.user?.name || email,
         cfUserToken: auth.token || "",
       })
       Store.isAdmin = !!auth.isAdmin
@@ -2795,10 +2943,35 @@ const App = {
       UI.renderBoard()
       UI.updateMenuButtonAvatar()
       UI.updateAuthButtonsVisibility()
-      UI.updateCloudflareProfileSettingsVisibility()
       form.closest("dialog")?.close()
     } catch (err) {
-      UI.showAlert(err.message || (I18n.t("incorrect_pin") || "Incorrect password for this name"))
+      UI.showAlert(err.message || (I18n.t("incorrect_pin") || "Incorrect password for this email"))
+    }
+  },
+
+  async handleCloudflareSignup(e) {
+    e.preventDefault()
+    const form = e.currentTarget
+    const cfg = DbSettings.get()
+    const email = (Utils.qs("#boardSignupEmail", form)?.value || "").trim().toLowerCase()
+    const name = (Utils.qs("#boardSignupName", form)?.value || "").trim()
+    const pinCode = (Utils.qs("#boardSignupPinCode", form)?.value || "").trim()
+
+    if (!cfg.cfWorkerUrl) {
+      UI.showAlert(I18n.t("cloudflare_hint"))
+      return
+    }
+    if (!email || !pinCode) {
+      UI.showAlert(I18n.t("email_pin_required"))
+      return
+    }
+
+    try {
+      await CloudflareBackend.signup(cfg, email, pinCode, name)
+      form.reset()
+      UI.showAlert(I18n.t("signup_pending"))
+    } catch (err) {
+      UI.showAlert(err.message || I18n.t("signup_failed"))
     }
   },
 
@@ -3047,7 +3220,7 @@ const App = {
     const adminPanelBtn = Utils.qs("#adminPanelBtn");
     const adminDialog = Utils.qs("#adminDialog");
     if (adminPanelBtn && adminDialog) {
-      adminPanelBtn.addEventListener("click", (e) => {
+      adminPanelBtn.addEventListener("click", async (e) => {
         const cfg = DbSettings.get();
         if (cfg.provider !== "cloudflare" || !Store.isAdmin) {
           e.preventDefault();
@@ -3055,6 +3228,13 @@ const App = {
           return;
         }
 
+        try {
+          const result = await CloudflareBackend.listUsers(cfg);
+          UI.adminUsers = result.users || [];
+        } catch (err) {
+          UI.showAlert(err.message || "Failed to load users");
+          return;
+        }
         UI.renderAdminUsers();
         UI.showDialog(adminDialog);
         adminPanelBtn.closest(".dropdown-content").classList.remove("show");
@@ -3063,7 +3243,7 @@ const App = {
       const addBtn = Utils.qs(".btn-add-user", adminDialog);
       if (addBtn) {
         addBtn.addEventListener("click", () => {
-          Store.state.users.push({ name: "New User", avatarUrl: "", avatarKey: "" });
+          UI.adminUsers.push({ email: "", name: "", avatarUrl: "", avatarKey: "", isApproved: false, isAdmin: false });
           UI.renderAdminUsers();
         });
       }
@@ -3076,40 +3256,73 @@ const App = {
       }
     }
 
-    // --- Database & Sync ---
-    const dbBtn = Utils.qs("#dbSettingsBtn")
-    const dbDialog = Utils.qs("#dbDialog")
-    const dbForm = Utils.qs("#dbForm")
-    const localSettings = Utils.qs("#localSettings", dbDialog)
-    const cloudflareSettings = Utils.qs("#cloudflareSettings", dbDialog)
-    const cfUrlInput = Utils.qs("#cfWorkerUrl", dbDialog)
-    const cfIdInput = Utils.qs("#cfBoardId", dbDialog)
-    const profileAvatarInput = Utils.qs("#profileAvatarInput", dbDialog)
-    const changeAvatarBtn = Utils.qs("#changeAvatarBtn", dbDialog)
-    const removeAvatarBtn = Utils.qs("#removeAvatarBtn", dbDialog)
+    const profileBtn = Utils.qs("#profileBtn")
+    const profileDialog = Utils.qs("#profileDialog")
+    const profileForm = Utils.qs("#profileForm")
+    const profileAvatarInput = Utils.qs("#profileAvatarInput", profileDialog)
+    const changeAvatarBtn = Utils.qs("#changeAvatarBtn", profileDialog)
+    const removeAvatarBtn = Utils.qs("#removeAvatarBtn", profileDialog)
 
-    const updateDbSettingsVisibility = (provider) => {
-      localSettings.style.display = provider === "local" ? "" : "none"
-      cloudflareSettings.style.display = provider === "cloudflare" ? "" : "none"
-      Utils.qsa(".db-provider-tab", dbDialog).forEach(tab => {
-        tab.classList.toggle("active", tab.dataset.provider === provider)
+    if (profileBtn && profileDialog && profileForm) {
+      profileBtn.addEventListener("click", () => {
+        const currentUser = Store.getCurrentUserProfile()
+        if (!currentUser) return
+        UI.pendingProfileAvatarFile = null
+        UI.pendingProfileAvatarRemoved = false
+        Utils.qs("#profileEmail", profileDialog).value = currentUser.email || ""
+        Utils.qs("#profileDisplayName", profileDialog).value = currentUser.name || ""
+        Utils.qs("#profilePassword", profileDialog).value = ""
+        UI.updateProfileAvatarPreview(currentUser.avatarUrl || "")
+        UI.showDialog(profileDialog)
+        profileBtn.closest(".dropdown-content")?.classList.remove("show")
       })
-      Utils.qs("#dbProviderInput").value = provider
-      UI.updateCloudflareProfileSettingsVisibility()
+
+      profileForm.addEventListener("submit", async (e) => {
+        e.preventDefault()
+        const cfg = DbSettings.get()
+        const currentUser = Store.getCurrentUserProfile()
+        if (!currentUser) return
+        let nextAvatarUrl = currentUser.avatarUrl || ""
+        let nextAvatarKey = currentUser.avatarKey || ""
+        const oldAvatarKey = currentUser.avatarKey || ""
+
+        if (UI.pendingProfileAvatarFile) {
+          try {
+            const uploadedAvatar = await CloudflareBackend.uploadImage(UI.pendingProfileAvatarFile, cfg)
+            nextAvatarUrl = uploadedAvatar.url
+            nextAvatarKey = uploadedAvatar.key
+          } catch (err) {
+            UI.showAlert(I18n.t("picture_upload_failed"))
+            return
+          }
+        } else if (UI.pendingProfileAvatarRemoved) {
+          nextAvatarUrl = ""
+          nextAvatarKey = ""
+        }
+
+        try {
+          const result = await CloudflareBackend.updateProfile({
+            name: (Utils.qs("#profileDisplayName", profileDialog).value || "").trim(),
+            pinCode: (Utils.qs("#profilePassword", profileDialog).value || "").trim(),
+            avatarUrl: nextAvatarUrl,
+            avatarKey: nextAvatarKey,
+          }, cfg)
+          DbSettings.set({
+            ...cfg,
+            cfUserName: result.user?.name || cfg.cfUserName || cfg.cfUserEmail || "",
+          })
+          if (oldAvatarKey && oldAvatarKey !== nextAvatarKey) {
+            CloudflareBackend.deleteImage(oldAvatarKey, cfg).catch(console.error)
+          }
+          await Store.loadState()
+          UI.renderBoard()
+          UI.updateMenuButtonAvatar()
+          profileDialog.close()
+        } catch (err) {
+          UI.showAlert(err.message || "Failed to save profile")
+        }
+      })
     }
-
-    dbBtn.addEventListener("click", () => {
-      const cfg = DbSettings.get()
-      cfUrlInput.value = cfg.cfWorkerUrl || ""
-      cfIdInput.value = cfg.cfBoardId || ""
-      UI.pendingProfileAvatarFile = null
-      UI.pendingProfileAvatarRemoved = false
-      const currentUser = Store.findUserByName(cfg.cfUserName || "")
-      UI.updateProfileAvatarPreview(currentUser?.avatarUrl || "")
-
-      updateDbSettingsVisibility(cfg.provider)
-      UI.showDialog(dbDialog)
-    })
 
     if (changeAvatarBtn && profileAvatarInput) {
       changeAvatarBtn.addEventListener("click", () => profileAvatarInput.click())
@@ -3130,6 +3343,32 @@ const App = {
         UI.updateProfileAvatarPreview("")
       })
     }
+
+    // --- Database & Sync ---
+    const dbBtn = Utils.qs("#dbSettingsBtn")
+    const dbDialog = Utils.qs("#dbDialog")
+    const dbForm = Utils.qs("#dbForm")
+    const localSettings = Utils.qs("#localSettings", dbDialog)
+    const cloudflareSettings = Utils.qs("#cloudflareSettings", dbDialog)
+    const cfUrlInput = Utils.qs("#cfWorkerUrl", dbDialog)
+    const cfIdInput = Utils.qs("#cfBoardId", dbDialog)
+
+    const updateDbSettingsVisibility = (provider) => {
+      localSettings.style.display = provider === "local" ? "" : "none"
+      cloudflareSettings.style.display = provider === "cloudflare" ? "" : "none"
+      Utils.qsa(".db-provider-tab", dbDialog).forEach(tab => {
+        tab.classList.toggle("active", tab.dataset.provider === provider)
+      })
+      Utils.qs("#dbProviderInput").value = provider
+    }
+
+    dbBtn.addEventListener("click", () => {
+      const cfg = DbSettings.get()
+      cfUrlInput.value = cfg.cfWorkerUrl || ""
+      cfIdInput.value = cfg.cfBoardId || ""
+      updateDbSettingsVisibility(cfg.provider)
+      UI.showDialog(dbDialog)
+    })
 
     Utils.qsa(".db-provider-tab", dbDialog).forEach(tab => {
       tab.addEventListener("click", (e) => {
@@ -3162,6 +3401,7 @@ const App = {
         provider,
         cfWorkerUrl: cfUrlInput.value.trim(),
         cfBoardId: cfIdInput.value.trim() || "default",
+        cfUserEmail: prevCfg.cfUserEmail || "",
         cfUserName: prevCfg.cfUserName || "",
         cfUserToken: prevCfg.cfUserToken || "",
       }
@@ -3172,56 +3412,9 @@ const App = {
           newCfg.cfWorkerUrl !== (prevCfg.cfWorkerUrl || "") ||
           newCfg.cfBoardId !== (prevCfg.cfBoardId || "default")
         if (cloudflareChanged) {
+          newCfg.cfUserEmail = ""
           newCfg.cfUserToken = ""
           Store.isAdmin = false
-        }
-
-        const currentUserName = (newCfg.cfUserName || "").trim()
-        const currentUser = Store.findUserByName(currentUserName)
-        const canUpdateAvatar = !!currentUserName && !!newCfg.cfUserToken && !!newCfg.cfWorkerUrl
-        const avatarTouched = UI.pendingProfileAvatarFile || UI.pendingProfileAvatarRemoved
-
-        if (avatarTouched && !canUpdateAvatar) {
-          UI.showAlert(I18n.t("login_required"))
-          return
-        }
-
-        if (avatarTouched && currentUser) {
-          let nextAvatarUrl = currentUser.avatarUrl || ""
-          let nextAvatarKey = currentUser.avatarKey || ""
-          const oldAvatarKey = currentUser.avatarKey || ""
-
-          if (UI.pendingProfileAvatarFile) {
-            try {
-              const uploadedAvatar = await CloudflareBackend.uploadImage(UI.pendingProfileAvatarFile, newCfg)
-              nextAvatarUrl = uploadedAvatar.url
-              nextAvatarKey = uploadedAvatar.key
-            } catch (err) {
-              console.warn(err)
-              UI.showAlert(I18n.t("picture_upload_failed"))
-              return
-            }
-          } else if (UI.pendingProfileAvatarRemoved) {
-            nextAvatarUrl = ""
-            nextAvatarKey = ""
-          }
-
-          try {
-            const result = await CloudflareBackend.upsertUser({
-              name: currentUserName,
-              avatarUrl: nextAvatarUrl,
-              avatarKey: nextAvatarKey,
-              isAdmin: !!currentUser.isAdmin,
-            }, newCfg)
-            Store.state.users = result.users || Store.state.users
-            if (oldAvatarKey && oldAvatarKey !== nextAvatarKey) {
-              CloudflareBackend.deleteImage(oldAvatarKey, newCfg).catch(console.error)
-            }
-          } catch (err) {
-            console.warn(err)
-            UI.showAlert(err.message || (I18n.t("db_init_failed") || "Failed to save profile changes."))
-            return
-          }
         }
       }
 
@@ -3252,7 +3445,6 @@ const App = {
       UI.renderBoard()
       UI.updateMenuButtonAvatar()
       UI.updateAuthButtonsVisibility()
-      UI.updateCloudflareProfileSettingsVisibility()
       dbDialog.close()
     })
 
@@ -3519,7 +3711,7 @@ const App = {
 
     const userVal = form.elements.user.value.trim()
     if (userVal) {
-      const existingUser = (Store.state.users || []).find(u => u.name === userVal)
+      const existingUser = (Store.state.users || []).find(u => (u.name || "") === userVal || (u.email || "") === userVal)
       if (existingUser) {
         cardData.assignedUser = existingUser
       } else {

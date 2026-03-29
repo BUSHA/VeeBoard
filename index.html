@@ -42,6 +42,7 @@
               <label class="btn" title="Import JSON" data-i18n-title="import_backup"><span data-i18n="import_backup">Import backup</span><input id="importInput" type="file"
                   accept="application/json" hidden></label>
               <button id="dbSettingsBtn" class="btn" title="Database & sync" data-i18n="db_sync" data-i18n-title="db_sync">Database & sync</button>
+              <button id="profileBtn" class="btn" title="Profile" data-i18n="profile" data-i18n-title="profile" style="display:none;">Profile</button>
               <button id="themeToggle" class="btn" title="Dark/light theme" data-i18n-title="theme_toggle">Theme mode</button>
               <button id="adminPanelBtn" class="btn" title="Admin panel" data-i18n="admin_panel" data-i18n-title="admin_panel" style="display:none;">Admin panel</button>
               <button id="logoutBtn" class="btn" title="Logout" data-i18n="logout" data-i18n-title="logout" style="display:none;">Logout</button>
@@ -244,14 +245,6 @@
         <label data-i18n="board_id">Board ID (optional)
           <input id="cfBoardId" type="text" placeholder="default" />
         </label>
-        <div class="profile-avatar-settings">
-          <div id="profileAvatarPreview" class="profile-avatar-preview"></div>
-          <div class="profile-avatar-actions">
-            <button type="button" id="changeAvatarBtn" class="btn secondary" data-i18n="change_picture">Change picture</button>
-            <button type="button" id="removeAvatarBtn" class="btn secondary" data-i18n="remove_picture">Remove picture</button>
-          </div>
-          <input type="file" id="profileAvatarInput" accept="image/*" hidden />
-        </div>
       </div>
 
       <div class="editor-actions">
@@ -297,6 +290,35 @@
         </div>
       </div>
     </div>
+  </dialog>
+
+  <dialog id="profileDialog" aria-label="Profile" tabindex="-1">
+    <form id="profileForm" method="dialog" class="editor-form">
+      <h3 data-i18n="profile">Profile</h3>
+      <label data-i18n="email_label">Email
+        <input id="profileEmail" type="email" readonly />
+      </label>
+      <label data-i18n="display_name">Display name
+        <input id="profileDisplayName" type="text" maxlength="120" data-i18n-placeholder="display_name_placeholder" placeholder="How others should see you" />
+      </label>
+      <label data-i18n="new_password">New password
+        <input id="profilePassword" type="password" data-i18n-placeholder="new_password_placeholder" placeholder="Leave blank to keep current password" />
+      </label>
+      <div class="profile-avatar-settings">
+        <div id="profileAvatarPreview" class="profile-avatar-preview"></div>
+        <div class="profile-avatar-actions">
+          <button type="button" id="changeAvatarBtn" class="btn secondary" data-i18n="change_picture">Change picture</button>
+          <button type="button" id="removeAvatarBtn" class="btn secondary" data-i18n="remove_picture">Remove picture</button>
+        </div>
+        <input type="file" id="profileAvatarInput" accept="image/*" hidden />
+      </div>
+      <div class="editor-actions">
+        <div class="actions-main">
+          <button type="button" value="cancel" class="btn secondary" formnovalidate data-i18n="cancel">Cancel</button>
+          <button value="default" class="btn primary" data-i18n="save_profile">Save profile</button>
+        </div>
+      </div>
+    </form>
   </dialog>
 
 </body>

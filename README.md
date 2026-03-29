@@ -28,8 +28,8 @@ No frameworks, no backend — works entirely in the browser with **IndexedDB** p
 ## How It Works
 
 - **Storage:** All board data is saved in **IndexedDB** (with automatic migration from localStorage). Small settings (theme, language) use `localStorage`. Or you can use your own Cloudflare D1 database.
-- **D1 identity:** Cloudflare D1 mode stores a user name and pin code per board user. New cards created in D1 automatically capture `createdBy` and creation timestamps.
-- **D1 permissions:** The Cloudflare worker enforces card ownership rules server-side. Non-admin users may self-register, may edit or delete only their own cards, and may move cards assigned to them. Admin remains unrestricted.
+- **D1 identity:** Cloudflare D1 mode stores user accounts with email, display name, avatar, approval status, and password per board user. New cards created in D1 automatically capture authorship metadata.
+- **D1 permissions:** The Cloudflare worker enforces card ownership rules server-side. Users log in with email, new signups stay pending until approved by an admin, and non-admin users may edit or delete only their own cards while still moving cards assigned to them. Admin remains unrestricted.
 - **Customizable:** Modify `styles.css` and `script.js` to fit your needs.
 - **Offline-ready:** Runs locally or from any static hosting provider.
 

@@ -14,10 +14,10 @@ function sqlEscape(value) {
   return String(value || "").replace(/'/g, "''");
 }
 
-const [boardId, name, pinCode, avatarUrl = "", avatarKey = "", isAdminArg = "0"] = process.argv.slice(2);
+const [boardId, email, pinCode, name = "", avatarUrl = "", avatarKey = "", isAdminArg = "0", isApprovedArg = "1"] = process.argv.slice(2);
 
-if (!boardId || !name || !pinCode) {
-  console.error("Usage: node cloudflare-worker/scripts/provision-user.mjs <boardId> <name> <pinCode> [avatarUrl] [avatarKey] [isAdmin:0|1]");
+if (!boardId || !email || !pinCode) {
+  console.error("Usage: node cloudflare-worker/scripts/provision-user.mjs <boardId> <email> <pinCode> [name] [avatarUrl] [avatarKey] [isAdmin:0|1] [isApproved:0|1]");
   process.exit(1);
 }
 
@@ -26,6 +26,7 @@ const pinSalt = bytesToBase64(saltBytes);
 const pinHash = await hashPin(pinCode, pinSalt);
 const now = new Date().toISOString();
 const isAdmin = isAdminArg === "1" ? 1 : 0;
+const isApproved = isApprovedArg === "0" ? 0 : 1;
 
-console.log(`INSERT OR REPLACE INTO board_users (board_id, name, avatar_url, avatar_key, is_admin, updated_at) VALUES ('${sqlEscape(boardId)}', '${sqlEscape(name)}', '${sqlEscape(avatarUrl)}', '${sqlEscape(avatarKey)}', ${isAdmin}, '${sqlEscape(now)}');`);
-console.log(`INSERT OR REPLACE INTO board_user_credentials (board_id, name, pin_hash, pin_salt, updated_at) VALUES ('${sqlEscape(boardId)}', '${sqlEscape(name)}', '${sqlEscape(pinHash)}', '${sqlEscape(pinSalt)}', '${sqlEscape(now)}');`);
+console.log(`INSERT OR REPLACE INTO board_users (board_id, email, name, avatar_url, avatar_key, is_admin, is_approved, updated_at) VALUES ('${sqlEscape(boardId)}', '${sqlEscape(email.toLowerCase())}', '${sqlEscape(name)}', '${sqlEscape(avatarUrl)}', '${sqlEscape(avatarKey)}', ${isAdmin}, ${isApproved}, '${sqlEscape(now)}');`);
+console.log(`INSERT OR REPLACE INTO board_user_credentials (board_id, email, pin_hash, pin_salt, updated_at) VALUES ('${sqlEscape(boardId)}', '${sqlEscape(email.toLowerCase())}', '${sqlEscape(pinHash)}', '${sqlEscape(pinSalt)}', '${sqlEscape(now)}');`);

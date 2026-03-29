@@ -1249,6 +1249,37 @@ dialog:focus-visible {
   margin: 0 auto;
 }
 
+.board-login-form--secondary {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.board-login-form-title {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.board-auth-switch {
+  margin-top: 10px;
+  text-align: center;
+}
+
+.board-auth-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.board-auth-link:hover {
+  text-decoration: underline;
+}
+
 .board-login-form label {
   display: flex;
   flex-direction: column;
