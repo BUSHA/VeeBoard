@@ -278,13 +278,13 @@
   </dialog>
 
   <dialog id="adminDialog" aria-label="Admin panel" tabindex="-1">
-    <div class="editor-form">
+    <div class="editor-form admin-panel">
       <h3 data-i18n="admin_panel">Admin panel</h3>
-      <div id="adminUserList" style="max-height: 50vh; overflow-y: auto; margin-bottom: 1rem; display: flex; flex-direction: column; gap: 8px;">
+      <div id="adminUserList" class="admin-user-list">
         <!-- User items rendered here -->
       </div>
-      <div class="editor-actions">
-        <div class="actions-main">
+      <div class="editor-actions admin-panel-actions">
+        <div class="actions-main admin-panel-actions-main">
           <button type="button" class="btn secondary btn-close-admin" data-i18n="close">Close</button>
           <button type="button" class="btn primary btn-add-user" data-i18n="add_user">Add user</button>
         </div>

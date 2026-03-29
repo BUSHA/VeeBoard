@@ -1433,16 +1433,10 @@ const UI = {
 
     (this.adminUsers || []).forEach((u) => {
       const row = document.createElement("div");
-      row.style.display = "flex";
-      row.style.gap = "8px";
-      row.style.alignItems = "center";
-      row.style.flexWrap = "wrap";
+      row.className = "admin-user-card";
 
       const avatarPreview = document.createElement("div");
-      avatarPreview.className = "profile-avatar-preview";
-      avatarPreview.style.width = "36px";
-      avatarPreview.style.height = "36px";
-      avatarPreview.style.flex = "0 0 auto";
+      avatarPreview.className = "profile-avatar-preview admin-user-avatar";
       if (u.avatarUrl) {
         avatarPreview.innerHTML = `<img src="${u.avatarUrl}" alt="">`;
       } else {
@@ -1452,33 +1446,29 @@ const UI = {
       const emailInp = document.createElement("input");
       emailInp.value = u.email || "";
       emailInp.placeholder = I18n.t("email_label") || "Email";
-      emailInp.style.flex = "1 1 220px";
       emailInp.type = "email";
+      emailInp.className = "admin-user-input admin-user-input--email";
 
       const nameInp = document.createElement("input");
       nameInp.value = u.name || "";
       nameInp.placeholder = I18n.t("display_name") || "Display name";
-      nameInp.style.flex = "1";
+      nameInp.className = "admin-user-input";
       
       const pinInp = document.createElement("input");
       pinInp.type = "password";
       pinInp.value = "";
       pinInp.placeholder = `${I18n.t("new_password") || "New password"}${u.email ? " (leave blank to keep)" : ""}`;
-      pinInp.style.flex = "1 1 180px";
+      pinInp.className = "admin-user-input admin-user-input--password";
 
       const approvedWrap = document.createElement("label");
-      approvedWrap.className = "toggle-switch";
-      approvedWrap.style.width = "auto";
-      approvedWrap.style.gap = "6px";
+      approvedWrap.className = "admin-user-toggle";
       const approvedInp = document.createElement("input");
       approvedInp.type = "checkbox";
       approvedInp.checked = !!u.isApproved;
       approvedWrap.append(approvedInp, document.createTextNode(I18n.t("approved_user")));
 
       const adminWrap = document.createElement("label");
-      adminWrap.className = "toggle-switch";
-      adminWrap.style.width = "auto";
-      adminWrap.style.gap = "6px";
+      adminWrap.className = "admin-user-toggle";
       const adminInp = document.createElement("input");
       adminInp.type = "checkbox";
       adminInp.checked = !!u.isAdmin;
@@ -1493,16 +1483,51 @@ const UI = {
       delBtn.className = "btn error";
       delBtn.title = I18n.t("delete") || "Delete";
       delBtn.innerHTML = "✕";
-      delBtn.style.padding = "0 8px";
-      
-      row.appendChild(avatarPreview);
-      row.appendChild(emailInp);
-      row.appendChild(nameInp);
-      row.appendChild(pinInp);
-      row.appendChild(approvedWrap);
-      row.appendChild(adminWrap);
-      row.appendChild(saveBtn);
-      row.appendChild(delBtn);
+      delBtn.classList.add("admin-user-delete");
+
+      const emailField = document.createElement("label");
+      emailField.className = "admin-user-field";
+      const emailLabel = document.createElement("span");
+      emailLabel.className = "admin-user-field-label";
+      emailLabel.textContent = I18n.t("email_label");
+      emailField.append(emailLabel, emailInp);
+
+      const nameField = document.createElement("label");
+      nameField.className = "admin-user-field";
+      const nameLabel = document.createElement("span");
+      nameLabel.className = "admin-user-field-label";
+      nameLabel.textContent = I18n.t("display_name");
+      nameField.append(nameLabel, nameInp);
+
+      const passwordField = document.createElement("label");
+      passwordField.className = "admin-user-field admin-user-field--password";
+      const passwordLabel = document.createElement("span");
+      passwordLabel.className = "admin-user-field-label";
+      passwordLabel.textContent = I18n.t("new_password");
+      passwordField.append(passwordLabel, pinInp);
+
+      const headerRow = document.createElement("div");
+      headerRow.className = "admin-user-head";
+
+      const fieldsRow = document.createElement("div");
+      fieldsRow.className = "admin-user-fields";
+      fieldsRow.append(emailField, nameField);
+
+      headerRow.append(avatarPreview, fieldsRow);
+
+      const controlsRow = document.createElement("div");
+      controlsRow.className = "admin-user-controls";
+      controlsRow.append(passwordField, approvedWrap, adminWrap);
+
+      const actionsRow = document.createElement("div");
+      actionsRow.className = "admin-user-actions";
+      actionsRow.append(saveBtn, delBtn);
+
+      const footerRow = document.createElement("div");
+      footerRow.className = "admin-user-footer";
+      footerRow.append(controlsRow, actionsRow);
+
+      row.append(headerRow, footerRow);
       
       const saveChanges = async () => {
         const nextEmail = emailInp.value.trim().toLowerCase();
