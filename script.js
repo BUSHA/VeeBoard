@@ -1432,6 +1432,7 @@ const UI = {
     }
 
     (this.adminUsers || []).forEach((u) => {
+      const isProtectedAdmin = !!u.isAdmin
       const row = document.createElement("div");
       row.className = "admin-user-card";
 
@@ -1484,6 +1485,8 @@ const UI = {
       delBtn.title = I18n.t("delete") || "Delete";
       delBtn.innerHTML = "✕";
       delBtn.classList.add("admin-user-delete");
+      delBtn.disabled = isProtectedAdmin;
+      delBtn.style.display = isProtectedAdmin ? "none" : "";
 
       const emailField = document.createElement("label");
       emailField.className = "admin-user-field";
@@ -1521,7 +1524,10 @@ const UI = {
 
       const actionsRow = document.createElement("div");
       actionsRow.className = "admin-user-actions";
-      actionsRow.append(saveBtn, delBtn);
+      actionsRow.append(saveBtn);
+      if (!isProtectedAdmin) {
+        actionsRow.append(delBtn);
+      }
 
       const footerRow = document.createElement("div");
       footerRow.className = "admin-user-footer";
@@ -1561,6 +1567,7 @@ const UI = {
       saveBtn.addEventListener("click", () => { saveChanges(); });
       
       delBtn.addEventListener("click", () => {
+        if (isProtectedAdmin) return
         if (confirm(`${I18n.t("delete_user") || "Remove user"} ${u.email || u.name}?`)) {
           const avatarKey = u.avatarKey
           if (cfg.provider === "cloudflare" && cfg.cfWorkerUrl) {

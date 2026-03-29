@@ -1133,10 +1133,11 @@ dialog:focus-visible {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 14px;
   padding-right: 4px;
+  align-content: start;
 }
 
 .admin-user-card {
@@ -1147,6 +1148,8 @@ dialog:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  flex: 0 0 auto;
+  align-self: start;
 }
 
 .admin-user-head {
@@ -1285,32 +1288,86 @@ dialog:focus-visible {
     max-height: 100dvh !important;
     height: 100dvh !important;
     border-radius: 0 !important;
-    padding: max(16px, env(safe-area-inset-top, 16px)) 16px max(16px, env(safe-area-inset-bottom, 16px)) !important;
+    padding: max(16px, env(safe-area-inset-top, 16px)) 14px max(14px, env(safe-area-inset-bottom, 14px)) !important;
+    gap: 12px !important;
+    overflow: hidden !important;
+  }
+
+  #adminDialog .admin-panel h3 {
+    font-size: 18px !important;
+    text-align: left;
+    padding-top: 0 !important;
+  }
+
+  #adminDialog .admin-panel .admin-user-list {
+    gap: 10px;
+    padding-right: 0;
+    margin-right: -2px;
+    display: block;
+  }
+
+  #adminDialog .admin-panel .editor-actions.admin-panel-actions {
+    position: static !important;
+    bottom: auto !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  #adminDialog .admin-panel .editor-actions.admin-panel-actions::before {
+    display: none !important;
+  }
+
+  #adminDialog .admin-panel .actions-main.admin-panel-actions-main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px !important;
   }
 
   .admin-user-avatar {
-    width: 48px;
-    height: 48px;
+    width: 44px;
+    height: 44px;
     font-size: 18px;
   }
 
   .admin-user-head {
-    grid-template-columns: 48px minmax(0, 1fr);
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 10px;
   }
 
   .admin-user-fields {
     grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .admin-user-field {
+    gap: 4px;
+  }
+
+  .admin-user-field-label {
+    font-size: 11px;
+  }
+
+  .admin-user-card {
+    padding: 12px;
+    gap: 12px;
+    border-radius: 16px;
+    display: block;
   }
 
   .admin-user-footer {
-    flex-direction: column;
-    align-items: stretch;
+    display: block;
+    gap: 10px;
   }
 
   .admin-user-controls {
     width: 100%;
+    display: flex;
     flex-direction: column;
     align-items: stretch;
+    gap: 10px;
   }
 
   .admin-user-field--password {
@@ -1319,15 +1376,21 @@ dialog:focus-visible {
 
   .admin-user-toggle {
     justify-content: flex-start;
+    min-height: 40px;
+    padding: 0 10px;
+    font-size: 14px;
   }
 
   .admin-user-actions {
     width: 100%;
-    justify-content: stretch;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 10px;
   }
 
   .admin-user-actions .btn {
-    flex: 1 1 0;
+    min-width: 0;
   }
 }
 
