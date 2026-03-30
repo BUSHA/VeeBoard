@@ -1,42 +1,73 @@
 # VeeBoard
 
-VeeBoard is a minimal Trello-like Kanban board built with **HTML + CSS + JavaScript**.
-No frameworks on the frontend, with Cloudflare D1 as the only board data store.
-
-### No clouds - your data belongs to you!
+VeeBoard is a lightweight Kanban board built with plain HTML, CSS, and JavaScript.
+The frontend is static, while board data, users, and attachments are handled through a Cloudflare Worker backed by D1 and R2.
 
 ![Vibecode alert](vibealert.png "Vibecode alert!")
 
-### Created with AI, may contain glitches
-
 ## Features
 
-- **Columns & Cards** — Create, rename, reorder, and delete columns. Add, edit, move, archive and delete cards.
-- **Drag & Drop** — Move cards and reorder columns by dragging (desktop only).
-- **Due Date Tracking** — Set a precise due date and time for any card to track deadlines. All content is sanitized for security.
-- **Rich Text Description** — The card description supports bold text (**Cmd/Ctrl+B**) and hyperlinks. Create links by pasting a URL onto selected text, and remove them with **Cmd/Ctrl+K**. All content is sanitized for security.
-- **Card Editor** — A simple popup form for editing a card's title, rich text description, due date, users, and tags.
-- **User Assignment** — Assign users to tasks with smart autocomplete that suggests existing users on your board.
-- **Card authorship metadata** — Cards show who created them and when they were later edited.
-- **D1 card permissions** — Non-admin users can edit or delete only their own cards. Cards assigned to them can still be moved between columns. Admin can manage everything.
-- **Image Attachments** — Attach up to 4 images per card (auto-converted to WebP for optimization).
-- **Filtering & Search** — Filter cards effortlessly by clicking tags or user avatars, or use the instant search bar for finding titles and descriptions.
-- **Theme Toggle** — Light and dark modes with saved preference.
-- **Mobile Support** — Responsive layout adapted for mobile screens with specialized action menus and forms.
-- **Multi-language support** — Works in English and Ukrainian.
+- Columns and cards: create, rename, reorder, archive, and delete.
+- Drag and drop for cards and columns on desktop.
+- Rich text card descriptions with sanitized links.
+- Due dates with overdue highlighting outside done/archive columns.
+- User assignment with autocomplete from board users.
+- Card authorship and edit metadata.
+- Threaded comments on cards.
+- Image attachments stored through the worker/R2.
+- Archive column with toggle visibility.
+- Profile editing with avatar upload.
+- Admin panel for user approval, role management, and password resets.
+- Password quality feedback when setting or changing passwords.
+- English and Ukrainian UI.
+- Responsive layout for desktop and mobile.
 
-## How It Works
+## Authentication And Permissions
 
-- **Storage:** All board data is stored in **Cloudflare D1**.
-- **D1 identity:** Cloudflare D1 stores user accounts with email, display name, avatar, approval status, and password per board user. New cards automatically capture authorship metadata.
-- **D1 permissions:** The Cloudflare worker enforces card ownership rules server-side. Users log in with email, new signups stay pending until approved by an admin, and non-admin users may edit or delete only their own cards while still moving cards assigned to them. Admin remains unrestricted.
-- **Customizable:** Modify `styles.css` and `script.js` to fit your needs.
-- **Deployment:** Serve the frontend statically and connect it to your Cloudflare Worker.
+- Users log in with email and password.
+- If the board has no users yet, the first signup becomes the approved admin.
+- Later signups stay pending until an admin approves them.
+- Admins can manage users, columns, cards, comments, and settings.
+- Non-admin users can edit or delete only their own cards.
+- Non-admin users can still move cards assigned to them between columns.
+- Comment edit/delete permissions are limited to the author unless the current user is an admin.
 
-## Deployment
+## Attachments
 
-Use the instructions in [CLOUDFLARE_DEPLOY.md](CLOUDFLARE_DEPLOY.md) to provision D1, deploy the worker, and connect the frontend.
+- Up to 4 image attachments per card.
+- Images are converted to WebP on the client before upload.
+- Attachments are stored through the worker and removed from R2 when deleted.
 
----
+## Configuration
 
-**License:** MIT — free to use and modify.
+The app needs a deployed Cloudflare Worker URL to be usable.
+
+In the app:
+
+1. Open `Settings`.
+2. Enter the Worker URL.
+3. Optionally enter a board ID.
+4. Save settings.
+5. Create the first owner account or log in with an approved account.
+
+## Development
+
+The frontend has no build step.
+
+- Run a simple static server for the root directory.
+- Deploy the worker from [`cloudflare-worker/`](/Users/busha/projects/VeeBoard/cloudflare-worker).
+
+Detailed setup steps are in [CLOUDFLARE_DEPLOY.md](/Users/busha/projects/VeeBoard/CLOUDFLARE_DEPLOY.md).
+
+## Project Structure
+
+- [index.html](/Users/busha/projects/VeeBoard/index.html): app markup and dialogs
+- [styles.css](/Users/busha/projects/VeeBoard/styles.css): all styles
+- [script.js](/Users/busha/projects/VeeBoard/script.js): frontend logic
+- [translations.js](/Users/busha/projects/VeeBoard/translations.js): English and Ukrainian strings
+- [cloudflare-worker/src/index.js](/Users/busha/projects/VeeBoard/cloudflare-worker/src/index.js): worker API
+- [cloudflare-worker/schema.sql](/Users/busha/projects/VeeBoard/cloudflare-worker/schema.sql): database schema
+
+## License
+
+MIT
