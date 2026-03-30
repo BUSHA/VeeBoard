@@ -1208,40 +1208,6 @@ dialog:focus-visible {
   align-items: center;
 }
 
-.password-input-shell input {
-  padding-right: 60px;
-}
-
-.password-generate-btn {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  border: 1px solid color-mix(in srgb, var(--border), var(--primary) 14%);
-  background: color-mix(in srgb, var(--panel), var(--primary) 4%);
-  color: var(--muted);
-  border-radius: 999px;
-  min-width: 42px;
-  height: 28px;
-  padding: 0 10px;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.password-generate-btn:hover {
-  color: var(--text);
-  border-color: color-mix(in srgb, var(--border), var(--primary) 30%);
-  background: color-mix(in srgb, var(--panel), var(--primary) 10%);
-}
-
-.password-generate-btn:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--primary) 55%, transparent);
-  outline-offset: 1px;
-}
-
 .password-strength {
   margin-top: 6px;
   font-size: 12px;

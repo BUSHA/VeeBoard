@@ -187,23 +187,6 @@ const Utils = {
     if (score >= 4) return { tone: "good", labelKey: "password_strength_good" }
     return { tone: "ok", labelKey: "password_strength_ok" }
   },
-  generatePassword: (length = 14) => {
-    const pools = [
-      "abcdefghjkmnpqrstuvwxyz",
-      "ABCDEFGHJKLMNPQRSTUVWXYZ",
-      "23456789",
-      "!@#$%*-_?",
-    ]
-    const pick = (chars) => chars[Math.floor(Math.random() * chars.length)]
-    const allChars = pools.join("")
-    const chars = pools.map(pick)
-    while (chars.length < length) chars.push(pick(allChars))
-    for (let i = chars.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[chars[i], chars[j]] = [chars[j], chars[i]]
-    }
-    return chars.join("")
-  },
 }
 
 /**
@@ -1159,15 +1142,9 @@ const UI = {
 
     if (input.dataset.passwordEnhanced === "true") {
       const shell = input.parentElement
-      const generateBtn = shell?.querySelector(".password-generate-btn")
       const strength = shell?.nextElementSibling?.classList.contains("password-strength")
         ? shell.nextElementSibling
         : null
-      if (generateBtn) {
-        generateBtn.textContent = I18n.t("generate_short")
-        generateBtn.title = I18n.t("generate_password")
-        generateBtn.setAttribute("aria-label", I18n.t("generate_password"))
-      }
       if (strength) {
         const state = Utils.getPasswordStrength(input.value, { allowEmpty })
         strength.className = `password-strength password-strength--${state.tone}`
@@ -1181,16 +1158,6 @@ const UI = {
     input.parentNode.insertBefore(shell, input)
     shell.appendChild(input)
 
-    const generateBtn = document.createElement("button")
-    generateBtn.type = "button"
-    generateBtn.className = "password-generate-btn"
-    generateBtn.textContent = I18n.t("generate_short")
-    generateBtn.dataset.i18n = "generate_short"
-    generateBtn.title = I18n.t("generate_password")
-    generateBtn.setAttribute("aria-label", I18n.t("generate_password"))
-    generateBtn.dataset.i18nTitle = "generate_password"
-    shell.appendChild(generateBtn)
-
     const strength = document.createElement("div")
     strength.className = "password-strength password-strength--empty"
     shell.insertAdjacentElement("afterend", strength)
@@ -1200,14 +1167,6 @@ const UI = {
       strength.className = `password-strength password-strength--${state.tone}`
       strength.textContent = I18n.t(state.labelKey)
     }
-
-    generateBtn.addEventListener("click", () => {
-      input.value = Utils.generatePassword()
-      update()
-      input.dispatchEvent(new Event("input", { bubbles: true }))
-      input.focus()
-      input.select?.()
-    })
 
     input.addEventListener("input", update)
     input.dataset.passwordEnhanced = "true"
