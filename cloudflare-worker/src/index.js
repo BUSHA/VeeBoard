@@ -347,9 +347,11 @@ function sanitizedState(state = {}, publicUsers = []) {
 
 async function loadSanitizedBoard(env, boardId) {
   const row = await readBoardRow(env, boardId);
-  const rawState = row?.data ? JSON.parse(row.data) : null;
-  if (!rawState) return null;
   const publicUsers = await listPublicUsers(env, boardId);
+  const rawState = row?.data ? JSON.parse(row.data) : null;
+  if (!rawState) {
+    return sanitizedState({ columns: [], users: [] }, publicUsers);
+  }
   return sanitizedState(rawState, publicUsers);
 }
 

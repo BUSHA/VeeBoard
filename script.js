@@ -529,6 +529,10 @@ const Store = {
     }
     this.state = data
 
+    if (!this.state.columns.length) {
+      this.state = this.createEmptyState(this.state.users || [])
+    }
+
     // Гарантуємо наявність archive-колонки
     if (!this.state.columns.some((c) => c.isArchive)) {
       this.state.columns.push({
@@ -955,10 +959,55 @@ const Store = {
     }
   },
 
-  createEmptyState() {
+  createEmptyState(users = []) {
+    const now = Utils.nowIso()
+    const currentEmail = (DbSettings.get().cfUserEmail || "").trim().toLowerCase()
+    const starterAssignee =
+      users.find((user) => (user.email || "").trim().toLowerCase() === currentEmail) ||
+      users[0] ||
+      null
+    const starterCard = {
+      id: Utils.uid(),
+      title: I18n.t("starter_card_title"),
+      description: I18n.t("starter_card_desc"),
+      tags: ["starter"],
+      due: "",
+      assignedUser: starterAssignee
+        ? {
+            email: (starterAssignee.email || "").trim().toLowerCase(),
+            name: (starterAssignee.name || "").trim(),
+          }
+        : null,
+      attachments: [],
+      comments: [],
+      createdBy: "",
+      createdByEmail: "",
+      createdAt: now,
+      lastChanged: now,
+      lastChangedBy: "system",
+      seq: 0,
+      contentChangedAt: now,
+      positionChangedAt: now,
+    }
+
     return {
-      users: [],
+      users,
       columns: [
+        {
+          id: Utils.uid(),
+          title: I18n.t("todo_col_title"),
+          cards: [starterCard],
+        },
+        {
+          id: Utils.uid(),
+          title: I18n.t("in_progress_col_title"),
+          cards: [],
+        },
+        {
+          id: Utils.uid(),
+          title: I18n.t("blocked_col_title"),
+          cards: [],
+        },
         {
           id: Utils.uid(),
           title: I18n.t("done_col_title"),
