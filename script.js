@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.9.4"
+  version: "0.10.0"
 }
 
 /* Live sync echo guard */
@@ -120,6 +120,90 @@ const Utils = {
   },
   // Return current UTC time in ISO 8601 format
   nowIso: () => new Date().toISOString(),
+  getPasswordValidationError: (password, { allowEmpty = false } = {}) => {
+    const value = (password || "").trim()
+    if (!value) return allowEmpty ? "" : "required"
+    if (value.length < 6) return "too_short"
+
+    const lower = value.toLowerCase()
+    const blocked = new Set([
+      "1234",
+      "12345",
+      "123456",
+      "1234567",
+      "12345678",
+      "0000",
+      "000000",
+      "1111",
+      "111111",
+      "password",
+      "qwerty",
+      "admin",
+      "letmein",
+    ])
+    if (blocked.has(lower)) return "too_common"
+
+    const uniqueChars = new Set(lower)
+    if (uniqueChars.size === 1) return "too_simple"
+
+    const isSequential = (text) => {
+      if (text.length < 4) return false
+      let ascending = true
+      let descending = true
+      for (let i = 1; i < text.length; i++) {
+        const prev = text.charCodeAt(i - 1)
+        const curr = text.charCodeAt(i)
+        if (curr !== prev + 1) ascending = false
+        if (curr !== prev - 1) descending = false
+      }
+      return ascending || descending
+    }
+
+    if (isSequential(lower)) return "too_simple"
+    return ""
+  },
+  getPasswordStrength: (password, { allowEmpty = false } = {}) => {
+    const value = (password || "").trim()
+    if (!value) {
+      return {
+        tone: "empty",
+        labelKey: allowEmpty ? "password_strength_optional" : "password_strength_empty",
+      }
+    }
+
+    const validationError = Utils.getPasswordValidationError(value, { allowEmpty })
+    if (validationError) {
+      return { tone: "weak", labelKey: "password_strength_weak" }
+    }
+
+    let score = 0
+    if (value.length >= 8) score += 1
+    if (value.length >= 12) score += 1
+    if (/[a-z]/.test(value) && /[A-Z]/.test(value)) score += 1
+    if (/\d/.test(value)) score += 1
+    if (/[^A-Za-z0-9]/.test(value)) score += 1
+
+    if (score >= 5) return { tone: "strong", labelKey: "password_strength_strong" }
+    if (score >= 4) return { tone: "good", labelKey: "password_strength_good" }
+    return { tone: "ok", labelKey: "password_strength_ok" }
+  },
+  generatePassword: (length = 14) => {
+    const pools = [
+      "abcdefghjkmnpqrstuvwxyz",
+      "ABCDEFGHJKLMNPQRSTUVWXYZ",
+      "23456789",
+      "!@#$%*-_?",
+    ]
+    const pick = (chars) => chars[Math.floor(Math.random() * chars.length)]
+    const allChars = pools.join("")
+    const chars = pools.map(pick)
+    while (chars.length < length) chars.push(pick(allChars))
+    for (let i = chars.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[chars[i], chars[j]] = [chars[j], chars[i]]
+    }
+    return chars.join("")
+  },
 }
 
 /**
@@ -1069,6 +1153,67 @@ const UI = {
     if (removeBtn) removeBtn.disabled = !avatarUrl && !this.pendingProfileAvatarFile
   },
 
+  enhancePasswordField(input, options = {}) {
+    if (!input) return
+    const { allowEmpty = false } = options
+
+    if (input.dataset.passwordEnhanced === "true") {
+      const shell = input.parentElement
+      const generateBtn = shell?.querySelector(".password-generate-btn")
+      const strength = shell?.nextElementSibling?.classList.contains("password-strength")
+        ? shell.nextElementSibling
+        : null
+      if (generateBtn) {
+        generateBtn.textContent = I18n.t("generate_short")
+        generateBtn.title = I18n.t("generate_password")
+        generateBtn.setAttribute("aria-label", I18n.t("generate_password"))
+      }
+      if (strength) {
+        const state = Utils.getPasswordStrength(input.value, { allowEmpty })
+        strength.className = `password-strength password-strength--${state.tone}`
+        strength.textContent = I18n.t(state.labelKey)
+      }
+      return
+    }
+
+    const shell = document.createElement("div")
+    shell.className = "password-input-shell"
+    input.parentNode.insertBefore(shell, input)
+    shell.appendChild(input)
+
+    const generateBtn = document.createElement("button")
+    generateBtn.type = "button"
+    generateBtn.className = "password-generate-btn"
+    generateBtn.textContent = I18n.t("generate_short")
+    generateBtn.dataset.i18n = "generate_short"
+    generateBtn.title = I18n.t("generate_password")
+    generateBtn.setAttribute("aria-label", I18n.t("generate_password"))
+    generateBtn.dataset.i18nTitle = "generate_password"
+    shell.appendChild(generateBtn)
+
+    const strength = document.createElement("div")
+    strength.className = "password-strength password-strength--empty"
+    shell.insertAdjacentElement("afterend", strength)
+
+    const update = () => {
+      const state = Utils.getPasswordStrength(input.value, { allowEmpty })
+      strength.className = `password-strength password-strength--${state.tone}`
+      strength.textContent = I18n.t(state.labelKey)
+    }
+
+    generateBtn.addEventListener("click", () => {
+      input.value = Utils.generatePassword()
+      update()
+      input.dispatchEvent(new Event("input", { bubbles: true }))
+      input.focus()
+      input.select?.()
+    })
+
+    input.addEventListener("input", update)
+    input.dataset.passwordEnhanced = "true"
+    update()
+  },
+
   renderD1SetupGate() {
     this.board.innerHTML = `
       <section class="board-login-gate">
@@ -1137,6 +1282,7 @@ const UI = {
     }
     const signupForm = Utils.qs("#boardSignupForm", this.board)
     if (signupForm) {
+      this.enhancePasswordField(Utils.qs("#boardSignupPinCode", signupForm))
       signupForm.addEventListener("submit", App.handleCloudflareSignup.bind(App))
     }
     Utils.qs("#showSignupMode", this.board)?.addEventListener("click", () => {
@@ -1264,6 +1410,7 @@ const UI = {
       passwordLabel.className = "admin-user-field-label";
       passwordLabel.textContent = I18n.t("new_password");
       passwordField.append(passwordLabel, pinInp);
+      this.enhancePasswordField(pinInp, { allowEmpty: true });
 
       const headerRow = document.createElement("div");
       headerRow.className = "admin-user-head";
@@ -1296,6 +1443,11 @@ const UI = {
         const nextName = nameInp.value.trim();
         const nextPin = pinInp.value.trim();
         if (!nextEmail) return;
+        const passwordError = Utils.getPasswordValidationError(nextPin, { allowEmpty: true })
+        if (passwordError) {
+          UI.showAlert(I18n.t("weak_password_error"))
+          return
+        }
 
         if (cfg.cfWorkerUrl) {
           try {
@@ -2742,6 +2894,10 @@ const App = {
       UI.showAlert(I18n.t("email_pin_required"))
       return
     }
+    if (Utils.getPasswordValidationError(pinCode)) {
+      UI.showAlert(I18n.t("weak_password_error"))
+      return
+    }
 
     try {
       const result = await CloudflareBackend.signup(cfg, email, pinCode, name)
@@ -3052,6 +3208,7 @@ const App = {
         Utils.qs("#profileEmail", profileDialog).value = currentUser.email || ""
         Utils.qs("#profileDisplayName", profileDialog).value = currentUser.name || ""
         Utils.qs("#profilePassword", profileDialog).value = ""
+        UI.enhancePasswordField(Utils.qs("#profilePassword", profileDialog), { allowEmpty: true })
         UI.updateProfileAvatarPreview(currentUser.avatarUrl || "")
         UI.showDialog(profileDialog)
         profileBtn.closest(".dropdown-content")?.classList.remove("show")
@@ -3080,10 +3237,17 @@ const App = {
           nextAvatarKey = ""
         }
 
+        const nextPinCode = (Utils.qs("#profilePassword", profileDialog).value || "").trim()
+        const passwordError = Utils.getPasswordValidationError(nextPinCode, { allowEmpty: true })
+        if (passwordError) {
+          UI.showAlert(I18n.t("weak_password_error"))
+          return
+        }
+
         try {
           const result = await CloudflareBackend.updateProfile({
             name: (Utils.qs("#profileDisplayName", profileDialog).value || "").trim(),
-            pinCode: (Utils.qs("#profilePassword", profileDialog).value || "").trim(),
+            pinCode: nextPinCode,
             avatarUrl: nextAvatarUrl,
             avatarKey: nextAvatarKey,
           }, cfg)
