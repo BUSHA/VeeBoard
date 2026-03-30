@@ -1,52 +1,84 @@
-# Cloudflare D1 Deployment Guide for VeeBoard
+# Cloudflare Worker Deployment Guide
 
-To enable cloud sync for your VeeBoard using Cloudflare D1, follow these steps:
+This project uses a Cloudflare Worker for board data, user management, and image handling.
+The worker expects:
+
+- a D1 database bound as `DB`
+- an R2 bucket bound as `BUCKET`
 
 ## 1. Prerequisites
-- A Cloudflare account.
-- `wrangler` CLI installed (`npm install -g wrangler`).
 
-## 2. Initialize D1 Database & R2 Bucket
-Run the following commands in your terminal:
+- A Cloudflare account
+- `wrangler` installed
+
 ```bash
-# Login to Cloudflare
+npm install -g wrangler
+```
+
+## 2. Create Cloudflare Resources
+
+```bash
+# Log in
 npx wrangler login
 
-# Create the database
+# Create the D1 database
 npx wrangler d1 create veeboard_db
 
-# Create the R2 bucket for image attachments
+# Create the R2 bucket for attachments
 npx wrangler r2 bucket create veeboard-attachments
 ```
-**Take note of the `database_id` returned.**
 
-## 3. Set a Password (API Key)
-Protect your data by setting a secret key that only your app knows:
+Save the D1 `database_id` returned by the create command.
+
+## 3. Configure Wrangler
+
+The repo includes [cloudflare-worker/wrangler.example.json](/Users/busha/projects/VeeBoard/cloudflare-worker/wrangler.example.json).
+
+Create your real config from it:
+
 ```bash
 cd cloudflare-worker
-npx wrangler secret put API_KEY
-# Enter a strong password when prompted
+cp wrangler.example.json wrangler.json
 ```
 
-## 4. Update Configuration
-Open `cloudflare-worker/wrangler.json` and:
-1. Replace `REPLACE_WITH_YOUR_D1_DATABASE_ID` with your actual database ID.
-2. Ensure the `r2_buckets` binding for `BUCKET` matches your actual bucket name (`veeboard-attachments`).
+Then edit `wrangler.json`:
 
-## 5. Deploy the Worker
+1. Replace `REPLACE_WITH_YOUR_D1_DATABASE_ID` with your real database ID.
+2. Confirm the R2 bucket name matches the bucket you created.
+
+## 4. Initialize The Database
+
+Run the schema once:
+
 ```bash
-# Initialize the database schema
+cd cloudflare-worker
 npx wrangler d1 execute veeboard_db --remote --file=./schema.sql
+```
 
-# Deploy the worker
+The worker also contains runtime schema checks, but applying the schema explicitly is still the correct setup step.
+
+## 5. Deploy The Worker
+
+```bash
+cd cloudflare-worker
 npx wrangler deploy
 ```
 
-## 6. Configure VeeBoard
-1. Open your VeeBoard in the browser.
-2. Click the **☰ Menu** -> **Settings**.
-3. Enter your **Worker URL** and **Board ID**.
-4. Click **Save**.
-5. Create the first owner account or log in with an existing approved account.
+After deploy, copy the Worker URL.
 
-Your board will now sync securely with Cloudflare D1 and support image attachments via R2!
+## 6. Connect The Frontend
+
+1. Open VeeBoard in the browser.
+2. Open `Settings`.
+3. Enter the Worker URL.
+4. Optionally enter a board ID.
+5. Save.
+
+## 7. Create The First User
+
+- If the board has no users yet, the first signup becomes the approved admin.
+- After that, new signups require admin approval before they can log in.
+
+## Notes
+
+- Image uploads require the R2 bucket binding to be configured correctly.
