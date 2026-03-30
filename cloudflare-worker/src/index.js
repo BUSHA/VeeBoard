@@ -345,18 +345,24 @@ function sanitizedState(state = {}, publicUsers = []) {
   };
 }
 
+function boardStatePayload(state = {}) {
+  return {
+    columns: Array.isArray(state.columns) ? state.columns : [],
+  };
+}
+
 async function loadSanitizedBoard(env, boardId) {
   const row = await readBoardRow(env, boardId);
   const publicUsers = await listPublicUsers(env, boardId);
   const rawState = row?.data ? JSON.parse(row.data) : null;
   if (!rawState) {
-    return sanitizedState({ columns: [], users: [] }, publicUsers);
+    return sanitizedState(boardStatePayload({ columns: [] }), publicUsers);
   }
   return sanitizedState(rawState, publicUsers);
 }
 
 async function persistBoardState(env, boardId, state) {
-  const data = JSON.stringify(state);
+  const data = JSON.stringify(boardStatePayload(state));
   await env.DB.prepare(
     "INSERT OR REPLACE INTO boards (id, data, updated_at) VALUES (?, ?, ?)"
   ).bind(boardId, data, new Date().toISOString()).run();
@@ -669,8 +675,7 @@ export default {
           }
         }
 
-        const nextState = sanitizedState(body, currentUsers);
-        await persistBoardState(env, boardId, nextState);
+        await persistBoardState(env, boardId, body);
         return jsonResponse({ success: true }, headers);
       }
 
