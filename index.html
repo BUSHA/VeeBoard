@@ -38,9 +38,6 @@
             <div id="menuContent" class="dropdown-content">
               <button id="addColumnBtn" class="btn" title="Add column" data-i18n="add_column" data-i18n-title="add_column">Add column</button>
               <button id="toggleArchiveBtn" class="btn" title="Show/hide archive" data-i18n="show_archive" data-i18n-title="show_archive">Show archive</button>
-              <button id="exportBtn" class="btn" title="Export JSON" data-i18n="save_backup" data-i18n-title="save_backup">Save backup</button>
-              <label class="btn" title="Import JSON" data-i18n-title="import_backup"><span data-i18n="import_backup">Import backup</span><input id="importInput" type="file"
-                  accept="application/json" hidden></label>
               <button id="dbSettingsBtn" class="btn" title="Database & sync" data-i18n="db_sync" data-i18n-title="db_sync">Database & sync</button>
               <button id="profileBtn" class="btn" title="Profile" data-i18n="profile" data-i18n-title="profile" style="display:none;">Profile</button>
               <button id="themeToggle" class="btn" title="Dark/light theme" data-i18n-title="theme_toggle">Theme mode</button>
@@ -220,22 +217,8 @@
 
   <dialog id="dbDialog" aria-label="Database & sync" tabindex="-1">
     <form id="dbForm" method="dialog" class="editor-form">
-      <h3 data-i18n="db_sync_title">Database & sync</h3>
-      <div class="db-provider-choice">
-        <div class="lang-tabs" role="group" aria-label="Database provider selection">
-          <button type="button" class="lang-tab db-provider-tab" data-provider="local" data-i18n="local_storage">Browser storage</button>
-          <button type="button" class="lang-tab db-provider-tab" data-provider="cloudflare" data-i18n="cloudflare_d1">Cloudflare D1</button>
-        </div>
-        <input type="hidden" name="dbProvider" id="dbProviderInput" value="local">
-      </div>
-
-      <div id="localSettings" class="db-settings-section" style="display:none;">
-        <p class="label-text" data-i18n="local_db_hint">
-          All data is saved in your browser using IndexedDB. No configuration is required. Works locally only.
-        </p>
-      </div>
-
-      <div id="cloudflareSettings" class="db-settings-section" style="display:none;">
+      <h3 data-i18n="db_sync_title">Cloudflare settings</h3>
+      <div class="db-settings-section">
         <p class="label-text" data-i18n="cloudflare_hint">
           Enter your Cloudflare worker URL and an optional board ID.
         </p>
@@ -251,22 +234,6 @@
         <div class="actions-main">
           <button type="button" value="cancel" class="btn secondary" formnovalidate data-i18n="cancel">Cancel</button>
           <button value="default" class="btn primary" data-i18n="save">Save</button>
-        </div>
-      </div>
-    </form>
-  </dialog>
-
-  <dialog id="importChoice" aria-label="Import options" tabindex="-1">
-    <form id="importChoiceForm" method="dialog" class="editor-form">
-      <h3 data-i18n="import_options">Import options</h3>
-      <p data-i18n="import_hint">How to apply the imported JSON?</p>
-      <div class="editor-actions">
-        <div class="actions-extra">
-          <button class="btn" value="replace" data-i18n="replace">Replace</button>
-        </div>
-        <div class="actions-main">
-          <button type="button" value="cancel" class="btn secondary" data-i18n="cancel">Cancel</button>
-          <button class="btn primary" value="merge" data-i18n="merge">Merge</button>
         </div>
       </div>
     </form>

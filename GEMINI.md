@@ -1,13 +1,12 @@
 # VeeBoard+ Project Context
 
-VeeBoard+ is a minimal, Trello-inspired Kanban board application designed to be lightweight, privacy-focused, and highly customizable. It operates primarily as a client-side application with optional cloud synchronization.
+VeeBoard+ is a minimal, Trello-inspired Kanban board application designed to be lightweight, privacy-focused, and highly customizable. It uses Cloudflare D1 as its only board data store.
 
 ## Project Overview
 - **Purpose:** A personal productivity tool for managing tasks using a Kanban-style board.
 - **Architecture:** 
     - **Frontend:** Single-page application (SPA) built with vanilla HTML, CSS, and JavaScript.
-    - **Persistence:** Uses **IndexedDB** for main board state (with automatic migration from `localStorage`). Small settings (theme, language) still use `localStorage` for simplicity.
-    - **Cloud Sync (Optional):** Integration with Cloudflare D1 via a Cloudflare Worker for cross-device synchronization.
+    - **Persistence:** Uses **Cloudflare D1** via a Cloudflare Worker for board data.
 - **Main Technologies:**
     - HTML5 / CSS3 / JavaScript (ES6+)
     - Cloudflare Workers, D1 (Database), and R2 (Storage)
@@ -46,9 +45,9 @@ Required only if cloud synchronization is enabled.
 - **No Frameworks:** Strictly vanilla JavaScript and CSS. Avoid adding heavy libraries unless absolutely necessary.
 - **Modular JavaScript:** `script.js` is structured into several functional modules. Maintain this structure for readability.
 - **I18n:** All user-facing strings must be added to `translations.js` for both supported languages. Use `I18n.t('key')` in the code.
-- **Capitalization:** Avoid redundant capitalization in UI labels. Use sentence case (e.g., "Browser storage", "Database & sync") unless it's a proper noun or specific brand name (e.g., "Cloudflare D1").
+- **Capitalization:** Avoid redundant capitalization in UI labels. Use sentence case unless it's a proper noun or specific brand name (e.g., "Cloudflare D1").
 - **Styling:** Adhere to the existing CSS variables in `styles.css` for consistent theming. Do not use hover effects or scaling on UI elements as per global preferences.
-- **Persistence:** Ensure all state changes are synchronized with the active `Store` provider (Local or Cloud).
+- **Persistence:** Ensure all state changes are synchronized with Cloudflare D1.
 
 ## Image Management
 - **Limits:** Maximum 4 pictures per card, each limited to 1MB.
@@ -62,14 +61,11 @@ Required only if cloud synchronization is enabled.
 - **Cloudflare D1 users:** Users are stored in the board state with `name` and `pinCode`. Non-admin users may self-register through the D1 settings flow.
 
 ## D1 Card Ownership Rules
-- **Authorship metadata:** In Cloudflare D1 mode, new cards record `createdBy`, `createdAt`, `lastChanged`, `contentChangedAt`, and `positionChangedAt`. Older cards backfill `createdBy` on first save.
+- **Authorship metadata:** New cards record `createdBy`, `createdAt`, `lastChanged`, `contentChangedAt`, and `positionChangedAt`. Older cards backfill `createdBy` on first save.
 - **Footer metadata:** Card footers display `Created` or `Edited` with the author badge and timestamp. Column moves do not count as content edits.
 - **Permissions:** Admin can manage all cards and users. Non-admin users can edit or delete only cards where `createdBy` matches their own name.
 - **Assigned-card moves:** A non-admin user may still move cards assigned to them between columns, including mark-done / undo flows, but may not edit the card fields unless they are the owner.
 - **Enforcement:** These rules are enforced both in the frontend and in `cloudflare-worker/src/index.js`. If rules change, keep both layers aligned.
-
-## Demo State
-- **Seeded board:** `Store.getDemoState()` now includes seeded users, assignees, card authors, creation dates, and edited timestamps so the demo reflects current D1-era features instead of only bare card content.
 
 ## UI / UX Architecture Context
 - **Forms & Buttons:** Editor dialogues use `display: flex; flex-direction: column` for main structural layout, with `.actions-main` and `.actions-extra` container classes to robustly segment secondary operators (Archive, Mark Done) from primary operators (Save, Cancel). This avoids grid-related visual bugs, enforcing a consistent layout across mobile displays.

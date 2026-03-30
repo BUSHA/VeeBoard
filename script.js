@@ -234,7 +234,6 @@ const DbSettings = {
   get() {
     try {
       const defaults = {
-        provider: "local", // 'local', 'cloudflare'
         cfWorkerUrl: "",
         cfBoardId: "default",
         cfUserEmail: "",
@@ -242,67 +241,20 @@ const DbSettings = {
         cfUserToken: ""
       }
       const saved = JSON.parse(localStorage.getItem(this.KEY)) || {}
-      
-      // Fallback if it was firebase
-      if (saved.provider === "firebase") {
-        saved.provider = "local"
-      }
-      
       return { ...defaults, ...saved }
     } catch {
-      return { provider: "local", cfWorkerUrl: "", cfBoardId: "default", cfUserEmail: "", cfUserName: "", cfUserToken: "" }
+      return { cfWorkerUrl: "", cfBoardId: "default", cfUserEmail: "", cfUserName: "", cfUserToken: "" }
     }
   },
   set(v) {
-    const { firebaseConfig, ...toSave } = v // Remove firebaseConfig
-    localStorage.setItem(this.KEY, JSON.stringify(toSave))
+    localStorage.setItem(this.KEY, JSON.stringify({
+      cfWorkerUrl: v.cfWorkerUrl || "",
+      cfBoardId: v.cfBoardId || "default",
+      cfUserEmail: v.cfUserEmail || "",
+      cfUserName: v.cfUserName || "",
+      cfUserToken: v.cfUserToken || "",
+    }))
   },
-}
-
-const IndexedDBBackend = {
-  DB_NAME: "VeeBoardDB",
-  STORE_NAME: "state",
-  _db: null,
-
-  async _getDB() {
-    if (this._db) return this._db
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.DB_NAME, 1)
-      request.onupgradeneeded = (e) => {
-        const db = e.target.result
-        if (!db.objectStoreNames.contains(this.STORE_NAME)) {
-          db.createObjectStore(this.STORE_NAME)
-        }
-      }
-      request.onsuccess = (e) => {
-        this._db = e.target.result
-        resolve(this._db)
-      }
-      request.onerror = (e) => reject(e.target.error)
-    })
-  },
-
-  async load() {
-    const db = await this._getDB()
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([this.STORE_NAME], "readonly")
-      const store = transaction.objectStore(this.STORE_NAME)
-      const request = store.get(Store.STORAGE_KEY)
-      request.onsuccess = () => resolve(request.result || null)
-      request.onerror = (e) => reject(e.target.error)
-    })
-  },
-
-  async save(state) {
-    const db = await this._getDB()
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([this.STORE_NAME], "readwrite")
-      const store = transaction.objectStore(this.STORE_NAME)
-      const request = store.put(state, Store.STORAGE_KEY)
-      request.onsuccess = () => resolve()
-      request.onerror = (e) => reject(e.target.error)
-    })
-  }
 }
 
 const CloudflareBackend = {
@@ -472,10 +424,9 @@ const CloudflareBackend = {
 
 /**
  * @module Store
- * Manages the application state and persistence to IndexedDB.
+ * Manages the application state and persistence to Cloudflare D1.
  */
 const Store = {
-  STORAGE_KEY: "vee-board-state-v1",
   isAdmin: false,
   state: {
     columns: [],
@@ -484,16 +435,11 @@ const Store = {
 
   loadState: async function () {
     const cfg = DbSettings.get()
-    let data = null
+    let data = this.createEmptyState()
 
-    if (cfg.provider === "cloudflare" && cfg.cfWorkerUrl) {
+    if (cfg.cfWorkerUrl) {
       try {
-        data = await CloudflareBackend.load(cfg)
-        if (!data) {
-          const local = await this.loadLocal()
-          data = local || this.getDemoState()
-          await CloudflareBackend.save(data, cfg)
-        }
+        data = await CloudflareBackend.load(cfg) || this.createEmptyState()
       } catch (e) {
         if (e?.status === 401 || e?.status === 403) {
           console.warn("Cloudflare session rejected during load:", e)
@@ -501,19 +447,18 @@ const Store = {
             UI.clearCloudflareSession()
           }
         } else {
-          console.warn("Cloudflare load failed, fallback to Browser Storage:", e)
-          data = await this.loadLocal()
+          console.warn("Cloudflare load failed:", e)
+          if (typeof UI !== "undefined" && UI.showAlert) {
+            UI.showAlert(e.message || "Cloudflare load failed")
+          }
         }
       }
-    } else {
-      data = await this.loadLocal()
     }
 
-    if (!data) data = this.getDemoState()
     try {
       this.validateState(data)
     } catch {
-      data = this.getDemoState()
+      data = this.createEmptyState()
     }
     this.state = data
 
@@ -556,55 +501,26 @@ const Store = {
     }
   },
 
-  async loadLocal() {
-    let data = await IndexedDBBackend.load()
-    // Migration from localStorage
-    if (!data) {
-      const oldRaw = localStorage.getItem(this.STORAGE_KEY)
-      if (oldRaw) {
-        try {
-          data = JSON.parse(oldRaw)
-          if (data) {
-            await IndexedDBBackend.save(data)
-          }
-        } catch (e) {
-          console.error("Migration failed", e)
-        }
-      }
-    }
-    return data
-  },
-
   saveState: async function () {
     const cfg = DbSettings.get()
-    if (cfg.provider === "cloudflare" && cfg.cfWorkerUrl) {
-      try {
-        Sync.muteNext(900)
-        await CloudflareBackend.save(this.state, cfg)
-        return
-      } catch (e) {
-        if (e?.status === 401) {
-          console.warn("Cloudflare save rejected:", e)
-          if (typeof UI !== "undefined" && UI.clearCloudflareSession) {
-            UI.clearCloudflareSession()
-            if (UI.renderBoard) UI.renderBoard()
-          }
-          if (typeof UI !== "undefined" && UI.showAlert) {
-            UI.showAlert(e.message || "Cloudflare save failed")
-          }
-          return
+    if (!cfg.cfWorkerUrl) return
+    try {
+      Sync.muteNext(900)
+      await CloudflareBackend.save(this.state, cfg)
+    } catch (e) {
+      if (e?.status === 401) {
+        console.warn("Cloudflare save rejected:", e)
+        if (typeof UI !== "undefined" && UI.clearCloudflareSession) {
+          UI.clearCloudflareSession()
+          if (UI.renderBoard) UI.renderBoard()
         }
-        if (e?.status === 403) {
-          console.warn("Cloudflare save forbidden:", e)
-          if (typeof UI !== "undefined" && UI.showAlert) {
-            UI.showAlert(e.message || "Cloudflare save failed")
-          }
-          return
-        }
-        console.warn("Cloudflare save failed; also saving locally:", e)
+      } else {
+        console.warn("Cloudflare save failed:", e)
+      }
+      if (typeof UI !== "undefined" && UI.showAlert) {
+        UI.showAlert(e.message || "Cloudflare save failed")
       }
     }
-    await IndexedDBBackend.save(this.state)
   },
 
   normalizeComment(comment = {}) {
@@ -634,13 +550,13 @@ const Store = {
 
   getCurrentUserName() {
     const cfg = DbSettings.get()
-    if (cfg.provider !== "cloudflare" || !cfg.cfUserToken) return ""
+    if (!cfg.cfUserToken) return ""
     return (this.getCurrentUserProfile()?.name || cfg.cfUserName || cfg.cfUserEmail || "").trim()
   },
 
   getCurrentUserEmail() {
     const cfg = DbSettings.get()
-    return cfg.provider === "cloudflare" && cfg.cfUserToken ? (cfg.cfUserEmail || "").trim().toLowerCase() : ""
+    return cfg.cfUserToken ? (cfg.cfUserEmail || "").trim().toLowerCase() : ""
   },
 
   getCurrentUserProfile() {
@@ -658,22 +574,19 @@ const Store = {
 
   hasCloudflareSession() {
     const cfg = DbSettings.get()
-    return cfg.provider === "cloudflare" && !!cfg.cfWorkerUrl && !!cfg.cfUserToken
+    return !!cfg.cfWorkerUrl && !!cfg.cfUserToken
   },
 
   requiresCloudflareLogin() {
     const cfg = DbSettings.get()
-    return cfg.provider === "cloudflare" && !!cfg.cfWorkerUrl && !cfg.cfUserToken
+    return !!cfg.cfWorkerUrl && !cfg.cfUserToken
   },
 
   isCurrentUserAdmin() {
-    const cfg = DbSettings.get()
-    return cfg.provider === "cloudflare" && !!this.isAdmin
+    return !!this.isAdmin
   },
 
   canCurrentUserEditCard(card) {
-    const cfg = DbSettings.get()
-    if (cfg.provider !== "cloudflare") return true
     if (this.isCurrentUserAdmin()) return true
     const currentUser = this.getCurrentUserProfile()
     return !!currentUser && !!card && (
@@ -683,8 +596,6 @@ const Store = {
   },
 
   canCurrentUserMoveCard(card) {
-    const cfg = DbSettings.get()
-    if (cfg.provider !== "cloudflare") return true
     if (this.isCurrentUserAdmin()) return true
     const currentUser = this.getCurrentUserProfile()
     if (!currentUser || !card) return false
@@ -696,8 +607,6 @@ const Store = {
   },
 
   canCurrentUserManageComment(comment) {
-    const cfg = DbSettings.get()
-    if (cfg.provider !== "cloudflare") return false
     if (this.isCurrentUserAdmin()) return true
     const currentUser = this.getCurrentUserProfile()
     return !!currentUser && !!comment && (
@@ -707,13 +616,10 @@ const Store = {
   },
 
   canCurrentUserComment() {
-    const cfg = DbSettings.get()
-    return cfg.provider === "cloudflare" && !!this.getCurrentUserName()
+    return !!this.getCurrentUserName()
   },
 
   canCurrentUserManageBoardStructure() {
-    const cfg = DbSettings.get()
-    if (cfg.provider !== "cloudflare") return true
     return this.isCurrentUserAdmin()
   },
 
@@ -788,7 +694,6 @@ const Store = {
   addCard(colId, cardData) {
     const col = this.findColumn(colId)
     if (col) {
-      const cfg = DbSettings.get()
       const currentUser = this.getCurrentUserProfile()
       const newCard = {
         id: Utils.uid(),
@@ -799,8 +704,8 @@ const Store = {
         assignedUser: cardData.assignedUser || null,
         attachments: cardData.attachments || [],
         comments: cardData.comments || [],
-        createdBy: cfg.provider === "cloudflare" ? (currentUser?.name || currentUser?.email || "") : "",
-        createdByEmail: cfg.provider === "cloudflare" ? (currentUser?.email || "") : "",
+        createdBy: currentUser?.name || currentUser?.email || "",
+        createdByEmail: currentUser?.email || "",
         createdAt: Utils.nowIso(), // when the card was created (UTC ISO)
         lastChanged: Utils.nowIso(), // last modification timestamp (UTC ISO)
         lastChangedBy: Meta.clientId, // stable client identifier
@@ -820,7 +725,6 @@ const Store = {
   updateCard(cardId, cardData) {
     const { card } = this.findCard(cardId)
     if (card) {
-      const cfg = DbSettings.get()
       const currentUser = this.getCurrentUserProfile()
       card.title = cardData.title
       card.description = cardData.description
@@ -829,10 +733,10 @@ const Store = {
       card.assignedUser = cardData.assignedUser || null
       card.attachments = cardData.attachments || []
       card.comments = cardData.comments || card.comments || []
-      if (!card.createdBy && cfg.provider === "cloudflare") {
+      if (!card.createdBy) {
         card.createdBy = currentUser?.name || currentUser?.email || ""
       }
-      if (!card.createdByEmail && cfg.provider === "cloudflare") {
+      if (!card.createdByEmail) {
         card.createdByEmail = currentUser?.email || ""
       }
       
@@ -867,22 +771,19 @@ const Store = {
       // Cleanup images from R2 if any
       if (cardToDelete && cardToDelete.attachments && cardToDelete.attachments.length > 0) {
         const cfg = DbSettings.get()
-        if (cfg.provider === "cloudflare") {
-          cardToDelete.attachments.forEach(att => {
-            if (att.key) CloudflareBackend.deleteImage(att.key, cfg).catch(console.error)
-          })
-        }
+        cardToDelete.attachments.forEach(att => {
+          if (att.key) CloudflareBackend.deleteImage(att.key, cfg).catch(console.error)
+        })
       }
     }
   },
 
   addComment(cardId, text, parentCommentId = "") {
     const { card } = this.findCard(cardId)
-    const cfg = DbSettings.get()
     const currentUser = this.getCurrentUserProfile()
     const author = currentUser?.name || currentUser?.email || ""
     const authorEmail = currentUser?.email || ""
-    if (!card || cfg.provider !== "cloudflare" || !authorEmail) return null
+    if (!card || !authorEmail) return null
     const now = Utils.nowIso()
     const comment = this.normalizeComment({
       id: Utils.uid(),
@@ -987,163 +888,22 @@ const Store = {
     }
   },
 
-  getDemoState() {
-    const createFutureDate = (days, hours, minutes) => {
-      const d = new Date()
-      d.setDate(d.getDate() + days)
-      d.setHours(hours, minutes, 0, 0)
-      return d.toISOString()
-    }
-
-    const createPastDate = (days, hours, minutes) => {
-      const d = new Date()
-      d.setDate(d.getDate() - days)
-      d.setHours(hours, minutes, 0, 0)
-      return d.toISOString()
-    }
-
-    const demoUsers = [
-      { name: "Misha", pinCode: "1111" },
-      { name: "Ihor", pinCode: "2222" },
-      { name: "Anya", pinCode: "3333" },
-    ]
-
-    const makeDemoCard = ({
-      title,
-      description,
-      tags,
-      due = "",
-      assignedUser = null,
-      createdBy = "",
-      createdAt,
-      editedAt = "",
-      comments = [],
-    }) => ({
-      id: Utils.uid(),
-      title,
-      description,
-      tags,
-      due,
-      assignedUser,
-      attachments: [],
-      comments,
-      createdBy,
-      createdAt,
-      lastChanged: editedAt || createdAt,
-      lastChangedBy: "demo-seed",
-      seq: 0,
-      contentChangedAt: editedAt || createdAt,
-      positionChangedAt: editedAt || createdAt,
-    })
-
+  createEmptyState() {
     return {
-      users: demoUsers,
+      users: [],
       columns: [
-        {
-          id: Utils.uid(),
-          title: I18n.t("rename_col_demo_title"),
-          cards: [
-            makeDemoCard({
-              title: I18n.t("demo_welcome_title"),
-              description: I18n.t("demo_welcome_desc"),
-              tags: ["guide", "welcome"],
-              due: "",
-              createdBy: "Busha",
-              createdAt: createPastDate(10, 9, 30),
-            }),
-            makeDemoCard({
-              title: I18n.t("demo_drag_title"),
-              description: I18n.t("demo_drag_desc"),
-              tags: ["guide", "welcome"],
-              due: "",
-              assignedUser: { name: "Misha" },
-              createdBy: "Busha",
-              createdAt: createPastDate(8, 10, 15),
-              comments: [
-                {
-                  id: Utils.uid(),
-                  text: "Try moving me to Done after you assign the task.",
-                  author: "Anya",
-                  createdAt: createPastDate(7, 9, 10),
-                  updatedAt: createPastDate(7, 9, 10),
-                },
-              ],
-            }),
-            makeDemoCard({
-              title: I18n.t("demo_rich_text_title"),
-              description: I18n.t("demo_rich_text_desc"),
-              tags: ["feature", "editor"],
-              due: createFutureDate(4, 18, 0),
-              assignedUser: { name: "Anya" },
-              createdBy: "Misha",
-              createdAt: createPastDate(7, 14, 0),
-              editedAt: createPastDate(2, 16, 45),
-            }),
-          ],
-        },
-        {
-          id: Utils.uid(),
-          title: I18n.t("in_progress_col_title"),
-          cards: [
-            makeDemoCard({
-              title: I18n.t("demo_overdue_title"),
-              description: I18n.t("demo_overdue_desc"),
-              tags: ["ui", "ux", "design"],
-              due: Utils.isoPlusDays(-1),
-              assignedUser: { name: "Misha" },
-              createdBy: "Anya",
-              createdAt: createPastDate(5, 11, 20),
-              editedAt: createPastDate(1, 19, 5),
-              comments: [
-                {
-                  id: Utils.uid(),
-                  text: "Please keep the warning visible until this lands.",
-                  author: "Busha",
-                  createdAt: createPastDate(2, 13, 25),
-                  updatedAt: createPastDate(2, 13, 25),
-                },
-                {
-                  id: Utils.uid(),
-                  text: "I can take this one tomorrow morning.",
-                  author: "Misha",
-                  createdAt: createPastDate(1, 8, 40),
-                  updatedAt: createPastDate(1, 8, 40),
-                },
-              ],
-            }),
-          ],
-        },
         {
           id: Utils.uid(),
           title: I18n.t("done_col_title"),
           isDone: true,
-          cards: [
-            makeDemoCard({
-              title: I18n.t("demo_theme_title"),
-              description: I18n.t("demo_theme_desc"),
-              tags: ["theme"],
-              due: "",
-              createdBy: "Busha",
-              createdAt: createPastDate(12, 13, 0),
-            }),
-          ],
+          cards: [],
         },
         {
-          id: Utils.uid(),
+          id: "archive",
           title: I18n.t("archive_col_title"),
           isDone: false,
           isArchive: true,
-          cards: [
-            makeDemoCard({
-              title: I18n.t("demo_archive_col_title"),
-              description: I18n.t("demo_archive_col_desc"),
-              tags: ["theme"],
-              due: "",
-              createdBy: "Anya",
-              createdAt: createPastDate(20, 15, 30),
-              editedAt: createPastDate(14, 9, 10),
-            }),
-          ],
+          cards: [],
         },
       ],
     }
@@ -1156,16 +916,7 @@ const Store = {
       }
 
       const cfg = DbSettings.get()
-      if (cfg.provider === "firebase" && cfg.firebaseConfig) {
-        FirebaseBackend.subscribe(cfg.firebaseConfig, (incoming) => {
-          if (Sync.shouldIgnore()) return
-          if (!incoming || typeof incoming !== "object") return
-          this.state = incoming
-          if (typeof UI !== "undefined" && UI.renderBoard) UI.renderBoard()
-        }).then(unsub => {
-          this._unsubscribe = unsub
-        })
-      }
+      if (!cfg.cfWorkerUrl) return
       // Cloudflare sync is handled via visibilitychange in setupEventListeners
     } catch (e) {
       console.warn("Realtime sync failed to start:", e)
@@ -1193,7 +944,6 @@ const UI = {
   colDialog: Utils.qs("#colDialog"),
   renameDialog: Utils.qs("#renameDialog"),
   confirmDialog: Utils.qs("#confirmDialog"),
-  importChoiceDialog: Utils.qs("#importChoice"),
   // Templates
   columnTemplate: Utils.qs("#columnTemplate"),
   cardTemplate: Utils.qs("#cardTemplate"),
@@ -1248,14 +998,14 @@ const UI = {
   },
   updateAuthButtonsVisibility() {
     const cfg = DbSettings.get()
-    const showAuth = cfg.provider === "cloudflare" && !!cfg.cfWorkerUrl
+    const showAuth = !!cfg.cfWorkerUrl
     if (this.logoutBtn) this.logoutBtn.style.display = showAuth && Store.hasCloudflareSession() ? "" : "none"
     if (this.profileBtn) this.profileBtn.style.display = showAuth && Store.hasCloudflareSession() ? "" : "none"
   },
 
   updateBoardActionsVisibility() {
     const cfg = DbSettings.get()
-    const isCloudflareLoggedOut = cfg.provider === "cloudflare" && !!cfg.cfWorkerUrl && !Store.hasCloudflareSession()
+    const isCloudflareLoggedOut = !cfg.cfWorkerUrl || !Store.hasCloudflareSession()
     const addColumnBtn = Utils.qs("#addColumnBtn")
     const toggleArchiveBtn = Utils.qs("#toggleArchiveBtn")
     if (addColumnBtn) addColumnBtn.style.display = isCloudflareLoggedOut ? "none" : ""
@@ -1282,7 +1032,7 @@ const UI = {
     if (!adminBtn) return;
     const cfg = DbSettings.get();
 
-    if (cfg.provider === "cloudflare" && Store.isAdmin) {
+    if (cfg.cfWorkerUrl && Store.isAdmin) {
       adminBtn.style.display = "block";
     } else {
       adminBtn.style.display = "none";
@@ -1292,7 +1042,7 @@ const UI = {
   updateMenuButtonAvatar() {
     if (!this.menuBtn) return
     const cfg = DbSettings.get()
-    if (cfg.provider !== "cloudflare" || !cfg.cfUserToken) {
+    if (!cfg.cfUserToken) {
       this.menuBtn.textContent = "☰"
       this.menuBtn.innerHTML = "☰"
       return
@@ -1319,13 +1069,19 @@ const UI = {
     if (removeBtn) removeBtn.disabled = !avatarUrl && !this.pendingProfileAvatarFile
   },
 
-  updateBackupActionsVisibility() {
-    const cfg = DbSettings.get()
-    const isLocal = cfg.provider !== "cloudflare"
-    const exportBtn = Utils.qs("#exportBtn")
-    const importLabel = Utils.qs("#importInput")?.closest("label")
-    if (exportBtn) exportBtn.style.display = isLocal ? "" : "none"
-    if (importLabel) importLabel.style.display = isLocal ? "" : "none"
+  renderD1SetupGate() {
+    this.board.innerHTML = `
+      <section class="board-login-gate">
+        <h2>${I18n.t("d1_setup_title")}</h2>
+        <p>${I18n.t("d1_setup_hint")}</p>
+      </section>
+    `
+    this.updateTagFilters()
+    this.applyFilters()
+    this.updateMenuButtonAvatar()
+    this.updateAuthButtonsVisibility()
+    this.updateBoardActionsVisibility()
+    this.updateAdminPanelVisibility()
   },
 
   renderLoginGate() {
@@ -1340,7 +1096,7 @@ const UI = {
           <form id="boardSignupForm" class="board-login-form">
             <label>
               <span>${I18n.t("email_label")}</span>
-              <input id="boardSignupEmail" type="email" autocomplete="email">
+              <input id="boardSignupEmail" type="email" autocomplete="email" data-i18n-placeholder="email_placeholder" placeholder="Enter your email">
             </label>
             <label>
               <span>${I18n.t("display_name")}</span>
@@ -1359,7 +1115,7 @@ const UI = {
           <form id="boardLoginForm" class="board-login-form">
             <label>
               <span>${I18n.t("email_label")}</span>
-              <input id="boardLoginEmail" type="email" autocomplete="email">
+              <input id="boardLoginEmail" type="email" autocomplete="email" data-i18n-placeholder="email_placeholder" placeholder="Enter your email">
             </label>
             <label>
               <span>${I18n.t("pin_code")}</span>
@@ -1396,7 +1152,6 @@ const UI = {
     this.updateMenuButtonAvatar()
     this.updateAuthButtonsVisibility()
     this.updateBoardActionsVisibility()
-    this.updateBackupActionsVisibility()
     this.updateAdminPanelVisibility()
     if (typeof I18n !== "undefined") I18n.updatePage()
   },
@@ -1428,7 +1183,7 @@ const UI = {
     
     // Security check to prevent rendering if not admin
     const cfg = DbSettings.get();
-    if (cfg.provider !== "cloudflare" || !Store.isAdmin) {
+    if (!cfg.cfWorkerUrl || !Store.isAdmin) {
       return;
     }
 
@@ -1542,7 +1297,7 @@ const UI = {
         const nextPin = pinInp.value.trim();
         if (!nextEmail) return;
 
-        if (cfg.provider === "cloudflare" && cfg.cfWorkerUrl) {
+        if (cfg.cfWorkerUrl) {
           try {
             const result = await CloudflareBackend.upsertUser({
               email: nextEmail,
@@ -1571,7 +1326,7 @@ const UI = {
         if (isProtectedAdmin) return
         if (confirm(`${I18n.t("delete_user") || "Remove user"} ${u.email || u.name}?`)) {
           const avatarKey = u.avatarKey
-          if (cfg.provider === "cloudflare" && cfg.cfWorkerUrl) {
+          if (cfg.cfWorkerUrl) {
             CloudflareBackend.deleteUser(u.email, cfg)
               .then(async (result) => {
                 UI.adminUsers = result.users || [];
@@ -1713,7 +1468,7 @@ const UI = {
     const commentsCountEl = Utils.qs(".card-comments-count", node)
     if (commentsCountEl) {
       const count = Store.getCommentCount(card)
-      if (cfg.provider === "cloudflare" && count > 0) {
+      if (count > 0) {
         commentsCountEl.textContent = I18n.t("comments_count", { count })
         commentsCountEl.title = I18n.t("comments")
         commentsCountEl.style.display = ""
@@ -1730,7 +1485,7 @@ const UI = {
     const creatorEl = Utils.qs(".card-creator", node)
     if (creatorEl) {
       const creatorName = (card.createdBy || "").trim()
-      if (cfg.provider === "cloudflare" && creatorName) {
+      if (creatorName) {
         creatorEl.innerHTML = ""
         const createdAtTs = card.createdAt ? Date.parse(card.createdAt) : 0
         const editedAtTs = card.contentChangedAt ? Date.parse(card.contentChangedAt) : 0
@@ -1846,6 +1601,10 @@ const UI = {
 
   // --- Board Rendering ---
   renderBoard() {
+    if (!DbSettings.get().cfWorkerUrl) {
+      this.renderD1SetupGate()
+      return
+    }
     if (Store.requiresCloudflareLogin()) {
       this.renderLoginGate()
       return
@@ -1861,7 +1620,6 @@ const UI = {
     this.updateMenuButtonAvatar()
     this.updateAuthButtonsVisibility()
     this.updateBoardActionsVisibility()
-    this.updateBackupActionsVisibility()
     this.updateAdminPanelVisibility()
     if (typeof I18n !== "undefined") I18n.updatePage()
   },
@@ -2017,7 +1775,7 @@ const UI = {
     this.showDialog(this.editor)
     this.updateEditorAttachments(card ? card.attachments : [], card?.id)
     this.renderEditorComments(card)
-    commentsSection.style.display = card && DbSettings.get().provider === "cloudflare" ? "flex" : "none"
+    commentsSection.style.display = card && !!DbSettings.get().cfWorkerUrl ? "flex" : "none"
   },
 
   updateEditorAttachments(attachments, cardId) {
@@ -2074,9 +1832,7 @@ const UI = {
     if (!card) return
     
     const cfg = DbSettings.get()
-    if (cfg.provider === "cloudflare") {
-      await CloudflareBackend.deleteImage(key, cfg).catch(console.error)
-    }
+    await CloudflareBackend.deleteImage(key, cfg).catch(console.error)
 
     card.attachments = (card.attachments || []).filter(a => a.key !== key)
     Store.saveState()
@@ -2123,8 +1879,7 @@ const UI = {
     const saveBtn = Utils.qs("#saveCommentBtn")
     if (!section || !list || !input || !saveBtn) return
 
-    const cfg = DbSettings.get()
-    if (!card || cfg.provider !== "cloudflare") {
+    if (!card || !DbSettings.get().cfWorkerUrl) {
       section.style.display = "none"
       return
     }
@@ -2316,17 +2071,6 @@ const UI = {
       }
       dialog.addEventListener("close", closeHandler)
       this.showDialog(dialog)
-    })
-  },
-
-  showImportChoice() {
-    return new Promise((resolve) => {
-      const closeHandler = () => {
-        this.importChoiceDialog.removeEventListener("close", closeHandler)
-        resolve(this.importChoiceDialog.returnValue)
-      }
-      this.importChoiceDialog.addEventListener("close", closeHandler)
-      this.showDialog(this.importChoiceDialog)
     })
   },
 
@@ -3258,7 +3002,7 @@ const App = {
     if (adminPanelBtn && adminDialog) {
       adminPanelBtn.addEventListener("click", async (e) => {
         const cfg = DbSettings.get();
-        if (cfg.provider !== "cloudflare" || !Store.isAdmin) {
+        if (!cfg.cfWorkerUrl || !Store.isAdmin) {
           e.preventDefault();
           e.stopPropagation();
           return;
@@ -3384,32 +3128,14 @@ const App = {
     const dbBtn = Utils.qs("#dbSettingsBtn")
     const dbDialog = Utils.qs("#dbDialog")
     const dbForm = Utils.qs("#dbForm")
-    const localSettings = Utils.qs("#localSettings", dbDialog)
-    const cloudflareSettings = Utils.qs("#cloudflareSettings", dbDialog)
     const cfUrlInput = Utils.qs("#cfWorkerUrl", dbDialog)
     const cfIdInput = Utils.qs("#cfBoardId", dbDialog)
-
-    const updateDbSettingsVisibility = (provider) => {
-      localSettings.style.display = provider === "local" ? "" : "none"
-      cloudflareSettings.style.display = provider === "cloudflare" ? "" : "none"
-      Utils.qsa(".db-provider-tab", dbDialog).forEach(tab => {
-        tab.classList.toggle("active", tab.dataset.provider === provider)
-      })
-      Utils.qs("#dbProviderInput").value = provider
-    }
 
     dbBtn.addEventListener("click", () => {
       const cfg = DbSettings.get()
       cfUrlInput.value = cfg.cfWorkerUrl || ""
       cfIdInput.value = cfg.cfBoardId || ""
-      updateDbSettingsVisibility(cfg.provider)
       UI.showDialog(dbDialog)
-    })
-
-    Utils.qsa(".db-provider-tab", dbDialog).forEach(tab => {
-      tab.addEventListener("click", (e) => {
-        updateDbSettingsVisibility(e.target.dataset.provider)
-      })
     })
 
     if (UI.logoutBtn) {
@@ -3430,11 +3156,8 @@ const App = {
     dbForm.addEventListener("submit", async (e) => {
       e.preventDefault()
       const prevCfg = DbSettings.get()
-      const formData = new FormData(dbForm)
-      const provider = formData.get("dbProvider")
 
       const newCfg = {
-        provider,
         cfWorkerUrl: cfUrlInput.value.trim(),
         cfBoardId: cfIdInput.value.trim() || "default",
         cfUserEmail: prevCfg.cfUserEmail || "",
@@ -3442,38 +3165,14 @@ const App = {
         cfUserToken: prevCfg.cfUserToken || "",
       }
 
-      if (provider === "cloudflare") {
-        const cloudflareChanged =
-          provider !== prevCfg.provider ||
-          newCfg.cfWorkerUrl !== (prevCfg.cfWorkerUrl || "") ||
-          newCfg.cfBoardId !== (prevCfg.cfBoardId || "default")
-        if (cloudflareChanged) {
-          newCfg.cfUserEmail = ""
-          newCfg.cfUserToken = ""
-          Store.isAdmin = false
-        }
-      }
-
-      // Logic for seeding/migrating data when switching providers
-      if (provider !== prevCfg.provider && provider === "cloudflare" && !newCfg.cfWorkerUrl) {
-         // silently allow if user just activated it and has no worker URL
-      } else if (provider !== prevCfg.provider) {
-        const choice = await UI.showConfirm(
-          I18n.t("db_switch_confirm", { provider }) || `Switch database to ${provider}? This will sync with the new provider. Continue?`,
-          { title: I18n.t("db_sync"), showArchiveButton: false, deleteText: I18n.t("save") }
-        )
-        if (choice !== "delete") return
-
-        try {
-          if (provider === "cloudflare" && newCfg.cfWorkerUrl) {
-             const remote = await CloudflareBackend.load(newCfg)
-             if (!remote) await CloudflareBackend.save(Store.state, newCfg)
-          }
-        } catch (err) {
-          console.error("Migration failed:", err)
-          UI.showAlert(I18n.t("db_init_failed") || "Failed to initialize new provider. Staying on current one.")
-          return
-        }
+      const cloudflareChanged =
+        newCfg.cfWorkerUrl !== (prevCfg.cfWorkerUrl || "") ||
+        newCfg.cfBoardId !== (prevCfg.cfBoardId || "default")
+      if (cloudflareChanged) {
+        newCfg.cfUserEmail = ""
+        newCfg.cfUserName = ""
+        newCfg.cfUserToken = ""
+        Store.isAdmin = false
       }
 
       DbSettings.set(newCfg)
@@ -3488,13 +3187,6 @@ const App = {
     Utils.qs("#themeToggle").addEventListener(
       "click",
       UI.toggleTheme.bind(UI)
-    )
-
-    // --- Import / Export ---
-    Utils.qs("#exportBtn").addEventListener("click", this.exportJSON.bind(this))
-    Utils.qs("#importInput").addEventListener(
-      "change",
-      this.importJSON.bind(this)
     )
 
     // --- Image Upload UI ---
@@ -3585,7 +3277,7 @@ const App = {
       if (document.visibilityState === "visible") {
         const cfg = DbSettings.get()
         // Fetch updates whenever the tab becomes active
-        if (cfg.provider !== "local") {
+        if (cfg.cfWorkerUrl) {
           await Store.loadState()
           UI.renderBoard()
         }
@@ -3751,13 +3443,8 @@ const App = {
       if (existingUser) {
         cardData.assignedUser = existingUser
       } else {
-        const cfg = DbSettings.get()
-        if (cfg.provider === "cloudflare") {
-          UI.showAlert(I18n.t("user_not_found") || "User not found. For D1, users must be registered in the Database sync settings.");
-          return;
-        } else {
-          cardData.assignedUser = { name: userVal }
-        }
+        UI.showAlert(I18n.t("user_not_found") || "User not found. Users must be registered in Cloudflare D1 first.");
+        return;
       }
     }
 
@@ -3868,178 +3555,6 @@ const App = {
     }
   },
 
-  // --- Import/Export ---
-  exportJSON() {
-    const stateString = JSON.stringify(Store.state, null, 2)
-    const blob = new Blob([stateString], { type: "application/json" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    const now = new Date()
-    const dateStr = now.toISOString().slice(0, 10)
-    const timeStr = now.toTimeString().slice(0, 5).replace(/:/g, "-")
-    a.download = `veeboard_backup_${dateStr}_${timeStr}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-  },
-
-  async importJSON(e) {
-    const file = e.target.files && e.target.files[0]
-    if (!file) return
-
-    try {
-      const text = await file.text()
-      const incomingState = JSON.parse(text)
-      Store.validateState(incomingState)
-
-      const choice = await UI.showImportChoice()
-      if (choice === "cancel" || !choice) return
-
-      if (choice === "replace") {
-        Store.state = incomingState
-      } else if (choice === "merge") {
-        // --- Smart merge v2: column de-dup by title, field-wise content merge, and position-aware moves ---
-
-        // Helpers
-        const timeVal = (t) => (t ? Date.parse(t) || 0 : 0)
-        const normTitle = (s) =>
-          (s || "").toLowerCase().trim().replace(/\s+/g, " ")
-
-        // Compare A vs B for content recency
-        const isContentANewer = (A, B) => {
-          const ta = Math.max(
-            timeVal(A.contentChangedAt),
-            timeVal(A.lastChanged),
-            timeVal(A.createdAt)
-          )
-          const tb = Math.max(
-            timeVal(B.contentChangedAt),
-            timeVal(B.lastChanged),
-            timeVal(B.createdAt)
-          )
-          if (ta !== tb) return ta > tb
-          const sa = Number.isFinite(A.seq) ? A.seq : -Infinity
-          const sb = Number.isFinite(B.seq) ? B.seq : -Infinity
-          if (sa !== sb) return sa > sb
-          const ca = A.lastChangedBy || ""
-          const cb = B.lastChangedBy || ""
-          return ca > cb
-        }
-        // Compare A vs B for position recency
-        const isPositionANewer = (A, B) => {
-          const ta = timeVal(A.positionChangedAt)
-          const tb = timeVal(B.positionChangedAt)
-          if (ta !== tb) return ta > tb
-          // Fall back to generic lastChanged if positionChangedAt missing
-          const fa = timeVal(A.lastChanged)
-          const fb = timeVal(B.lastChanged)
-          if (fa !== fb) return fa > fb
-          // Tie-breakers
-          const sa = Number.isFinite(A.seq) ? A.seq : -Infinity
-          const sb = Number.isFinite(B.seq) ? B.seq : -Infinity
-          if (sa !== sb) return sa > sb
-          const ca = A.lastChangedBy || ""
-          const cb = B.lastChangedBy || ""
-          return ca > cb
-        }
-
-        // 1) Build maps for existing columns by id and by normalized title
-        const existingById = new Map(Store.state.columns.map((c) => [c.id, c]))
-        const existingByTitle = new Map(
-          Store.state.columns.map((c) => [normTitle(c.title), c])
-        )
-
-        // 2) For each incoming column, decide its target column in current state
-        const columnById = new Map() // final working map id -> target column
-        incomingState.columns.forEach((incCol) => {
-          let target = existingById.get(incCol.id)
-          if (!target) {
-            const byTitle = existingByTitle.get(normTitle(incCol.title))
-            if (byTitle) {
-              target = byTitle
-            }
-          }
-          if (!target) {
-            // None matched -> add the column as-is
-            Store.state.columns.push(incCol)
-            existingById.set(incCol.id, incCol)
-            existingByTitle.set(normTitle(incCol.title), incCol)
-            target = incCol
-          }
-          columnById.set(target.id, target)
-        })
-
-        // 3) Merge cards per (resolved) column target
-        incomingState.columns.forEach((incCol) => {
-          // Resolve the actual target column again using id->col or title->col
-          let targetCol = existingById.get(incCol.id)
-          if (!targetCol) {
-            targetCol = existingByTitle.get(normTitle(incCol.title))
-          }
-          if (!targetCol) return // safety
-
-          incCol.cards.forEach((incCard) => {
-            // Try to find existing card anywhere in current state
-            const found = Store.findCard(incCard.id)
-            const exCard = found.card
-            const exCol = found.col
-
-            if (!exCard) {
-              // New card -> append into resolved target column
-              targetCol.cards.push(incCard)
-              return
-            }
-
-            // Update content if incoming newer
-            if (isContentANewer(incCard, exCard)) {
-              exCard.title = incCard.title
-              exCard.description = incCard.description
-              exCard.tags = Array.isArray(incCard.tags) ? incCard.tags : []
-              exCard.due = incCard.due || ""
-              exCard.comments = Array.isArray(incCard.comments)
-                ? incCard.comments.map((comment) => Store.normalizeComment(comment))
-                : []
-              // metadata copy without mutating timestamps on import
-              if (incCard.createdAt) exCard.createdAt = incCard.createdAt
-              if (incCard.lastChanged) exCard.lastChanged = incCard.lastChanged
-              if (typeof incCard.seq !== "undefined") exCard.seq = incCard.seq
-              if (incCard.lastChangedBy)
-                exCard.lastChangedBy = incCard.lastChangedBy
-              if (incCard.contentChangedAt)
-                exCard.contentChangedAt = incCard.contentChangedAt
-              if (incCard.positionChangedAt)
-                exCard.positionChangedAt = incCard.positionChangedAt
-            }
-
-            // Move if incoming position is newer and column differs
-            const shouldMove =
-              exCol &&
-              exCol.id !== targetCol.id &&
-              isPositionANewer(incCard, exCard)
-            if (shouldMove) {
-              // Remove from previous column
-              exCol.cards = exCol.cards.filter((c) => c.id !== exCard.id)
-              // Append to end of target column (stable policy)
-              targetCol.cards.push(exCard)
-            }
-          })
-        })
-      }
-
-      Store.state.columns.forEach((col) => {
-        col.cards.forEach((card) => Store.normalizeCard(card))
-      })
-
-      Store.saveState()
-      UI.renderBoard()
-    } catch (err) {
-      console.error(err)
-      UI.showAlert("JSON import failed: " + err.message)
-    } finally {
-      e.target.value = ""
-    }
-  },
-
   handlePaste(e) {
     if (!UI.editor.open) return
 
@@ -4101,8 +3616,8 @@ const App = {
     }
 
     const cfg = DbSettings.get()
-    if (cfg.provider !== "cloudflare") {
-      UI.showAlert(I18n.t("image_upload_failed") + " (Cloudflare not active)")
+    if (!cfg.cfWorkerUrl) {
+      UI.showAlert(I18n.t("image_upload_failed"))
       return
     }
 

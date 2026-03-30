@@ -1563,7 +1563,9 @@ dialog:focus-visible {
 }
 
 .board-login-form input::placeholder {
-  color: var(--text-dim);
+  color: color-mix(in srgb, var(--muted) 82%, transparent);
+  opacity: 1;
+  font-weight: 400;
 }
 
 .board-login-form .btn {

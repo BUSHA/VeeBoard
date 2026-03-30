@@ -44,9 +44,9 @@ npx wrangler deploy
 
 ## 6. Configure VeeBoard
 1. Open your VeeBoard in the browser.
-2. Click the **☰ Menu** -> **Database & sync**.
-3. Select **Cloudflare D1**.
-4. Enter your **Worker URL**, **Board ID**, and the **Password** you set in step 3.
-5. Click **Save**.
+2. Click the **☰ Menu** -> **Settings**.
+3. Enter your **Worker URL** and **Board ID**.
+4. Click **Save**.
+5. Create the first owner account or log in with an existing approved account.
 
 Your board will now sync securely with Cloudflare D1 and support image attachments via R2!

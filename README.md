@@ -1,7 +1,7 @@
 # VeeBoard
 
 VeeBoard is a minimal Trello-like Kanban board built with **HTML + CSS + JavaScript**.
-No frameworks, no backend — works entirely in the browser with **IndexedDB** persistence. With optional Cloudflare D1 database support.
+No frameworks on the frontend, with Cloudflare D1 as the only board data store.
 
 ### No clouds - your data belongs to you!
 
@@ -17,8 +17,8 @@ No frameworks, no backend — works entirely in the browser with **IndexedDB** p
 - **Rich Text Description** — The card description supports bold text (**Cmd/Ctrl+B**) and hyperlinks. Create links by pasting a URL onto selected text, and remove them with **Cmd/Ctrl+K**. All content is sanitized for security.
 - **Card Editor** — A simple popup form for editing a card's title, rich text description, due date, users, and tags.
 - **User Assignment** — Assign users to tasks with smart autocomplete that suggests existing users on your board.
-- **Card authorship metadata** — In Cloudflare D1 mode, cards show who created them and when they were later edited.
-- **D1 card permissions** — In Cloudflare D1 mode, non-admin users can edit or delete only their own cards. Cards assigned to them can still be moved between columns. Admin can manage everything.
+- **Card authorship metadata** — Cards show who created them and when they were later edited.
+- **D1 card permissions** — Non-admin users can edit or delete only their own cards. Cards assigned to them can still be moved between columns. Admin can manage everything.
 - **Image Attachments** — Attach up to 4 images per card (auto-converted to WebP for optimization).
 - **Filtering & Search** — Filter cards effortlessly by clicking tags or user avatars, or use the instant search bar for finding titles and descriptions.
 - **Theme Toggle** — Light and dark modes with saved preference.
@@ -27,15 +27,15 @@ No frameworks, no backend — works entirely in the browser with **IndexedDB** p
 
 ## How It Works
 
-- **Storage:** All board data is saved in **IndexedDB** (with automatic migration from localStorage). Small settings (theme, language) use `localStorage`. Or you can use your own Cloudflare D1 database.
-- **D1 identity:** Cloudflare D1 mode stores user accounts with email, display name, avatar, approval status, and password per board user. New cards created in D1 automatically capture authorship metadata.
+- **Storage:** All board data is stored in **Cloudflare D1**.
+- **D1 identity:** Cloudflare D1 stores user accounts with email, display name, avatar, approval status, and password per board user. New cards automatically capture authorship metadata.
 - **D1 permissions:** The Cloudflare worker enforces card ownership rules server-side. Users log in with email, new signups stay pending until approved by an admin, and non-admin users may edit or delete only their own cards while still moving cards assigned to them. Admin remains unrestricted.
 - **Customizable:** Modify `styles.css` and `script.js` to fit your needs.
-- **Offline-ready:** Runs locally or from any static hosting provider.
+- **Deployment:** Serve the frontend statically and connect it to your Cloudflare Worker.
 
-## Demo
+## Deployment
 
-**[Live demo](https://busha.github.io/VeeBoard)** (not just a demo, actually a fully functional deployment that you can use with your database)
+Use the instructions in [CLOUDFLARE_DEPLOY.md](CLOUDFLARE_DEPLOY.md) to provision D1, deploy the worker, and connect the frontend.
 
 ---
 
