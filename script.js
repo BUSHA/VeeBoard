@@ -1446,6 +1446,23 @@ const UI = {
       saveBtn.type = "button";
       saveBtn.textContent = I18n.t("save");
       
+      const updateSaveVisibility = () => {
+        const hasChanges =
+          emailInp.value.trim().toLowerCase() !== (u.email || "").trim().toLowerCase() ||
+          nameInp.value.trim() !== (u.name || "") ||
+          pinInp.value.trim() !== "" ||
+          approvedInp.checked !== !!u.isApproved ||
+          adminInp.checked !== !!u.isAdmin;
+        saveBtn.style.display = hasChanges ? "block" : "none";
+      };
+
+      emailInp.addEventListener("input", updateSaveVisibility);
+      nameInp.addEventListener("input", updateSaveVisibility);
+      pinInp.addEventListener("input", updateSaveVisibility);
+      approvedInp.addEventListener("change", updateSaveVisibility);
+      adminInp.addEventListener("change", updateSaveVisibility);
+      updateSaveVisibility();
+
       const delBtn = document.createElement("button");
       delBtn.className = "btn-link error admin-user-delete";
       delBtn.textContent = I18n.t("delete_user") || "Remove user";
