@@ -1380,6 +1380,7 @@ const UI = {
       const createToggle = (label, isChecked, isDisabled = false) => {
         const wrap = document.createElement("label");
         wrap.className = "admin-badge-toggle";
+        wrap.classList.toggle("is-checked", !!isChecked);
         if (isDisabled) wrap.classList.add("disabled");
         const inp = document.createElement("input");
         inp.type = "checkbox";
@@ -1390,6 +1391,9 @@ const UI = {
         text.textContent = label;
         const slider = document.createElement("span");
         slider.className = "toggle-slider";
+        inp.addEventListener("change", () => {
+          wrap.classList.toggle("is-checked", inp.checked);
+        });
         wrap.append(inp, text, slider);
         return { wrap, inp };
       };
@@ -1424,7 +1428,7 @@ const UI = {
       footerContainer.className = "admin-user-footer";
 
       const saveBtn = document.createElement("button");
-      saveBtn.className = "btn primary admin-user-save";
+      saveBtn.className = "btn-link admin-user-save";
       saveBtn.type = "button";
       saveBtn.textContent = I18n.t("save");
 

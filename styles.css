@@ -1163,8 +1163,8 @@ dialog:focus-visible {
 #adminDialog .admin-panel .editor-actions.admin-panel-actions {
   position: static;
   margin-top: auto;
-  padding: 16px 0 0;
-  border-top: 1px solid var(--border);
+  padding: 0 0;
+  /* border-top: 1px solid var(--border); */
 }
 
 #adminDialog .admin-panel .editor-actions.admin-panel-actions::before {
@@ -1296,11 +1296,19 @@ dialog:focus-visible {
   bottom: 3px;
 }
 
-.admin-user-badges .admin-badge-toggle input:checked + .toggle-slider {
+.admin-user-badges .admin-badge-toggle input:checked ~ .toggle-slider {
   background-color: var(--primary);
 }
 
-.admin-user-badges .admin-badge-toggle input:checked + .toggle-slider::before {
+.admin-user-badges .admin-badge-toggle input:checked ~ .toggle-slider::before {
+  transform: translateX(14px);
+}
+
+.admin-user-badges .admin-badge-toggle.is-checked .toggle-slider {
+  background-color: var(--primary);
+}
+
+.admin-user-badges .admin-badge-toggle.is-checked .toggle-slider::before {
   transform: translateX(14px);
 }
 
@@ -1376,7 +1384,12 @@ dialog:focus-visible {
 }
 
 .admin-user-save {
-  min-width: 100px;
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--primary) !important;
+  opacity: 0.8;
+  cursor: pointer;
+  line-height: 1;
 }
 
 .admin-user-delete {
@@ -1390,6 +1403,11 @@ dialog:focus-visible {
 }
 
 .admin-user-delete:hover {
+  opacity: 1;
+  text-decoration: underline !important;
+}
+
+.admin-user-save:hover {
   opacity: 1;
   text-decoration: underline !important;
 }
@@ -1471,7 +1489,7 @@ dialog:focus-visible {
 
   .admin-user-badges {
     flex-basis: 100%;
-    gap: 8px;
+    gap: 20px;
   }
 
   .admin-user-body {
@@ -1489,7 +1507,7 @@ dialog:focus-visible {
   }
 
   .admin-user-save {
-    min-width: 90px;
+    min-width: 0;
   }
 
   #adminDialog .admin-panel .editor-actions.admin-panel-actions {
