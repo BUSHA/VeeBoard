@@ -50,7 +50,7 @@ Required only if cloud synchronization is enabled.
 - **Persistence:** Ensure all state changes are synchronized with Cloudflare D1.
 
 ## Image Management
-- **Limits:** Maximum 4 pictures per card, each limited to 1MB.
+- **Limits:** Maximum 4 pictures per card, each limited to 5MB.
 - **Processing:** Client-side conversion to **WebP** is required before upload to save space.
 - **Lifecycle:** Images are automatically deleted from R2 when the associated card or picture is removed.
 - **Authorization:** Requires Board ID and API Key (passed in headers for API calls and query params for direct image URLs).

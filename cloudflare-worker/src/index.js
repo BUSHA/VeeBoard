@@ -690,8 +690,8 @@ export default {
         }
 
         const contentLength = parseInt(request.headers.get("content-length") || "0", 10);
-        if (contentLength > 1 * 1024 * 1024) {
-          return new Response("Image too large (max 1MB)", { status: 413, headers });
+        if (contentLength > 5 * 1024 * 1024) {
+          return new Response("Image too large (max 5MB)", { status: 413, headers });
         }
 
         const extension = contentType.split("/")[1] || "png";

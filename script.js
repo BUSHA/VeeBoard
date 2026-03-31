@@ -3832,7 +3832,7 @@ const App = {
     // Process image: convert to WebP and resize
     const processedFile = await Utils.processImage(file)
 
-    if (processedFile.size > 1 * 1024 * 1024) {
+    if (processedFile.size > 5 * 1024 * 1024) {
       UI.showAlert(I18n.t("image_too_large"))
       return
     }
