@@ -1377,8 +1377,6 @@ const UI = {
       const badges = document.createElement("div");
       badges.className = "admin-user-badges";
 
-      const isNewUser = !u.email;
-
       const createToggle = (label, isChecked, isDisabled = false) => {
         const wrap = document.createElement("label");
         wrap.className = "admin-badge-toggle";
@@ -1402,60 +1400,24 @@ const UI = {
 
       header.append(avatarContainer, identity, badges);
 
-      // --- Body: Editable Fields ---
-      let emailInp, nameInp, pinInp;
-      {
-        const body = document.createElement("div");
-        body.className = "admin-user-body";
+      // --- Body: Password Reset ---
+      const body = document.createElement("div");
+      body.className = "admin-user-body";
 
-        const fieldsGrid = document.createElement("div");
-        fieldsGrid.className = "admin-user-fields";
+      const passwordField = document.createElement("label");
+      passwordField.className = "admin-user-field";
+      const passwordLabel = document.createElement("span");
+      passwordLabel.className = "admin-user-field-label";
+      passwordLabel.textContent = I18n.t("new_password");
+      const pinInp = document.createElement("input");
+      pinInp.type = "password";
+      pinInp.className = "admin-user-input";
+      pinInp.placeholder = I18n.t("password_leave_blank_hint") || "Leave blank to keep";
+      passwordField.append(passwordLabel, pinInp);
+      this.enhancePasswordField(pinInp, { allowEmpty: true });
 
-        if (isNewUser) {
-          const emailField = document.createElement("label");
-          emailField.className = "admin-user-field";
-          const emailLabel = document.createElement("span");
-          emailLabel.className = "admin-user-field-label";
-          emailLabel.textContent = I18n.t("email_label");
-          emailInp = document.createElement("input");
-          emailInp.value = "";
-          emailInp.type = "email";
-          emailInp.className = "admin-user-input";
-          emailInp.placeholder = I18n.t("email_label");
-          emailField.append(emailLabel, emailInp);
-
-          const nameField = document.createElement("label");
-          nameField.className = "admin-user-field";
-          const nameLabel = document.createElement("span");
-          nameLabel.className = "admin-user-field-label";
-          nameLabel.textContent = I18n.t("display_name");
-          nameInp = document.createElement("input");
-          nameInp.value = "";
-          nameInp.className = "admin-user-input";
-          nameInp.placeholder = I18n.t("display_name");
-          nameField.append(nameLabel, nameInp);
-
-          fieldsGrid.append(emailField, nameField);
-        }
-
-        const passwordField = document.createElement("label");
-        passwordField.className = "admin-user-field";
-        const passwordLabel = document.createElement("span");
-        passwordLabel.className = "admin-user-field-label";
-        passwordLabel.textContent = I18n.t("new_password");
-        pinInp = document.createElement("input");
-        pinInp.type = "password";
-        pinInp.className = "admin-user-input";
-        pinInp.placeholder = isNewUser
-          ? (I18n.t("password_required") || "Required")
-          : (I18n.t("password_leave_blank_hint") || "Leave blank to keep");
-        passwordField.append(passwordLabel, pinInp);
-        this.enhancePasswordField(pinInp, { allowEmpty: !isNewUser });
-
-        fieldsGrid.append(passwordField);
-        body.append(fieldsGrid);
-        row.append(header, body);
-      }
+      body.append(passwordField);
+      row.append(header, body);
 
       // --- Footer: Actions ---
       const footerContainer = document.createElement("div");
@@ -1475,35 +1437,24 @@ const UI = {
       row.append(footerContainer);
 
       const updateSaveVisibility = () => {
-        const toggleChanged =
+        const hasChanges =
+          pinInp.value.trim() !== "" ||
           approvedInp.checked !== !!u.isApproved ||
           adminInp.checked !== !!u.isAdmin;
-        const pinChanged = pinInp.value.trim() !== "";
-        const newUserFieldsChanged = isNewUser && (
-          (emailInp?.value.trim() !== "") ||
-          (nameInp?.value.trim() !== "")
-        );
-        const hasChanges = toggleChanged || pinChanged || newUserFieldsChanged;
         saveBtn.style.visibility = hasChanges ? "visible" : "hidden";
         const footerHasContent = hasChanges || !isProtectedAdmin;
         footerContainer.style.display = footerHasContent ? "flex" : "none";
       };
 
-      if (isNewUser) {
-        emailInp.addEventListener("input", updateSaveVisibility);
-        nameInp.addEventListener("input", updateSaveVisibility);
-      }
       pinInp.addEventListener("input", updateSaveVisibility);
       approvedInp.addEventListener("change", updateSaveVisibility);
       adminInp.addEventListener("change", updateSaveVisibility);
       updateSaveVisibility();
 
       const saveChanges = async () => {
-        const nextEmail = isNewUser ? emailInp.value.trim().toLowerCase() : u.email;
-        const nextName = isNewUser ? nameInp.value.trim() : (u.name || "");
         const nextPin = pinInp.value.trim();
-        if (!nextEmail) return;
-        const passwordError = Utils.getPasswordValidationError(nextPin, { allowEmpty: !isNewUser });
+        if (!u.email) return;
+        const passwordError = Utils.getPasswordValidationError(nextPin, { allowEmpty: true });
         if (passwordError) {
           UI.showAlert(I18n.t("weak_password_error"));
           return;
@@ -1512,14 +1463,14 @@ const UI = {
         if (cfg.cfWorkerUrl) {
           try {
             const result = await CloudflareBackend.upsertUser({
-              email: nextEmail,
-              name: nextName,
+              email: u.email,
+              name: u.name || "",
               isApproved: approvedInp.checked,
               isAdmin: adminInp.checked,
               pinCode: nextPin || undefined,
               avatarUrl: u.avatarUrl || "",
               avatarKey: u.avatarKey || "",
-            }, cfg, u.email || "");
+            }, cfg, u.email);
             UI.adminUsers = result.users || UI.adminUsers;
             await Store.loadState();
             UI.renderBoard();
@@ -3234,14 +3185,6 @@ const App = {
         UI.showDialog(adminDialog);
         adminPanelBtn.closest(".dropdown-content").classList.remove("show");
       });
-      
-      const addBtn = Utils.qs(".btn-add-user", adminDialog);
-      if (addBtn) {
-        addBtn.addEventListener("click", () => {
-          UI.adminUsers.push({ email: "", name: "", avatarUrl: "", avatarKey: "", isApproved: false, isAdmin: false });
-          UI.renderAdminUsers();
-        });
-      }
       
       const closeBtn = Utils.qs(".btn-close-admin", adminDialog);
       if (closeBtn) {

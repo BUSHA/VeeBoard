@@ -1495,12 +1495,6 @@ dialog:focus-visible {
   #adminDialog .admin-panel .editor-actions.admin-panel-actions {
     padding-top: 12px !important;
   }
-
-  #adminDialog .admin-panel .actions-main.admin-panel-actions-main {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px !important;
-  }
 }
 
 @media (min-width:640px) {
