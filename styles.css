@@ -2118,7 +2118,10 @@ dialog:focus-visible {
    Editor Upload Area
    ================================= */
 .editor-attachments-section {
+  position: relative;
   margin-top: 4px;
+  padding: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .editor-comments-section {
@@ -2305,4 +2308,80 @@ dialog:focus-visible {
 
 .btn-link {
   text-decoration: none !important;
+}
+
+/* =================================
+   Dropzone Overlay (Subtle)
+   ================================= */
+.dropzone {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1000;
+  background: color-mix(in srgb, var(--panel) 85%, transparent);
+  backdrop-filter: blur(4px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: inherit;
+  border: 2px dashed var(--primary);
+  box-sizing: border-box;
+}
+
+.dropzone.active {
+  display: flex !important;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.dropzone-content {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  border: none;
+  transform: none;
+}
+
+.dropzone-icon {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none;
+}
+
+.dropzone-content p {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--primary);
+  text-align: left;
+  letter-spacing: -0.01em;
+}
+
+@media (max-width: 600px) {
+  .dropzone-content {
+    gap: 8px;
+  }
+  .dropzone-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+  }
+  .dropzone-content p {
+    font-size: 14px;
+  }
 }

@@ -1060,6 +1060,7 @@ const UI = {
   colDialog: Utils.qs("#colDialog"),
   renameDialog: Utils.qs("#renameDialog"),
   confirmDialog: Utils.qs("#confirmDialog"),
+  dropzone: Utils.qs("#dropzone"),
   // Templates
   columnTemplate: Utils.qs("#columnTemplate"),
   cardTemplate: Utils.qs("#cardTemplate"),
@@ -1080,6 +1081,26 @@ const UI = {
   adminUsers: [],
   pendingProfileAvatarFile: null,
   pendingProfileAvatarRemoved: false,
+  dragCounter: 0,
+
+  toggleDropzone(active) {
+    const el = Utils.qs("#dropzone") // Using qs directly in case this.dropzone is stale
+    if (!el) return
+    if (active) {
+      el.style.display = "flex"
+      // Force repaint
+      el.offsetHeight
+      el.classList.add("active")
+    } else {
+      el.classList.remove("active")
+      // Delay display none after transition
+      setTimeout(() => {
+        if (!el.classList.contains("active")) {
+          el.style.display = "none"
+        }
+      }, 250)
+    }
+  },
 
   getMoveToColumns(cardId) {
     const { col } = Store.findCard(cardId)
@@ -3398,7 +3419,11 @@ const App = {
       })
       dialog.addEventListener("close", () => {
         document.body.classList.remove("dialog-open")
-        if (dialog === UI.editor) UI.hideMoveToMenu()
+        if (dialog === UI.editor) {
+          UI.hideMoveToMenu()
+          UI.dragCounter = 0
+          UI.toggleDropzone(false)
+        }
       })
     })
 
@@ -3456,8 +3481,38 @@ const App = {
     
     // --- Image Upload (Paste & Drop) ---
     window.addEventListener("paste", this.handlePaste.bind(this))
-    window.addEventListener("dragover", (e) => e.preventDefault()) // Required for drop to work
-    window.addEventListener("drop", this.handleDrop.bind(this))
+    
+    window.addEventListener("dragenter", (e) => {
+      if (UI.editor.open && e.dataTransfer.types.includes("Files")) {
+        e.preventDefault()
+        UI.dragCounter++
+        UI.toggleDropzone(true)
+      }
+    })
+
+    window.addEventListener("dragover", (e) => {
+      if (UI.editor.open && e.dataTransfer.types.includes("Files")) {
+        e.preventDefault()
+        e.dataTransfer.dropEffect = "copy"
+      }
+    })
+
+    window.addEventListener("dragleave", (e) => {
+      if (UI.editor.open) {
+        e.preventDefault()
+        UI.dragCounter--
+        if (UI.dragCounter <= 0) {
+          UI.dragCounter = 0
+          UI.toggleDropzone(false)
+        }
+      }
+    })
+
+    window.addEventListener("drop", (e) => {
+      UI.dragCounter = 0
+      UI.toggleDropzone(false)
+      this.handleDrop(e)
+    })
   },
 
   // --- Action Handlers ---
@@ -3750,9 +3805,6 @@ const App = {
     
     // Only allow drop when editor is open
     if (!UI.editor.open) return
-
-    const cardEditor = e.target.closest("#editor")
-    if (!cardEditor) return
 
     const cardId = Utils.qs("#editorForm").dataset.cardId
     if (!cardId) return

@@ -134,6 +134,7 @@ const TRANSLATIONS = {
     change_picture: "Change picture",
     remove_picture: "Remove picture",
     picture_upload_failed: "Picture upload failed.",
+    drop_to_upload: "Drop images to upload",
   },
   uk: {
     app_title: "VeeBoard",
@@ -270,5 +271,6 @@ const TRANSLATIONS = {
     change_picture: "Змінити фото",
     remove_picture: "Видалити фото",
     picture_upload_failed: "Не вдалося завантажити фото.",
+    drop_to_upload: "Перетягніть зображення для завантаження",
   }
 };
