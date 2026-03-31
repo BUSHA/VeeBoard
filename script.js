@@ -167,7 +167,7 @@ const Utils = {
     if (!value) {
       return {
         tone: "empty",
-        labelKey: allowEmpty ? "password_strength_optional" : "password_strength_empty",
+        labelKey: allowEmpty ? "" : "password_strength_empty",
       }
     }
 
@@ -1409,46 +1409,48 @@ const UI = {
       const togglesContainer = document.createElement("div");
       togglesContainer.className = "admin-user-toggles";
 
-      const approvedWrap = document.createElement("label");
-      approvedWrap.className = "admin-user-toggle";
-      const approvedInp = document.createElement("input");
-      approvedInp.type = "checkbox";
-      approvedInp.checked = !!u.isApproved;
-      approvedWrap.append(approvedInp, document.createTextNode(I18n.t("approved_user")));
+      const createToggle = (label, isChecked) => {
+        const wrap = document.createElement("label");
+        wrap.className = "admin-user-toggle-switch";
+        const inp = document.createElement("input");
+        inp.type = "checkbox";
+        inp.checked = isChecked;
+        const slider = document.createElement("span");
+        slider.className = "toggle-slider";
+        const text = document.createElement("span");
+        text.className = "toggle-label-text";
+        text.textContent = label;
+        wrap.append(inp, slider, text);
+        return { wrap, inp };
+      };
 
-      const adminWrap = document.createElement("label");
-      adminWrap.className = "admin-user-toggle";
-      const adminInp = document.createElement("input");
-      adminInp.type = "checkbox";
-      adminInp.checked = !!u.isAdmin;
-      adminWrap.append(adminInp, document.createTextNode(I18n.t("admin_role")));
+      const { wrap: approvedWrap, inp: approvedInp } = createToggle(I18n.t("approved_user"), !!u.isApproved);
+      const { wrap: adminWrap, inp: adminInp } = createToggle(I18n.t("admin_role"), !!u.isAdmin);
 
       togglesContainer.append(approvedWrap, adminWrap);
       settingsContainer.append(passwordField, togglesContainer);
 
       mainContainer.append(fieldsGrid, settingsContainer);
 
-      // --- Actions (Save & Delete) ---
-      const actionsContainer = document.createElement("div");
-      actionsContainer.className = "admin-user-actions";
+      // --- Actions Footer (Save & Delete) ---
+      const footerContainer = document.createElement("div");
+      footerContainer.className = "admin-user-footer";
 
       const saveBtn = document.createElement("button");
-      saveBtn.className = "btn primary";
+      saveBtn.className = "btn primary admin-user-save";
       saveBtn.type = "button";
       saveBtn.textContent = I18n.t("save");
       
       const delBtn = document.createElement("button");
-      delBtn.className = "btn error admin-user-delete";
-      delBtn.title = I18n.t("delete");
-      delBtn.innerHTML = "✕";
+      delBtn.className = "btn-link error admin-user-delete";
+      delBtn.textContent = I18n.t("delete_user") || "Remove user";
       delBtn.disabled = isProtectedAdmin;
       if (isProtectedAdmin) delBtn.style.display = "none";
 
-      actionsContainer.append(saveBtn);
-      if (!isProtectedAdmin) actionsContainer.append(delBtn);
+      footerContainer.append(saveBtn, delBtn);
 
       // Assemble card
-      row.append(avatarContainer, mainContainer, actionsContainer);
+      row.append(avatarContainer, mainContainer, footerContainer);
 
       const saveChanges = async () => {
         const nextEmail = emailInp.value.trim().toLowerCase();
