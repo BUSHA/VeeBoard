@@ -1292,6 +1292,12 @@ dialog:focus-visible {
   margin: 0;
 }
 
+#adminDialog .admin-panel .admin-user-toggle-switch.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 #adminDialog .admin-panel .admin-user-toggle-switch input {
   display: none !important;
 }

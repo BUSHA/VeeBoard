@@ -1341,8 +1341,11 @@ const UI = {
       return;
     }
 
+    const currentEmail = (cfg.cfUserEmail || "").trim().toLowerCase();
+
     (this.adminUsers || []).forEach((u) => {
       const isProtectedAdmin = !!u.isAdmin;
+      const isSelf = (u.email || "").trim().toLowerCase() === currentEmail;
       const row = document.createElement("div");
       row.className = "admin-user-card";
 
@@ -1409,12 +1412,14 @@ const UI = {
       const togglesContainer = document.createElement("div");
       togglesContainer.className = "admin-user-toggles";
 
-      const createToggle = (label, isChecked) => {
+      const createToggle = (label, isChecked, isDisabled = false) => {
         const wrap = document.createElement("label");
         wrap.className = "admin-user-toggle-switch";
+        if (isDisabled) wrap.classList.add("disabled");
         const inp = document.createElement("input");
         inp.type = "checkbox";
         inp.checked = isChecked;
+        inp.disabled = isDisabled;
         const slider = document.createElement("span");
         slider.className = "toggle-slider";
         const text = document.createElement("span");
@@ -1424,8 +1429,8 @@ const UI = {
         return { wrap, inp };
       };
 
-      const { wrap: approvedWrap, inp: approvedInp } = createToggle(I18n.t("approved_user"), !!u.isApproved);
-      const { wrap: adminWrap, inp: adminInp } = createToggle(I18n.t("admin_role"), !!u.isAdmin);
+      const { wrap: approvedWrap, inp: approvedInp } = createToggle(I18n.t("approved_user"), !!u.isApproved, isSelf);
+      const { wrap: adminWrap, inp: adminInp } = createToggle(I18n.t("admin_role"), !!u.isAdmin, isSelf);
 
       togglesContainer.append(approvedWrap, adminWrap);
       settingsContainer.append(passwordField, togglesContainer);
