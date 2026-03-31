@@ -1192,114 +1192,116 @@ dialog:focus-visible {
 /* User Card Styles */
 .admin-user-card {
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: 14px;
   background: var(--panel);
-  padding: 20px;
-  display: grid;
-  grid-template-columns: 56px 1fr;
-  grid-template-areas: 
-    "avatar main"
-    ". footer";
-  gap: 20px;
-  align-items: start;
+  overflow: hidden;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .admin-user-card:hover {
-  border-color: color-mix(in srgb, var(--border), var(--primary) 30%);
+  border-color: color-mix(in srgb, var(--border), var(--primary) 35%);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+}
+
+.admin-user-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  background: color-mix(in srgb, var(--panel), var(--bg) 55%);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
 }
 
 .admin-user-head {
-  grid-area: avatar;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  flex-shrink: 0;
 }
 
 .admin-user-avatar {
-  width: 56px;
-  height: 56px;
-  font-size: 20px;
-  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  font-size: 17px;
 }
 
-.admin-user-main {
-  grid-area: main;
+.admin-user-identity {
+  flex: 1;
+  min-width: 120px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 2px;
+  overflow: hidden;
 }
 
-.admin-user-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-}
-
-.admin-user-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
-.admin-user-field-label {
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
-  padding-left: 2px;
-}
-
-.admin-user-input {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.admin-user-controls {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  flex-wrap: wrap;
-}
-
-.admin-user-field--password {
-  flex: 1 1 240px;
-  max-width: 320px;
-}
-
-.admin-user-toggles {
-  display: flex;
-  gap: 24px;
-  flex-wrap: wrap;
-  padding-top: 14px;
-  align-items: center;
-}
-
-/* Toggle Switch Redesign */
-#adminDialog .admin-panel .admin-user-toggle-switch {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  gap: 10px !important;
-  cursor: pointer;
-  user-select: none;
+.admin-user-display-name {
   font-weight: 600;
   font-size: 14px;
-  /* color: var(--text); */
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  margin: 0;
 }
 
-#adminDialog .admin-panel .admin-user-toggle-switch.disabled {
-  opacity: 0.5;
+.admin-user-email-hint {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-user-badges {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Badge-style toggles: [label] [switch] */
+/* Use .admin-user-badges prefix to beat .editor-form label specificity */
+.admin-user-badges .admin-badge-toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  font-weight: normal;
+  white-space: nowrap;
+  line-height: 1;
+  color: var(--text);
+}
+
+.admin-user-badges .admin-badge-toggle.disabled {
+  opacity: 0.45;
   cursor: not-allowed;
   pointer-events: none;
 }
 
-#adminDialog .admin-panel .admin-user-toggle-switch input {
-  display: none !important;
+.admin-user-badges .admin-badge-toggle input {
+  display: none;
+}
+
+.admin-user-badges .admin-badge-toggle .toggle-slider {
+  width: 32px;
+  height: 18px;
+  border-radius: 18px;
+  flex-shrink: 0;
+}
+
+.admin-user-badges .admin-badge-toggle .toggle-slider::before {
+  width: 12px;
+  height: 12px;
+  left: 3px;
+  bottom: 3px;
+}
+
+.admin-user-badges .admin-badge-toggle input:checked + .toggle-slider {
+  background-color: var(--primary);
+}
+
+.admin-user-badges .admin-badge-toggle input:checked + .toggle-slider::before {
+  transform: translateX(14px);
 }
 
 .toggle-slider {
@@ -1326,50 +1328,65 @@ dialog:focus-visible {
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
-#adminDialog .admin-panel .admin-user-toggle-switch input:checked + .toggle-slider {
-  background-color: var(--primary);
-}
-
-#adminDialog .admin-panel .admin-user-toggle-switch input:checked + .toggle-slider::before {
-  transform: translateX(18px);
-}
-
 .toggle-label-text {
   line-height: 1;
 }
 
-.admin-user-footer {
-  grid-area: footer;
+.admin-user-body {
+  padding: 16px 18px 12px;
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 24px;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.admin-user-footer .btn {
-  height: 42px;
-  width: auto;
-  min-width: 100px;
-  margin: 0;
+.admin-user-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.admin-user-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.admin-user-field-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding-left: 2px;
+}
+
+.admin-user-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.admin-user-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  padding: 12px 18px 16px;
+  border-top: 1px solid color-mix(in srgb, var(--border), transparent 40%);
 }
 
 .admin-user-save {
-  order: 2;
+  min-width: 100px;
 }
 
 .admin-user-delete {
-  order: 1;
-  align-self: center;
+  margin-right: auto;
   text-decoration: none !important;
   font-size: 13px;
   color: var(--error) !important;
-  opacity: 0.8;
-  margin: 0;
+  opacity: 0.75;
+  cursor: pointer;
   line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  height: 42px; /* Match button height for centering */
 }
 
 .admin-user-delete:hover {
@@ -1378,25 +1395,6 @@ dialog:focus-visible {
 }
 
 
-@media (min-width:640px) {
-  .admin-user-footer {
-    flex-direction: row;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 24px;
-  }
-  .admin-user-footer .btn {
-    width: auto;
-    min-width: 120px;
-  }
-  .admin-user-save {
-    order: 2;
-  }
-  .admin-user-delete {
-    order: 1;
-    margin-right: 0;
-  }
-}
 
 @media (min-width:900px) {
   .board {
@@ -1453,30 +1451,31 @@ dialog:focus-visible {
   }
 
   #adminDialog .admin-panel .admin-user-list {
-    gap: 12px;
+    gap: 10px;
     padding-right: 0;
     margin-right: 0;
     display: flex;
     flex-direction: column;
   }
 
-  .admin-user-card {
-    grid-template-columns: 48px 1fr;
-    grid-template-areas: 
-      "avatar main"
-      "footer footer";
-    gap: 16px;
-    padding: 16px;
-    border-radius: 16px;
+  .admin-user-header {
+    gap: 12px;
+    padding: 12px 14px;
   }
 
   .admin-user-avatar {
-    width: 48px;
-    height: 48px;
+    width: 40px;
+    height: 40px;
+    font-size: 15px;
   }
 
-  .admin-user-main {
-    gap: 12px;
+  .admin-user-badges {
+    flex-basis: 100%;
+    gap: 8px;
+  }
+
+  .admin-user-body {
+    padding: 14px 14px 10px;
   }
 
   .admin-user-fields {
@@ -1484,47 +1483,13 @@ dialog:focus-visible {
     gap: 12px;
   }
 
-  .admin-user-controls {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-  }
-
-  .admin-user-field--password {
-    max-width: none;
-    flex: 1 1 auto;
-  }
-
-  .admin-user-toggles {
-    padding-top: 0;
-    display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 16px;
-  }
-
   .admin-user-footer {
-    padding-top: 16px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+    padding: 10px 14px 14px;
     gap: 12px;
-    border-top: 1px solid color-mix(in srgb, var(--border), transparent 85%);
-  }
-
-  .admin-user-footer .btn {
-    width: 100%;
-    height: 44px;
   }
 
   .admin-user-save {
-    order: 1;
-  }
-
-  .admin-user-delete {
-    order: 2;
-    margin: 0;
-    align-self: center;
+    min-width: 90px;
   }
 
   #adminDialog .admin-panel .editor-actions.admin-panel-actions {
