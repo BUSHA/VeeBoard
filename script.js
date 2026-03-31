@@ -1342,10 +1342,13 @@ const UI = {
     }
 
     (this.adminUsers || []).forEach((u) => {
-      const isProtectedAdmin = !!u.isAdmin
+      const isProtectedAdmin = !!u.isAdmin;
       const row = document.createElement("div");
       row.className = "admin-user-card";
 
+      // --- Avatar ---
+      const avatarContainer = document.createElement("div");
+      avatarContainer.className = "admin-user-head";
       const avatarPreview = document.createElement("div");
       avatarPreview.className = "profile-avatar-preview admin-user-avatar";
       if (u.avatarUrl) {
@@ -1353,23 +1356,58 @@ const UI = {
       } else {
         avatarPreview.classList.add("placeholder");
       }
-      
+      avatarContainer.append(avatarPreview);
+
+      // --- Main Info (Email & Name) ---
+      const mainContainer = document.createElement("div");
+      mainContainer.className = "admin-user-main";
+
+      const fieldsGrid = document.createElement("div");
+      fieldsGrid.className = "admin-user-fields";
+
+      const emailField = document.createElement("label");
+      emailField.className = "admin-user-field";
+      const emailLabel = document.createElement("span");
+      emailLabel.className = "admin-user-field-label";
+      emailLabel.textContent = I18n.t("email_label");
       const emailInp = document.createElement("input");
       emailInp.value = u.email || "";
-      emailInp.placeholder = I18n.t("email_label") || "Email";
       emailInp.type = "email";
-      emailInp.className = "admin-user-input admin-user-input--email";
+      emailInp.className = "admin-user-input";
+      emailInp.placeholder = I18n.t("email_label");
+      emailField.append(emailLabel, emailInp);
 
+      const nameField = document.createElement("label");
+      nameField.className = "admin-user-field";
+      const nameLabel = document.createElement("span");
+      nameLabel.className = "admin-user-field-label";
+      nameLabel.textContent = I18n.t("display_name");
       const nameInp = document.createElement("input");
       nameInp.value = u.name || "";
-      nameInp.placeholder = I18n.t("display_name") || "Display name";
       nameInp.className = "admin-user-input";
-      
+      nameInp.placeholder = I18n.t("display_name");
+      nameField.append(nameLabel, nameInp);
+
+      fieldsGrid.append(emailField, nameField);
+
+      // --- Settings (Password & Toggles) ---
+      const settingsContainer = document.createElement("div");
+      settingsContainer.className = "admin-user-controls";
+
+      const passwordField = document.createElement("label");
+      passwordField.className = "admin-user-field admin-user-field--password";
+      const passwordLabel = document.createElement("span");
+      passwordLabel.className = "admin-user-field-label";
+      passwordLabel.textContent = I18n.t("new_password");
       const pinInp = document.createElement("input");
       pinInp.type = "password";
-      pinInp.value = "";
-      pinInp.placeholder = `${I18n.t("new_password") || "New password"}${u.email ? " (leave blank to keep)" : ""}`;
-      pinInp.className = "admin-user-input admin-user-input--password";
+      pinInp.className = "admin-user-input";
+      pinInp.placeholder = u.email ? (I18n.t("password_leave_blank_hint") || "Leave blank to keep") : (I18n.t("password_required") || "Required");
+      passwordField.append(passwordLabel, pinInp);
+      this.enhancePasswordField(pinInp, { allowEmpty: true });
+
+      const togglesContainer = document.createElement("div");
+      togglesContainer.className = "admin-user-toggles";
 
       const approvedWrap = document.createElement("label");
       approvedWrap.className = "admin-user-toggle";
@@ -1385,67 +1423,33 @@ const UI = {
       adminInp.checked = !!u.isAdmin;
       adminWrap.append(adminInp, document.createTextNode(I18n.t("admin_role")));
 
+      togglesContainer.append(approvedWrap, adminWrap);
+      settingsContainer.append(passwordField, togglesContainer);
+
+      mainContainer.append(fieldsGrid, settingsContainer);
+
+      // --- Actions (Save & Delete) ---
+      const actionsContainer = document.createElement("div");
+      actionsContainer.className = "admin-user-actions";
+
       const saveBtn = document.createElement("button");
       saveBtn.className = "btn primary";
       saveBtn.type = "button";
       saveBtn.textContent = I18n.t("save");
       
       const delBtn = document.createElement("button");
-      delBtn.className = "btn error";
-      delBtn.title = I18n.t("delete") || "Delete";
+      delBtn.className = "btn error admin-user-delete";
+      delBtn.title = I18n.t("delete");
       delBtn.innerHTML = "✕";
-      delBtn.classList.add("admin-user-delete");
       delBtn.disabled = isProtectedAdmin;
-      delBtn.style.display = isProtectedAdmin ? "none" : "";
+      if (isProtectedAdmin) delBtn.style.display = "none";
 
-      const emailField = document.createElement("label");
-      emailField.className = "admin-user-field";
-      const emailLabel = document.createElement("span");
-      emailLabel.className = "admin-user-field-label";
-      emailLabel.textContent = I18n.t("email_label");
-      emailField.append(emailLabel, emailInp);
+      actionsContainer.append(saveBtn);
+      if (!isProtectedAdmin) actionsContainer.append(delBtn);
 
-      const nameField = document.createElement("label");
-      nameField.className = "admin-user-field";
-      const nameLabel = document.createElement("span");
-      nameLabel.className = "admin-user-field-label";
-      nameLabel.textContent = I18n.t("display_name");
-      nameField.append(nameLabel, nameInp);
+      // Assemble card
+      row.append(avatarContainer, mainContainer, actionsContainer);
 
-      const passwordField = document.createElement("label");
-      passwordField.className = "admin-user-field admin-user-field--password";
-      const passwordLabel = document.createElement("span");
-      passwordLabel.className = "admin-user-field-label";
-      passwordLabel.textContent = I18n.t("new_password");
-      passwordField.append(passwordLabel, pinInp);
-      this.enhancePasswordField(pinInp, { allowEmpty: true });
-
-      const headerRow = document.createElement("div");
-      headerRow.className = "admin-user-head";
-
-      const fieldsRow = document.createElement("div");
-      fieldsRow.className = "admin-user-fields";
-      fieldsRow.append(emailField, nameField);
-
-      headerRow.append(avatarPreview, fieldsRow);
-
-      const controlsRow = document.createElement("div");
-      controlsRow.className = "admin-user-controls";
-      controlsRow.append(passwordField, approvedWrap, adminWrap);
-
-      const actionsRow = document.createElement("div");
-      actionsRow.className = "admin-user-actions";
-      actionsRow.append(saveBtn);
-      if (!isProtectedAdmin) {
-        actionsRow.append(delBtn);
-      }
-
-      const footerRow = document.createElement("div");
-      footerRow.className = "admin-user-footer";
-      footerRow.append(controlsRow, actionsRow);
-
-      row.append(headerRow, footerRow);
-      
       const saveChanges = async () => {
         const nextEmail = emailInp.value.trim().toLowerCase();
         const nextName = nameInp.value.trim();

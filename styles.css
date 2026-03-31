@@ -1110,98 +1110,6 @@ dialog:focus-visible {
   max-height: 85vh;
 }
 
-#adminDialog .editor-form.admin-panel {
-  width: min(980px, 96vw);
-  max-width: min(980px, 96vw);
-  max-height: min(88vh, 920px);
-  padding: 20px 20px 18px;
-  overflow: hidden;
-  gap: 16px;
-}
-
-#adminDialog .admin-panel h3 {
-  position: static;
-  padding: 0;
-}
-
-#adminDialog .admin-panel h3::after {
-  display: none;
-}
-
-#adminDialog .admin-panel .editor-actions.admin-panel-actions {
-  position: static;
-  margin-top: auto;
-  padding: 0;
-}
-
-#adminDialog .admin-panel .editor-actions.admin-panel-actions::before {
-  display: none;
-}
-
-.admin-panel-actions-main {
-  width: 100%;
-}
-
-.admin-user-list {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 14px;
-  padding-right: 4px;
-  align-content: start;
-}
-
-.admin-user-card {
-  border: 1px solid color-mix(in srgb, var(--border), var(--primary) 14%);
-  border-radius: 20px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--panel), white 3%), color-mix(in srgb, var(--panel), var(--primary) 3%));
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  flex: 0 0 auto;
-  align-self: start;
-}
-
-.admin-user-head {
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
-}
-
-.admin-user-avatar {
-  width: 56px;
-  height: 56px;
-  font-size: 20px;
-}
-
-.admin-user-fields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.admin-user-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
-.admin-user-field-label {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  color: var(--muted);
-}
-
-.admin-user-input {
-  min-width: 0;
-}
-
 .password-input-shell {
   position: relative;
   display: flex;
@@ -1228,60 +1136,197 @@ dialog:focus-visible {
   color: #228b5d;
 }
 
-.admin-user-footer {
+#adminDialog .editor-form.admin-panel {
+  width: min(980px, 98vw);
+  max-width: min(980px, 98vw);
+  max-height: min(92vh, 960px);
+  padding: 24px 24px 20px;
+  overflow: hidden;
+  gap: 20px;
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 14px;
-  flex-wrap: wrap;
+  flex-direction: column;
+}
+
+#adminDialog .admin-panel h3 {
+  position: static;
+  padding: 0;
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+#adminDialog .admin-panel h3::after {
+  display: none;
+}
+
+#adminDialog .admin-panel .editor-actions.admin-panel-actions {
+  position: static;
+  margin-top: auto;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--border);
+}
+
+#adminDialog .admin-panel .editor-actions.admin-panel-actions::before {
+  display: none;
+}
+
+.admin-panel-actions-main {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.admin-user-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-right: 6px;
+  align-content: start;
+}
+
+/* User Card Styles */
+.admin-user-card {
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--panel);
+  padding: 20px;
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  grid-template-areas: "avatar main actions";
+  gap: 20px;
+  align-items: start;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.admin-user-card:hover {
+  border-color: color-mix(in srgb, var(--border), var(--primary) 30%);
+}
+
+.admin-user-head {
+  grid-area: avatar;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-user-avatar {
+  width: 56px;
+  height: 56px;
+  font-size: 20px;
+  flex: 0 0 auto;
+}
+
+.admin-user-main {
+  grid-area: main;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.admin-user-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.admin-user-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.admin-user-field-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  padding-left: 2px;
+}
+
+.admin-user-input {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .admin-user-controls {
   display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  flex: 1 1 520px;
+  align-items: flex-start;
+  gap: 16px;
   flex-wrap: wrap;
 }
 
 .admin-user-field--password {
-  flex: 1 1 320px;
+  flex: 1 1 240px;
+  max-width: 320px;
+}
+
+.admin-user-toggles {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 22px; /* Align with label height */
 }
 
 .admin-user-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 0 12px;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0 14px;
   border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--panel);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel), var(--text) 2%);
   color: var(--text);
   font-weight: 600;
+  font-size: 13px;
   white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.admin-user-toggle:hover {
+  background: color-mix(in srgb, var(--panel), var(--text) 5%);
+  border-color: color-mix(in srgb, var(--border), var(--primary) 20%);
 }
 
 .admin-user-toggle input {
   margin: 0;
+  cursor: pointer;
 }
 
 .admin-user-actions {
+  grid-area: actions;
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
   gap: 10px;
-  flex: 0 0 auto;
+  justify-content: flex-start;
+  height: 100%;
 }
 
 .admin-user-actions .btn {
-  min-width: 96px;
+  min-width: 80px;
+  height: 42px;
 }
 
 .admin-user-delete {
-  min-width: 48px !important;
-  padding: 10px 14px !important;
-  line-height: 1;
+  background: transparent !important;
+  color: var(--error) !important;
+  border: 1px solid color-mix(in srgb, var(--error), transparent 70%) !important;
 }
+
+.admin-user-delete:hover {
+  background: color-mix(in srgb, var(--error), transparent 90%) !important;
+  border-color: var(--error) !important;
+}
+
 
 @media (min-width:900px) {
   .board {
@@ -1327,109 +1372,100 @@ dialog:focus-visible {
     max-height: 100dvh !important;
     height: 100dvh !important;
     border-radius: 0 !important;
-    padding: max(16px, env(safe-area-inset-top, 16px)) 14px max(14px, env(safe-area-inset-bottom, 14px)) !important;
-    gap: 12px !important;
+    padding: max(16px, env(safe-area-inset-top, 16px)) 16px max(16px, env(safe-area-inset-bottom, 16px)) !important;
+    gap: 16px !important;
     overflow: hidden !important;
   }
 
   #adminDialog .admin-panel h3 {
-    font-size: 18px !important;
-    text-align: left;
-    padding-top: 0 !important;
+    font-size: 20px !important;
+    padding: 0 !important;
   }
 
   #adminDialog .admin-panel .admin-user-list {
-    gap: 10px;
+    gap: 12px;
     padding-right: 0;
-    margin-right: -2px;
-    display: block;
+    margin-right: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .admin-user-card {
+    grid-template-columns: 48px 1fr;
+    grid-template-areas: 
+      "avatar actions"
+      "main main";
+    gap: 16px;
+    padding: 16px;
+    border-radius: 16px;
+  }
+
+  .admin-user-avatar {
+    width: 48px;
+    height: 48px;
+  }
+
+  .admin-user-main {
+    gap: 12px;
+  }
+
+  .admin-user-fields {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .admin-user-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .admin-user-field--password {
+    max-width: none;
+    flex: 1 1 auto;
+  }
+
+  .admin-user-toggles {
+    padding-top: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .admin-user-toggle {
+    justify-content: center;
+    padding: 0 8px;
+    font-size: 12px;
+  }
+
+  .admin-user-actions {
+    flex-direction: row;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .admin-user-actions .btn {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .admin-user-delete {
+    flex: 0 0 42px !important;
+    padding: 0 !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   #adminDialog .admin-panel .editor-actions.admin-panel-actions {
-    position: static !important;
-    bottom: auto !important;
-    margin-top: 0 !important;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
-    background: transparent !important;
-    box-shadow: none !important;
-  }
-
-  #adminDialog .admin-panel .editor-actions.admin-panel-actions::before {
-    display: none !important;
+    padding-top: 12px !important;
   }
 
   #adminDialog .admin-panel .actions-main.admin-panel-actions-main {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px !important;
-  }
-
-  .admin-user-avatar {
-    width: 44px;
-    height: 44px;
-    font-size: 18px;
-  }
-
-  .admin-user-head {
-    grid-template-columns: 44px minmax(0, 1fr);
-    gap: 10px;
-  }
-
-  .admin-user-fields {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .admin-user-field {
-    gap: 4px;
-  }
-
-  .admin-user-field-label {
-    font-size: 11px;
-  }
-
-  .admin-user-card {
-    padding: 12px;
-    gap: 12px;
-    border-radius: 16px;
-    display: block;
-  }
-
-  .admin-user-footer {
-    display: block;
-    gap: 10px;
-  }
-
-  .admin-user-controls {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-  }
-
-  .admin-user-field--password {
-    flex: 1 1 auto;
-  }
-
-  .admin-user-toggle {
-    justify-content: flex-start;
-    min-height: 40px;
-    padding: 0 10px;
-    font-size: 14px;
-  }
-
-  .admin-user-actions {
-    width: 100%;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-top: 10px;
-  }
-
-  .admin-user-actions .btn {
-    min-width: 0;
+    gap: 12px !important;
   }
 }
 
