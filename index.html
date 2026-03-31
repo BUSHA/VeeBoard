@@ -261,25 +261,27 @@
   </dialog>
 
   <dialog id="profileDialog" aria-label="Profile" tabindex="-1">
-    <form id="profileForm" method="dialog" class="editor-form">
+    <form id="profileForm" method="dialog" class="editor-form profile-form">
       <h3 data-i18n="profile">Profile</h3>
-      <label data-i18n="email_label">Email
-        <input id="profileEmail" type="email" readonly />
-      </label>
+      <div class="profile-hero">
+        <div class="profile-avatar-wrap">
+          <div id="profileAvatarPreview" class="profile-avatar-preview"></div>
+          <button type="button" id="changeAvatarBtn" class="profile-avatar-edit-btn" aria-label="Change picture">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          </button>
+        </div>
+        <button type="button" id="removeAvatarBtn" class="profile-remove-avatar-link" data-i18n="remove_picture">Remove picture</button>
+        <input type="file" id="profileAvatarInput" accept="image/*" hidden />
+      </div>
       <label data-i18n="display_name">Display name
         <input id="profileDisplayName" type="text" maxlength="120" data-i18n-placeholder="display_name_placeholder" placeholder="How others should see you" />
+      </label>
+      <label data-i18n="email_label">Email
+        <input id="profileEmail" type="email" readonly />
       </label>
       <label data-i18n="new_password">New password
         <input id="profilePassword" type="password" data-i18n-placeholder="new_password_placeholder" placeholder="Leave blank to keep current password" />
       </label>
-      <div class="profile-avatar-settings">
-        <div id="profileAvatarPreview" class="profile-avatar-preview"></div>
-        <div class="profile-avatar-actions">
-          <button type="button" id="changeAvatarBtn" class="btn secondary" data-i18n="change_picture">Change picture</button>
-          <button type="button" id="removeAvatarBtn" class="btn secondary" data-i18n="remove_picture">Remove picture</button>
-        </div>
-        <input type="file" id="profileAvatarInput" accept="image/*" hidden />
-      </div>
       <div class="editor-actions">
         <div class="actions-main">
           <button type="button" value="cancel" class="btn secondary" formnovalidate data-i18n="cancel">Cancel</button>

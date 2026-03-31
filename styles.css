@@ -1577,11 +1577,23 @@ dialog:focus-visible {
   font-weight: 400;
 }
 
-.profile-avatar-settings {
+/* Profile dialog redesign */
+#profileDialog .editor-form {
+  width: min(420px, 92vw);
+}
+
+.profile-hero {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 10px;
+  padding: 4px 0 8px;
+}
+
+.profile-avatar-wrap {
+  position: relative;
+  width: 96px;
+  height: 96px;
 }
 
 .profile-avatar-preview {
@@ -1608,10 +1620,85 @@ dialog:focus-visible {
   object-fit: cover;
 }
 
-.profile-avatar-actions {
+/* Profile dialog — large centered avatar */
+#profileDialog .profile-avatar-preview {
+  width: 96px;
+  height: 96px;
+  border: 3px solid var(--panel);
+  box-shadow: 0 0 0 2px var(--border), 0 4px 20px rgba(0, 0, 0, 0.1);
+  background: color-mix(in srgb, var(--panel), var(--primary) 12%);
+  font-size: 36px;
+}
+
+#profileDialog .profile-avatar-preview.placeholder::after {
+  content: '';
+  display: block;
+  width: 44px;
+  height: 44px;
+  background: var(--muted);
+  opacity: 0.25;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-5.33 0-8 2.67-8 4v1h16v-1c0-1.33-2.67-4-8-4z'/%3E%3C/svg%3E");
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-5.33 0-8 2.67-8 4v1h16v-1c0-1.33-2.67-4-8-4z'/%3E%3C/svg%3E");
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-position: center;
+  mask-size: contain;
+  -webkit-mask-size: contain;
+}
+
+.profile-avatar-edit-btn {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: white;
+  border: 2.5px solid var(--panel);
+  cursor: pointer;
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s, transform 0.15s;
+  flex-shrink: 0;
+}
+
+.profile-avatar-edit-btn:hover {
+  background: color-mix(in srgb, var(--primary), black 12%);
+  transform: scale(1.08);
+}
+
+.profile-remove-avatar-link {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s;
+  line-height: 1;
+}
+
+.profile-remove-avatar-link:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.profile-remove-avatar-link:disabled {
+  opacity: 0.35;
+  cursor: default;
+  text-decoration: none;
+}
+
+#profileDialog #profileEmail {
+  background: color-mix(in srgb, var(--panel), var(--border) 40%);
+  color: var(--muted);
+  cursor: default;
 }
 
 .board-login-gate {
