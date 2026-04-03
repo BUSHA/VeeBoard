@@ -1930,9 +1930,8 @@ const UI = {
 
     Utils.qs("#editorTitle").textContent = card ? I18n.t("edit_card") : I18n.t("create_card")
     form.elements.title.value = card ? card.title : ""
-    Utils.qs("#descriptionEditor", form).innerHTML = card
-      ? card.description || ""
-      : ""
+    const rawDesc = card ? card.description || "" : ""
+    Utils.qs("#descriptionEditor", form).innerHTML = DOMPurify.sanitize(rawDesc, { ADD_ATTR: ["target"] })
     form.elements.tags.value = card ? (card.tags || []).join(", ") : ""
     
     const currentUser = Store.getCurrentUserName()
