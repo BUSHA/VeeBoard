@@ -1968,7 +1968,10 @@ const UI = {
     descriptionEditor.contentEditable = canEdit ? "true" : "false"
     descriptionEditor.setAttribute("aria-readonly", canEdit ? "false" : "true")
     if (clearUserBtn) clearUserBtn.disabled = !canEdit
-    if (saveBtn) saveBtn.disabled = !canEdit
+    if (saveBtn) {
+      saveBtn.disabled = !canEdit
+      saveBtn.style.display = canEdit ? "" : "none"
+    }
     if (addAttachmentBtn) addAttachmentBtn.disabled = !canEdit
 
     if (card) {
