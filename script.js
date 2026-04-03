@@ -1661,14 +1661,15 @@ const UI = {
           const item = document.createElement("div")
           item.className = "attachment-item"
           const img = document.createElement("img")
-          img.src = CloudflareBackend.getAuthenticatedImageUrl(att.url)
+          const authUrl = CloudflareBackend.getAuthenticatedImageUrl(att.url)
+          img.src = authUrl
           img.loading = "lazy"
           img.alt = "Attachment"
           item.append(img)
           
           item.addEventListener("pointerdown", (e) => {
             e.stopPropagation()
-            this.showLightbox(att.url)
+            this.showLightbox(authUrl)
           })
           attBox.append(item)
         })

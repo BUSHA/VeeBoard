@@ -2252,8 +2252,8 @@ dialog:focus-visible {
 
 .editor-attachment {
   position: relative;
-  width: 100px;
-  height: 100px;
+  width: 64px;
+  height: 64px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   overflow: hidden;
