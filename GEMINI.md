@@ -1,6 +1,6 @@
-# VeeBoard+ Project Context
+# VeeBoard Project Context
 
-VeeBoard+ is a minimal, Trello-inspired Kanban board application designed to be lightweight, privacy-focused, and highly customizable. It uses Cloudflare D1 as its only board data store.
+VeeBoard is a minimal, Trello-inspired Kanban board application designed to be lightweight, privacy-focused, and highly customizable. It uses Cloudflare D1 as its only board data store.
 
 ## Project Overview
 - **Purpose:** A personal productivity tool for managing tasks using a Kanban-style board.

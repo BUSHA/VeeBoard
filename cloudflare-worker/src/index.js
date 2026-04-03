@@ -1,5 +1,5 @@
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
-const LEGACY_PBKDF2_ITERATIONS = 100000;
+const LEGACY_PBKDF2_ITERATIONS = 20000;
 
 function normalizeEmail(value = "") {
   return String(value || "").trim().toLowerCase();
@@ -218,7 +218,7 @@ async function verifyPin(pinCode, saltBase64, storedHash) {
 async function makeCredential(pinCode) {
   const saltBytes = crypto.getRandomValues(new Uint8Array(16));
   const saltBase64 = bytesToBase64(saltBytes);
-  const pinHash = await hashPin(pinCode, saltBase64);
+  const pinHash = await hashPinLegacyPbkdf2(pinCode, saltBase64);
   return { pinHash, pinSalt: saltBase64 };
 }
 
@@ -405,6 +405,13 @@ export default {
       await ensureSchema(env);
 
       if (path === "/load" && method === "GET") {
+        const publicUsers = await listPublicUsers(env, boardId);
+        if (publicUsers.length > 0) {
+          const currentUserEmail = await getSessionUser(env, boardId, getUserToken(request, url));
+          if (!currentUserEmail) {
+            return jsonResponse({ error: "Unauthorized" }, headers, 401);
+          }
+        }
         const state = await loadSanitizedBoard(env, boardId);
         return jsonResponse(state, headers);
       }
@@ -422,16 +429,16 @@ export default {
         if (credential) {
           const isValid = await verifyPin(pinCode, credential.pinSalt, credential.pinHash);
           if (!isValid) {
-            return jsonResponse({ error: "Incorrect password for this email" }, headers, 403);
+            return jsonResponse({ error: "Invalid email or password." }, headers, 403);
           }
         } else if (publicUser) {
-          return jsonResponse({ error: "This account exists, but no password is stored for it yet." }, headers, 403);
+          return jsonResponse({ error: "Invalid email or password." }, headers, 403);
         } else {
-          return jsonResponse({ error: "User not found." }, headers, 404);
+          return jsonResponse({ error: "Invalid email or password." }, headers, 403);
         }
 
         if (!publicUser) {
-          return jsonResponse({ error: "User not found." }, headers, 404);
+          return jsonResponse({ error: "Invalid email or password." }, headers, 403);
         }
         if (!publicUser.isApproved) {
           return jsonResponse({ error: "Your account is waiting for admin approval." }, headers, 403);
@@ -709,6 +716,14 @@ export default {
       if (path === "/image" && method === "GET") {
         const key = url.searchParams.get("key");
         if (!key) return new Response("Missing key", { status: 400, headers });
+
+        const publicUsers = await listPublicUsers(env, boardId);
+        if (publicUsers.length > 0) {
+          const currentUserEmail = await getSessionUser(env, boardId, getUserToken(request, url));
+          if (!currentUserEmail) {
+            return new Response("Unauthorized", { status: 401, headers });
+          }
+        }
 
         const object = await env.BUCKET.get(key);
         if (!object) return new Response("Not Found", { status: 404, headers });

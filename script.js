@@ -335,6 +335,18 @@ const CloudflareBackend = {
     }
     return headers
   },
+  getAuthenticatedImageUrl(url, config = DbSettings.get()) {
+    if (!config.cfUserToken || !url) return url
+    if (!config.cfWorkerUrl) return url
+    try {
+      const u = new URL(url)
+      if (u.origin === new URL(config.cfWorkerUrl).origin) {
+        u.searchParams.set("token", config.cfUserToken)
+        return u.toString()
+      }
+    } catch {}
+    return url
+  },
   async load(config) {
     let { cfWorkerUrl } = config
     if (!cfWorkerUrl) return null
@@ -1186,7 +1198,12 @@ const UI = {
     }
     const currentUser = Store.getCurrentUserProfile()
     if (currentUser?.avatarUrl) {
-      this.menuBtn.innerHTML = `<img src="${currentUser.avatarUrl}" alt="" class="menu-avatar-img">`
+      const img = document.createElement("img")
+      img.src = CloudflareBackend.getAuthenticatedImageUrl(currentUser.avatarUrl)
+      img.alt = ""
+      img.className = "menu-avatar-img"
+      this.menuBtn.innerHTML = ""
+      this.menuBtn.appendChild(img)
     } else {
       this.menuBtn.textContent = "☰"
     }
@@ -1198,7 +1215,11 @@ const UI = {
     if (!preview) return
     if (avatarUrl) {
       preview.classList.remove("placeholder")
-      preview.innerHTML = `<img src="${avatarUrl}" alt="">`
+      const img = document.createElement("img")
+      img.src = CloudflareBackend.getAuthenticatedImageUrl(avatarUrl)
+      img.alt = ""
+      preview.innerHTML = ""
+      preview.appendChild(img)
     } else {
       preview.classList.add("placeholder")
       preview.innerHTML = ""
@@ -1336,7 +1357,7 @@ const UI = {
     const resolvedUser = (user?.email && Store.findUserByEmail(user.email)) || Store.findUserByName(user?.name || "") || user || {}
     if (resolvedUser.avatarUrl) {
       const img = document.createElement("img")
-      img.src = resolvedUser.avatarUrl
+      img.src = CloudflareBackend.getAuthenticatedImageUrl(resolvedUser.avatarUrl)
       img.alt = ""
       img.className = `avatar-image${subtle ? " avatar-image--subtle" : ""}`
       return img
@@ -1379,7 +1400,11 @@ const UI = {
       const avatarPreview = document.createElement("div");
       avatarPreview.className = "profile-avatar-preview admin-user-avatar";
       if (u.avatarUrl) {
-        avatarPreview.innerHTML = `<img src="${u.avatarUrl}" alt="">`;
+        const img = document.createElement("img")
+        img.src = CloudflareBackend.getAuthenticatedImageUrl(u.avatarUrl)
+        img.alt = ""
+        avatarPreview.innerHTML = ""
+        avatarPreview.append(img)
       } else {
         avatarPreview.classList.add("placeholder");
       }
@@ -1636,7 +1661,7 @@ const UI = {
           const item = document.createElement("div")
           item.className = "attachment-item"
           const img = document.createElement("img")
-          img.src = att.url
+          img.src = CloudflareBackend.getAuthenticatedImageUrl(att.url)
           img.loading = "lazy"
           img.alt = "Attachment"
           item.append(img)
@@ -1988,9 +2013,10 @@ const UI = {
       const item = document.createElement("div")
       item.className = "editor-attachment"
       const img = document.createElement("img")
-      img.src = att.url
+      const authUrl = CloudflareBackend.getAuthenticatedImageUrl(att.url)
+      img.src = authUrl
       img.style.cursor = "zoom-in"
-      img.addEventListener("click", () => this.showLightbox(att.url))
+      img.addEventListener("click", () => this.showLightbox(authUrl))
       item.append(img)
 
       const delBtn = document.createElement("button")
@@ -2318,9 +2344,12 @@ const UI = {
         const chip = document.createElement("button")
         chip.className = "tag-chip"
         chip.dataset.tag = tag
-        chip.innerHTML = `<span class="tag-dot" style="background:${Utils.colorFromString(
-          tag
-        )}"></span> ${tag}`
+        const dot = document.createElement("span")
+        dot.className = "tag-dot"
+        dot.style.background = Utils.colorFromString(tag)
+        chip.innerHTML = ""
+        chip.appendChild(dot)
+        chip.appendChild(document.createTextNode(" " + tag))
         chip.setAttribute(
           "aria-pressed",
           this.activeTagFilters.has(tag) ? "true" : "false"
