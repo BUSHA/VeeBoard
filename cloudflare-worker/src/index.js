@@ -501,6 +501,10 @@ export default {
           isAdmin: !!currentUser.isAdmin,
           isApproved: !!currentUser.isApproved,
         }, pinCode || null);
+        
+        if (pinCode) {
+          await env.DB.prepare("DELETE FROM board_sessions WHERE board_id = ? AND user_email = ?").bind(boardId, currentUser.email).run();
+        }
         return jsonResponse({
           success: true,
           user: await getPublicUser(env, boardId, currentUser.email),
@@ -546,6 +550,10 @@ export default {
           isAdmin: body.isAdmin !== undefined ? !!body.isAdmin : !!existingUser?.isAdmin,
           isApproved: body.isApproved !== undefined ? !!body.isApproved : !!existingUser?.isApproved,
         }, pinCode || null);
+
+        if (pinCode) {
+          await env.DB.prepare("DELETE FROM board_sessions WHERE board_id = ? AND user_email = ?").bind(boardId, nextEmail).run();
+        }
 
         return jsonResponse({ success: true, users: await listPublicUsers(env, boardId, { includePending: true }) }, headers);
       }
@@ -716,6 +724,7 @@ export default {
       if (path === "/image" && method === "GET") {
         const key = url.searchParams.get("key");
         if (!key) return new Response("Missing key", { status: 400, headers });
+        if (!key.startsWith(`${boardId}/`)) return new Response("Unauthorized", { status: 401, headers });
 
         const publicUsers = await listPublicUsers(env, boardId);
         if (publicUsers.length > 0) {
@@ -731,7 +740,7 @@ export default {
         const imageHeaders = new Headers(headers);
         object.writeHttpMetadata(imageHeaders);
         imageHeaders.set("etag", object.httpEtag);
-        imageHeaders.set("Cache-Control", "public, max-age=31536000");
+        imageHeaders.set("Cache-Control", "private, max-age=31536000");
         return new Response(object.body, { headers: imageHeaders });
       }
 
@@ -742,6 +751,11 @@ export default {
         if (!currentUser) return jsonResponse({ error: "Unauthorized" }, headers, 401);
         if (!key.startsWith(`${boardId}/`)) {
           return new Response("Unauthorized", { status: 401, headers });
+        }
+        
+        const isAdminUser = await isUserAdmin(env, boardId, currentUser);
+        if (!isAdminUser) {
+           return jsonResponse({ error: "Only admins can perform remote deletion" }, headers, 403);
         }
 
         await env.BUCKET.delete(key);
