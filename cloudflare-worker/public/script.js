@@ -1252,6 +1252,16 @@ const UI = {
     const showAuth = !!cfg.cfWorkerUrl
     if (this.logoutBtn) this.logoutBtn.style.display = showAuth && Store.hasCloudflareSession() ? "" : "none"
     if (this.profileBtn) this.profileBtn.style.display = showAuth && Store.hasCloudflareSession() ? "" : "none"
+    this.updateBoardNameLabel()
+  },
+
+  updateBoardNameLabel() {
+    const label = Utils.qs("#boardNameLabel")
+    if (!label) return
+    const cfg = DbSettings.get()
+    const board = (this.accessibleBoards || []).find((b) => b.id === cfg.cfBoardId)
+    label.textContent = board?.name || cfg.cfBoardId || ""
+    label.style.display = cfg.cfWorkerUrl ? "" : "none"
   },
 
   updateBoardActionsVisibility() {
