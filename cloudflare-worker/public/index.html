@@ -258,8 +258,13 @@
           <input id="cfWorkerUrl" type="url" placeholder="https://your-worker.workers.dev" />
         </label>
         <label data-i18n="board_id">Board ID (optional)
+          <select id="cfBoardSelect"></select>
           <input id="cfBoardId" type="text" placeholder="default" />
         </label>
+        <div id="createBoardRow" class="board-create-row" style="display:none;">
+          <input id="newBoardName" type="text" maxlength="80" data-i18n-placeholder="new_board_placeholder" placeholder="New board name" />
+          <button type="button" id="createBoardBtn" class="btn secondary" data-i18n="create_board">Create board</button>
+        </div>
       </div>
 
       <div class="editor-actions">

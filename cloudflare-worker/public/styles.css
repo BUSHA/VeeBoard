@@ -73,7 +73,8 @@ body.dialog-open {
   overflow: hidden;
 }
 
-input {
+input,
+select {
   max-height: 42px;
   height: 42px;
 }
@@ -744,6 +745,7 @@ dialog:focus-visible {
 }
 
 .editor-form input,
+.editor-form select,
 .editor-form textarea {
   font: inherit;
   color: var(--text);
@@ -776,6 +778,7 @@ dialog:focus-visible {
 }
 
 .editor-form input:focus,
+.editor-form select:focus,
 .editor-form textarea:focus {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent)
 }
@@ -1430,6 +1433,44 @@ dialog:focus-visible {
   gap: 14px;
 }
 
+.admin-user-board-access {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-user-board-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-user-board-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--panel), var(--bg) 45%);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.admin-user-board-toggle input {
+  width: auto;
+  height: auto;
+  max-height: none;
+}
+
+.admin-user-board-toggle.is-current {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .admin-user-fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -1637,6 +1678,13 @@ dialog:focus-visible {
   font-weight: 400;
 }
 
+.board-create-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
 /* Profile dialog redesign */
 #profileDialog .editor-form {
   width: min(420px, 92vw);
@@ -1833,7 +1881,8 @@ dialog:focus-visible {
   font-weight: 600;
 }
 
-.board-login-form input {
+.board-login-form input,
+.board-login-form select {
   font: inherit;
   color: var(--text);
   background: var(--panel);
@@ -1848,7 +1897,8 @@ dialog:focus-visible {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-.board-login-form input:focus {
+.board-login-form input:focus,
+.board-login-form select:focus {
   border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent);
 }

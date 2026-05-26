@@ -1,6 +1,9 @@
 CREATE TABLE IF NOT EXISTS boards (
   id TEXT PRIMARY KEY,
+  name TEXT DEFAULT '',
+  created_by TEXT DEFAULT '',
   data TEXT,
+  created_at TEXT,
   updated_at TEXT
 );
 
