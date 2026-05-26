@@ -109,7 +109,8 @@ input {
   gap: 8px;
   align-items: center;
   flex: 1;
-  flex-wrap: wrap
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .toolbar-actions {
@@ -117,11 +118,13 @@ input {
   gap: 8px;
   align-items: center;
   flex-wrap: nowrap;
-  flex: 1
+  flex: 1;
+  min-width: 0;
 }
 
 .search {
   flex: 1 1 320px;
+  min-width: 0;
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -181,9 +184,58 @@ input {
   text-align: center;
 }
 
-#themeToggle,
 #menuBtn {
   min-width: 40px;
+}
+
+.theme-selector {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 92%, var(--bg));
+}
+
+.theme-option {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, transform 0.2s;
+}
+
+.theme-option:hover {
+  background: var(--primary-light);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.theme-option.active {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--primary) 28%, transparent);
+}
+
+.theme-option svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.theme-option svg .theme-fill {
+  fill: currentColor;
+  stroke: none;
 }
 
 #menuBtn {
@@ -980,18 +1032,49 @@ dialog:focus-visible {
 }
 
 @media (max-width:700px) {
+  .app-header {
+    padding: 10px 12px;
+  }
+
+  .toolbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .logo {
+    grid-column: 1;
+  }
+
+  .title {
+    grid-column: 2;
+    min-width: 0;
+  }
+
+  .toolbar-actions {
+    display: contents;
+  }
+
   .search {
-    flex: 1 1 100%
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    flex-basis: auto;
   }
 
   .actions {
-    order: 2;
-    flex: 1;
-    flex-wrap: wrap
+    grid-column: 4;
+    justify-self: end;
   }
 
   .actions .btn {
-    flex: 1 1 calc(50% - 8px)
+    flex: none;
+  }
+
+  .theme-selector {
+    grid-column: 3;
+    justify-self: end;
   }
 
   .tag-filters {
@@ -2015,6 +2098,15 @@ dialog:focus-visible {
 
 .lang-tab.active:hover {
   background: var(--primary);
+}
+
+#dbDialog .lang-tabs {
+  width: 100%;
+}
+
+#dbDialog .lang-tab {
+  flex: 1;
+  padding: 8px 12px;
 }
 /* =================================
    Card Attachments

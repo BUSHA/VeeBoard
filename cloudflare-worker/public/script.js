@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.10.1"
+  version: "0.2.1"
 }
 
 /* Live sync echo guard */
@@ -205,6 +205,7 @@ const I18n = {
       const browserLang = navigator.language.split("-")[0]
       this.current = TRANSLATIONS[browserLang] ? browserLang : "uk"
     }
+    document.documentElement.lang = this.current
     this.updatePage()
     
     this.updateTabs()
@@ -220,6 +221,7 @@ const I18n = {
     if (TRANSLATIONS[lang]) {
       this.current = lang
       localStorage.setItem(this.LANG_KEY, lang)
+      document.documentElement.lang = lang
       this.updatePage()
       this.updateTabs()
       // Re-render board to update dynamic text like "(Overdue)"
@@ -268,6 +270,10 @@ const I18n = {
     Utils.qsa("[data-i18n-title]").forEach(el => {
       const key = el.dataset.i18nTitle
       el.title = this.t(key)
+    })
+    Utils.qsa("[data-i18n-aria-label]").forEach(el => {
+      const key = el.dataset.i18nAriaLabel
+      el.setAttribute("aria-label", this.t(key))
     })
   }
 }
@@ -2581,11 +2587,11 @@ const UI = {
   },
   applyTheme(theme) {
     document.documentElement.setAttribute("data-theme", theme)
-    const btn = Utils.qs("#themeToggle")
-    if (btn) {
-      const nextTheme = theme === "dark" ? "light" : "dark"
-      btn.textContent = I18n.t(`theme_${nextTheme}`)
-    }
+    Utils.qsa("[data-theme-option]").forEach(btn => {
+      const isActive = btn.dataset.themeOption === theme
+      btn.classList.toggle("active", isActive)
+      btn.setAttribute("aria-pressed", String(isActive))
+    })
     if (typeof I18n !== "undefined") I18n.updatePage()
     localStorage.setItem(this.THEME_KEY, theme)
   },
@@ -3442,10 +3448,9 @@ const App = {
     })
 
     // --- Theme ---
-    Utils.qs("#themeToggle").addEventListener(
-      "click",
-      UI.toggleTheme.bind(UI)
-    )
+    Utils.qsa("[data-theme-option]").forEach(btn => {
+      btn.addEventListener("click", () => UI.applyTheme(btn.dataset.themeOption))
+    })
 
     // --- Image Upload UI ---
     const addAttBtn = Utils.qs("#addAttachmentBtn")
