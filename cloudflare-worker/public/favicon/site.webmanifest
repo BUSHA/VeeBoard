@@ -1,6 +1,6 @@
 {
-  "name": "VeeBoard",
-  "short_name": "VeeBoard",
+  "name": "ChimBoard",
+  "short_name": "ChimBoard",
   "icons": [
     {
       "src": "/favicon/web-app-manifest-192x192.png",

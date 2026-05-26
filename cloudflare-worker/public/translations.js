@@ -1,6 +1,6 @@
 const TRANSLATIONS = {
   en: {
-    app_title: "VeeBoard",
+    app_title: "ChimBoard",
     search_placeholder: "Search by title, tags or users…",
     theme_toggle: "Dark/Light theme",
     theme: "Theme",
@@ -138,7 +138,7 @@ const TRANSLATIONS = {
     drop_to_upload: "Drop images to upload",
   },
   uk: {
-    app_title: "VeeBoard",
+    app_title: "ChimBoard",
     search_placeholder: "Пошук за назвою, тегами або користувачами…",
     theme_toggle: "Темна/Світла тема",
     theme: "Тема",
