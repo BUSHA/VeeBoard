@@ -1106,6 +1106,7 @@ const UI = {
   adminUsers: [],
   pendingProfileAvatarFile: null,
   pendingProfileAvatarRemoved: false,
+  pendingCardAttachments: [],
   dragCounter: 0,
 
   toggleDropzone(active) {
@@ -1940,6 +1941,7 @@ const UI = {
     const form = Utils.qs("#editorForm")
     form.dataset.colId = colId
     form.dataset.cardId = card ? card.id : ""
+    this.pendingCardAttachments = []
 
     Utils.qs("#editorTitle").textContent = card ? I18n.t("edit_card") : I18n.t("create_card")
     form.elements.title.value = card ? card.title : ""
@@ -2001,7 +2003,7 @@ const UI = {
     this.hideMoveToMenu()
     this.resetCommentComposer()
     this.showDialog(this.editor)
-    this.updateEditorAttachments(card ? card.attachments : [], card?.id)
+    this.updateEditorAttachments(card ? card.attachments : this.pendingCardAttachments, card?.id)
     this.renderEditorComments(card)
     commentsSection.style.display = card && !!DbSettings.get().cfWorkerUrl ? "flex" : "none"
   },
@@ -2048,7 +2050,11 @@ const UI = {
           showArchiveButton: false
         })
         if (choice === "delete") {
-          this.deleteAttachment(cardId, att.key)
+          if (cardId) {
+            this.deleteAttachment(cardId, att.key)
+          } else {
+            this.deletePendingAttachment(att.key)
+          }
         }
       })
       item.append(delBtn)
@@ -2073,6 +2079,22 @@ const UI = {
     if (form.dataset.cardId === cardId) {
       this.updateEditorAttachments(card.attachments, cardId)
     }
+  },
+
+  async deletePendingAttachment(key) {
+    const cfg = DbSettings.get()
+    await CloudflareBackend.deleteImage(key, cfg).catch(console.error)
+    this.pendingCardAttachments = this.pendingCardAttachments.filter(a => a.key !== key)
+    this.updateEditorAttachments(this.pendingCardAttachments, "")
+  },
+
+  cleanupPendingCardAttachments() {
+    if (!this.pendingCardAttachments.length) return
+    const cfg = DbSettings.get()
+    this.pendingCardAttachments.forEach((att) => {
+      if (att.key) CloudflareBackend.deleteImage(att.key, cfg).catch(console.error)
+    })
+    this.pendingCardAttachments = []
   },
 
   resetCommentComposer() {
@@ -3437,15 +3459,6 @@ const App = {
       })
       attInput.addEventListener("change", (e) => {
         const cardId = Utils.qs("#editorForm").dataset.cardId
-        if (!cardId) {
-          UI.showAlert("Please save the card first (not implemented for new cards yet, but actually my logic handles it if cardId exists)")
-          // Actually, cardId is empty for new cards. 
-          // I should probably warn about new cards or handle them.
-          // But wait, cardId is empty if it's a new card.
-          // Let's just say "Please save the card title first to enable attachments" or similar?
-          // Actually it's better to just say it's only for existing cards for now per requirements.
-          return
-        }
         if (e.target.files && e.target.files.length > 0) {
           Array.from(e.target.files).forEach(file => {
             if (file.type.startsWith("image/")) {
@@ -3465,6 +3478,9 @@ const App = {
       dialog.addEventListener("close", () => {
         document.body.classList.remove("dialog-open")
         if (dialog === UI.editor) {
+          if (!Utils.qs("#editorForm").dataset.cardId) {
+            UI.cleanupPendingCardAttachments()
+          }
           UI.hideMoveToMenu()
           UI.dragCounter = 0
           UI.toggleDropzone(false)
@@ -3704,7 +3720,7 @@ const App = {
         : "",
       assignedUser: null,
       comments: existingCard ? (existingCard.comments || []) : [],
-      attachments: existingCard ? existingCard.attachments : []
+      attachments: existingCard ? existingCard.attachments : UI.pendingCardAttachments
     }
 
     const userVal = form.elements.user.value.trim()
@@ -3725,6 +3741,7 @@ const App = {
     } else {
       savedCard = Store.addCard(colId, cardData)
       UI.addCard(colId, savedCard)
+      UI.pendingCardAttachments = []
     }
 
 
@@ -3832,13 +3849,13 @@ const App = {
     if (!cardEditor) return
 
     const cardId = Utils.qs("#editorForm").dataset.cardId
-    if (!cardId) return
-    const { card } = Store.findCard(cardId)
+    const { card } = cardId ? Store.findCard(cardId) : { card: null }
     if (card && !Store.canCurrentUserEditCard(card)) return
 
     const items = (e.clipboardData || e.originalEvent.clipboardData).items
     for (const item of items) {
       if (item.type.indexOf("image") !== -1) {
+        e.preventDefault()
         const file = item.getAsFile()
         this.handleImageUpload(file, cardId)
       }
@@ -3852,8 +3869,7 @@ const App = {
     if (!UI.editor.open) return
 
     const cardId = Utils.qs("#editorForm").dataset.cardId
-    if (!cardId) return
-    const { card } = Store.findCard(cardId)
+    const { card } = cardId ? Store.findCard(cardId) : { card: null }
     if (card && !Store.canCurrentUserEditCard(card)) return
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
@@ -3866,10 +3882,11 @@ const App = {
   },
 
   async handleImageUpload(file, cardId) {
-    const { card } = Store.findCard(cardId)
-    if (!card) return
+    const { card } = cardId ? Store.findCard(cardId) : { card: null }
+    if (cardId && !card) return
 
-    if ((card.attachments || []).length >= 4) {
+    const attachments = card ? (card.attachments || []) : UI.pendingCardAttachments
+    if (attachments.length >= 4) {
       UI.showAlert(I18n.t("too_many_attachments"))
       return
     }
@@ -3890,9 +3907,10 @@ const App = {
 
     try {
       const result = await CloudflareBackend.uploadImage(processedFile, cfg)
-      // Re-fetch card in case it changed
-      const { card: freshCard } = Store.findCard(cardId)
-      if (freshCard) {
+      if (cardId) {
+        // Re-fetch card in case it changed
+        const { card: freshCard } = Store.findCard(cardId)
+        if (!freshCard) return
         freshCard.attachments = freshCard.attachments || []
         freshCard.attachments.push({
           url: result.url,
@@ -3907,6 +3925,13 @@ const App = {
         if (form.dataset.cardId === cardId) {
           UI.updateEditorAttachments(freshCard.attachments, cardId)
         }
+      } else {
+        UI.pendingCardAttachments.push({
+          url: result.url,
+          key: result.key,
+          name: processedFile.name
+        })
+        UI.updateEditorAttachments(UI.pendingCardAttachments, "")
       }
     } catch (err) {
       console.error(err)
