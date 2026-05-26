@@ -46,8 +46,8 @@ The deployed app uses its same-origin Worker API by default. In the app, open `S
 
 The frontend has no build step and lives in the Worker assets directory.
 
-- Run the full app locally with `wrangler dev` from [`cloudflare-worker/`](/Users/busha/projects/VeeBoard/cloudflare-worker).
-- Deploy the full app with `wrangler deploy` from [`cloudflare-worker/`](/Users/busha/projects/VeeBoard/cloudflare-worker).
+- Run the full app locally with `npx wrangler dev` from [`cloudflare-worker/`](/Users/busha/projects/VeeBoard/cloudflare-worker).
+- Deploy the full app with `npx wrangler deploy` from [`cloudflare-worker/`](/Users/busha/projects/VeeBoard/cloudflare-worker).
 
 Detailed setup steps are in [CLOUDFLARE_DEPLOY.md](/Users/busha/projects/VeeBoard/CLOUDFLARE_DEPLOY.md).
 

@@ -79,7 +79,7 @@ After deploy, open the Worker URL. The frontend uses that same origin for `/load
 
 ## 7. Migrating From Pages + Worker
 
-To keep your existing board data, reuse the same D1 database and R2 bucket bindings. Do not run `wrangler d1 create` for the migration unless you intentionally want an empty board.
+To keep your existing board data, reuse the same D1 database and R2 bucket bindings. Do not run `npx wrangler d1 create` for the migration unless you intentionally want an empty board.
 
 1. Keep the current D1 `database_id` in `cloudflare-worker/wrangler.json`.
 2. Keep the current R2 bucket name in `cloudflare-worker/wrangler.json`.
