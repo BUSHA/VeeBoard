@@ -793,14 +793,27 @@ export default {
           return jsonResponse({ error: "Unauthorized" }, headers, 401);
         }
         const pinCode = typeof body.pinCode === "string" ? body.pinCode.trim() : "";
+        const nextName = (body.name || "").trim();
+        const nextAvatarUrl = body.avatarUrl !== undefined ? body.avatarUrl : currentUser.avatarUrl;
+        const nextAvatarKey = body.avatarKey !== undefined ? body.avatarKey : currentUser.avatarKey;
         await upsertUserRecord(env, boardId, {
           email: currentUser.email,
-          name: (body.name || "").trim(),
-          avatarUrl: body.avatarUrl !== undefined ? body.avatarUrl : currentUser.avatarUrl,
-          avatarKey: body.avatarKey !== undefined ? body.avatarKey : currentUser.avatarKey,
+          name: nextName,
+          avatarUrl: nextAvatarUrl,
+          avatarKey: nextAvatarKey,
           isAdmin: !!currentUser.isAdmin,
           isApproved: !!currentUser.isApproved,
         }, pinCode || null);
+        
+        const allBoardIds = await listUserBoardIds(env, currentUser.email);
+        for (const otherBoardId of allBoardIds) {
+          if (otherBoardId === boardId) continue;
+          const otherUser = await getPublicUser(env, otherBoardId, currentUser.email);
+          if (!otherUser) continue;
+          await env.DB.prepare(
+            "UPDATE board_users SET name = ?, avatar_url = ?, avatar_key = ?, updated_at = ? WHERE board_id = ? AND email = ?"
+          ).bind(nextName, nextAvatarUrl, nextAvatarKey, new Date().toISOString(), otherBoardId, currentUser.email).run();
+        }
         
         if (pinCode) {
           await env.DB.prepare("DELETE FROM board_sessions WHERE board_id = ? AND user_email = ?").bind(boardId, currentUser.email).run();
