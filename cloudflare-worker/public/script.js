@@ -351,8 +351,18 @@ const CloudflareBackend = {
     const cfWorkerUrl = this.resolveWorkerUrl(config)
     if (!cfWorkerUrl) return url
     try {
-      const u = new URL(url)
-      if (u.origin === new URL(cfWorkerUrl).origin) {
+      const worker = new URL(cfWorkerUrl)
+      const u = new URL(url, worker.origin)
+      if (u.pathname === "/image" && u.searchParams.get("key")) {
+        u.protocol = worker.protocol
+        u.host = worker.host
+        u.searchParams.set("token", config.cfUserToken)
+        if (!u.searchParams.get("boardId")) {
+          u.searchParams.set("boardId", config.cfBoardId || "default")
+        }
+        return u.toString()
+      }
+      if (u.origin === worker.origin) {
         u.searchParams.set("token", config.cfUserToken)
         return u.toString()
       }
