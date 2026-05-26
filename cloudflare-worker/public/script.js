@@ -321,12 +321,19 @@ const DbSettings = {
         cfUserToken: "",
         cfBoardSessions: {},
       }
+      const sanitize = (id) => (id || "").replace(/[^a-z0-9_-]/gi, "") || "default"
       const saved = JSON.parse(localStorage.getItem(this.KEY)) || {}
+      const sanitizedSessions = saved.cfBoardSessions && typeof saved.cfBoardSessions === "object"
+        ? Object.fromEntries(
+            Object.entries(saved.cfBoardSessions).map(([k, v]) => [sanitize(k), v])
+          )
+        : {}
       return {
         ...defaults,
         ...saved,
         cfWorkerUrl: saved.cfWorkerUrl || defaultWorkerUrl,
-        cfBoardSessions: saved.cfBoardSessions && typeof saved.cfBoardSessions === "object" ? saved.cfBoardSessions : {},
+        cfBoardId: sanitize(saved.cfBoardId),
+        cfBoardSessions: sanitizedSessions,
       }
     } catch {
       return { cfWorkerUrl: "", cfBoardId: "default", cfUserEmail: "", cfUserName: "", cfUserToken: "", cfBoardSessions: {} }
@@ -334,7 +341,7 @@ const DbSettings = {
   },
   set(v) {
     const cfWorkerUrl = (v.cfWorkerUrl || "").trim()
-    const cfBoardId = v.cfBoardId || "default"
+    const cfBoardId = (v.cfBoardId || "default").replace(/[^a-z0-9_-]/gi, "") || "default"
     const cfBoardSessions = v.cfBoardSessions && typeof v.cfBoardSessions === "object" ? { ...v.cfBoardSessions } : {}
     if (v.cfUserToken && v.cfUserEmail) {
       const existingSession = cfBoardSessions[cfBoardId] || {}
@@ -366,8 +373,9 @@ const CloudflareBackend = {
     return (config.cfWorkerUrl || DbSettings.defaultWorkerUrl()).replace(/\/+$/, "")
   },
   buildHeaders(config, extra = {}) {
+    const boardId = (config.cfBoardId || "default").replace(/[^a-z0-9_-]/gi, "") || "default"
     const headers = {
-      "X-Board-ID": config.cfBoardId || "default",
+      "X-Board-ID": boardId,
       ...extra,
     }
     if (config.cfUserToken) {

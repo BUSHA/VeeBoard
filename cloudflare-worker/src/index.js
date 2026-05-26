@@ -157,7 +157,7 @@ function commentsChangeAllowed(oldComments = [], newComments = [], currentUser =
 }
 
 function getBoardId(request, url) {
-  return request.headers.get("X-Board-ID") || url.searchParams.get("boardId") || "default";
+  return normalizeBoardId(request.headers.get("X-Board-ID")) || normalizeBoardId(url.searchParams.get("boardId")) || "default";
 }
 
 function getUserToken(request, url) {
@@ -615,9 +615,12 @@ export default {
 
         const body = await parseJson(request);
         const requestedName = (body.name || body.boardId || "").trim();
-        const nextBoardId = normalizeBoardId(body.boardId || requestedName);
-        if (!nextBoardId) {
+        if (!requestedName) {
           return jsonResponse({ error: "Board name is required." }, headers, 400);
+        }
+        let nextBoardId = normalizeBoardId(body.boardId || requestedName);
+        if (!nextBoardId) {
+          nextBoardId = "board-" + crypto.randomUUID().slice(0, 8);
         }
 
         const existingBoard = await readBoardRow(env, nextBoardId);
