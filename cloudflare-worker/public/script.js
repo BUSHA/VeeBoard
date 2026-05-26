@@ -385,10 +385,9 @@ const CloudflareBackend = {
       if (u.pathname === "/image" && u.searchParams.get("key")) {
         u.protocol = worker.protocol
         u.host = worker.host
-        u.searchParams.set("token", config.cfUserToken)
-        if (!u.searchParams.get("boardId")) {
-          u.searchParams.set("boardId", config.cfBoardId || "default")
-        }
+        const imageBoardId = u.searchParams.get("boardId") || config.cfBoardId || "default"
+        const boardSession = DbSettings.getBoardSession(imageBoardId, config)
+        u.searchParams.set("token", boardSession?.cfUserToken || config.cfUserToken)
         return u.toString()
       }
       if (u.origin === worker.origin) {

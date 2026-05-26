@@ -555,10 +555,10 @@ async function loadSanitizedBoard(env, boardId) {
 async function persistBoardState(env, boardId, state) {
   const data = JSON.stringify(boardStatePayload(state));
   await env.DB.prepare(
-    `INSERT INTO boards (id, name, data, updated_at)
-     VALUES (?, ?, ?, ?)
+    `INSERT INTO boards (id, data, updated_at)
+     VALUES (?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`
-  ).bind(boardId, boardId, data, new Date().toISOString()).run();
+  ).bind(boardId, data, new Date().toISOString()).run();
 }
 
 async function parseJson(request) {

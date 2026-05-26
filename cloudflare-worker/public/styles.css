@@ -1280,7 +1280,6 @@ dialog:focus-visible {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--panel);
-  overflow: hidden;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
@@ -1297,6 +1296,7 @@ dialog:focus-visible {
   background: color-mix(in srgb, var(--panel), var(--bg) 55%);
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
+  border-radius: 14px 14px 0 0;
 }
 
 .admin-user-head {
@@ -1505,6 +1505,7 @@ dialog:focus-visible {
   gap: 16px;
   padding: 12px 18px 16px;
   border-top: 1px solid color-mix(in srgb, var(--border), transparent 40%);
+  border-radius: 0 0 14px 14px;
 }
 
 .admin-user-save {
