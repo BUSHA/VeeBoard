@@ -15,7 +15,11 @@
 			"/save",
 			"/upload",
 			"/image",
-			"/delete-image"
+			"/delete-image",
+			"/boards",
+			"/boards-for-login",
+			"/board-session",
+			"/user-board-access"
 		]
 	},
 	"d1_databases": [
