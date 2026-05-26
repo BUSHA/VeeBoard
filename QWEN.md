@@ -36,13 +36,14 @@ VeeBoard is a lightweight, self-hosted Kanban board application built with plain
 
 ```
 VeeBoard/
-├── index.html              # Main application markup and dialogs
-├── styles.css              # All CSS styles (dark/light themes)
-├── script.js               # Frontend logic (~3800 lines)
-├── translations.js         # English and Ukrainian UI strings
-├── vibealert.png           # Hero image
-├── favicon/                # Favicon and PWA assets
-├── cloudflare-worker/      # Backend API
+├── cloudflare-worker/      # Worker API and static assets
+│   ├── public/             # Frontend assets uploaded by Wrangler
+│   │   ├── index.html      # Main application markup and dialogs
+│   │   ├── styles.css      # All CSS styles (dark/light themes)
+│   │   ├── script.js       # Frontend logic
+│   │   ├── translations.js # English and Ukrainian UI strings
+│   │   ├── vibealert.png   # README image
+│   │   └── favicon/        # Favicon and PWA assets
 │   ├── src/index.js        # Worker API (~740 lines)
 │   ├── schema.sql          # D1 database schema
 │   ├── wrangler.example.json  # Wrangler config template
@@ -52,24 +53,9 @@ VeeBoard/
 
 ## Building and Running
 
-### Frontend (No Build Step)
+### Worker App (No Frontend Build Step)
 
-The frontend is plain HTML/CSS/JS with no build process. To run locally:
-
-```bash
-# Option 1: Using Python
-python3 -m http.server 8000
-
-# Option 2: Using Node.js
-npx serve .
-
-# Option 3: Using PHP
-php -S localhost:8000
-```
-
-Then open `http://localhost:8000` in your browser.
-
-### Backend (Cloudflare Worker)
+The frontend is plain HTML/CSS/JS in `cloudflare-worker/public`. Run it through Wrangler so static assets and API routes share one origin.
 
 See [CLOUDFLARE_DEPLOY.md](./CLOUDFLARE_DEPLOY.md) for detailed deployment instructions.
 
@@ -95,14 +81,17 @@ npx wrangler r2 bucket create veeboard-attachments
 # Initialize database schema
 npx wrangler d1 execute veeboard_db --remote --file=./schema.sql
 
-# Deploy worker
+# Run locally
+npx wrangler dev
+
+# Deploy full app
 npx wrangler deploy
 ```
 
-After deployment, configure the frontend:
+After deployment, the frontend uses the same Worker origin automatically. Optional settings:
 1. Open VeeBoard in browser
 2. Open Settings (from dropdown menu)
-3. Enter the Worker URL
+3. Override the Worker URL only if needed
 4. Optionally enter a Board ID
 5. Save settings
 
@@ -185,15 +174,13 @@ After deployment, configure the frontend:
 No `.env` files are used. Configuration is done via:
 
 1. **wrangler.json**: Worker name, D1 binding, R2 binding
-2. **Frontend Settings Dialog**: Worker URL and Board ID (stored in localStorage)
+2. **Frontend Settings Dialog**: optional Worker URL override and Board ID (stored in localStorage)
 
 ### localStorage Keys
 
-- `veeboard_cf_worker_url`: Cloudflare Worker URL
-- `veeboard_cf_board_id`: Board ID (optional, defaults to "default")
+- `vee-board-db-settings`: Worker URL override, board ID, user identity, and session token
 - `veeboard_theme`: "light" or "dark"
 - `veeboard_lang`: "en" or "uk"
-- `veeboard_session`: Current session token
 
 ## API Endpoints (Cloudflare Worker)
 
@@ -201,14 +188,17 @@ The worker exposes these endpoints:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/auth/signup` | Create user account |
-| POST | `/auth/login` | Login and get session token |
-| POST | `/auth/logout` | Invalidate session |
-| GET | `/board/:id` | Get board state |
-| PUT | `/board/:id` | Update board state |
-| GET | `/users/:board_id` | List board users |
+| POST | `/signup` | Create user account |
+| POST | `/auth` | Login and get session token |
+| GET | `/load` | Get board state |
+| POST | `/save` | Update board state |
+| GET | `/users` | List board users |
+| POST | `/user` | Create or update a user |
+| DELETE | `/user` | Delete a user |
+| POST | `/profile` | Update current user profile |
 | POST | `/upload` | Upload image attachment |
-| DELETE | `/upload/:key` | Delete image attachment |
+| GET | `/image` | Fetch an image attachment |
+| DELETE | `/delete-image` | Delete image attachment |
 | GET | `/admin/users/:board_id` | List users (admin only) |
 | PUT | `/admin/users` | Update user (admin only) |
 

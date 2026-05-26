@@ -298,24 +298,32 @@ const Meta = {
 // --- Database Settings & Backends ------------------------------------------
 const DbSettings = {
   KEY: "vee-board-db-settings",
+  defaultWorkerUrl() {
+    if (window.location.protocol === "http:" || window.location.protocol === "https:") {
+      return window.location.origin
+    }
+    return ""
+  },
   get() {
     try {
+      const defaultWorkerUrl = this.defaultWorkerUrl()
       const defaults = {
-        cfWorkerUrl: "",
+        cfWorkerUrl: defaultWorkerUrl,
         cfBoardId: "default",
         cfUserEmail: "",
         cfUserName: "",
         cfUserToken: ""
       }
       const saved = JSON.parse(localStorage.getItem(this.KEY)) || {}
-      return { ...defaults, ...saved }
+      return { ...defaults, ...saved, cfWorkerUrl: saved.cfWorkerUrl || defaultWorkerUrl }
     } catch {
       return { cfWorkerUrl: "", cfBoardId: "default", cfUserEmail: "", cfUserName: "", cfUserToken: "" }
     }
   },
   set(v) {
+    const cfWorkerUrl = (v.cfWorkerUrl || "").trim()
     localStorage.setItem(this.KEY, JSON.stringify({
-      cfWorkerUrl: v.cfWorkerUrl || "",
+      cfWorkerUrl: cfWorkerUrl || this.defaultWorkerUrl(),
       cfBoardId: v.cfBoardId || "default",
       cfUserEmail: v.cfUserEmail || "",
       cfUserName: v.cfUserName || "",
@@ -325,6 +333,9 @@ const DbSettings = {
 }
 
 const CloudflareBackend = {
+  resolveWorkerUrl(config = {}) {
+    return (config.cfWorkerUrl || DbSettings.defaultWorkerUrl()).replace(/\/+$/, "")
+  },
   buildHeaders(config, extra = {}) {
     const headers = {
       "X-Board-ID": config.cfBoardId || "default",
@@ -337,10 +348,11 @@ const CloudflareBackend = {
   },
   getAuthenticatedImageUrl(url, config = DbSettings.get()) {
     if (!config.cfUserToken || !url) return url
-    if (!config.cfWorkerUrl) return url
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
+    if (!cfWorkerUrl) return url
     try {
       const u = new URL(url)
-      if (u.origin === new URL(config.cfWorkerUrl).origin) {
+      if (u.origin === new URL(cfWorkerUrl).origin) {
         u.searchParams.set("token", config.cfUserToken)
         return u.toString()
       }
@@ -348,9 +360,8 @@ const CloudflareBackend = {
     return url
   },
   async load(config) {
-    let { cfWorkerUrl } = config
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
     if (!cfWorkerUrl) return null
-    cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "") // Remove trailing slashes
 
     const response = await fetch(`${cfWorkerUrl}/load`, {
       headers: this.buildHeaders(config)
@@ -369,9 +380,8 @@ const CloudflareBackend = {
     return await response.json()
   },
   async authenticate(config, email, pinCode) {
-    let { cfWorkerUrl } = config
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
     if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
-    cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
     const response = await fetch(`${cfWorkerUrl}/auth`, {
       method: "POST",
       headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
@@ -384,9 +394,8 @@ const CloudflareBackend = {
     return data
   },
   async signup(config, email, pinCode, name = "") {
-    let { cfWorkerUrl } = config
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
     if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
-    cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
     const response = await fetch(`${cfWorkerUrl}/signup`, {
       method: "POST",
       headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
@@ -397,9 +406,8 @@ const CloudflareBackend = {
     return data
   },
   async save(state, config) {
-    let { cfWorkerUrl } = config
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
     if (!cfWorkerUrl) return
-    cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "") // Remove trailing slashes
     const response = await fetch(`${cfWorkerUrl}/save`, {
       method: "POST",
       headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
@@ -427,9 +435,8 @@ const CloudflareBackend = {
     return () => {}
   },
   async uploadImage(file, config) {
-    let { cfWorkerUrl } = config
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
     if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
-    cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
     const response = await fetch(`${cfWorkerUrl}/upload`, {
       method: "POST",
       headers: this.buildHeaders(config, { "Content-Type": file.type }),
@@ -442,18 +449,16 @@ const CloudflareBackend = {
     return await response.json()
   },
   async deleteImage(key, config) {
-    let { cfWorkerUrl } = config
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
     if (!cfWorkerUrl) return
-    cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
     await fetch(`${cfWorkerUrl}/delete-image?key=${encodeURIComponent(key)}`, {
       method: "DELETE",
       headers: this.buildHeaders(config)
     })
   },
   async upsertUser(user, config, previousEmail = "") {
-    let { cfWorkerUrl } = config
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
     if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
-    cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
     const response = await fetch(`${cfWorkerUrl}/user`, {
       method: "POST",
       headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
@@ -464,9 +469,8 @@ const CloudflareBackend = {
     return data
   },
   async updateProfile(profile, config) {
-    let { cfWorkerUrl } = config
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
     if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
-    cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
     const response = await fetch(`${cfWorkerUrl}/profile`, {
       method: "POST",
       headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
@@ -477,9 +481,8 @@ const CloudflareBackend = {
     return data
   },
   async listUsers(config) {
-    let { cfWorkerUrl } = config
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
     if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
-    cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
     const response = await fetch(`${cfWorkerUrl}/users`, {
       headers: this.buildHeaders(config),
     })
@@ -488,9 +491,9 @@ const CloudflareBackend = {
     return data
   },
   async deleteUser(email, config) {
-    let { cfWorkerUrl, cfBoardId } = config
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
+    const { cfBoardId } = config
     if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
-    cfWorkerUrl = cfWorkerUrl.replace(/\/+$/, "")
     const response = await fetch(`${cfWorkerUrl}/user?email=${encodeURIComponent(email)}&boardId=${encodeURIComponent(cfBoardId || "default")}`, {
       method: "DELETE",
       headers: this.buildHeaders(config),

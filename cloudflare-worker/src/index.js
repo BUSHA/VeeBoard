@@ -227,6 +227,99 @@ async function getTableColumns(env, tableName) {
   return new Set((result.results || []).map((row) => row.name));
 }
 
+async function getTableInfo(env, tableName) {
+  const result = await env.DB.prepare(`PRAGMA table_info(${tableName})`).all();
+  return result.results || [];
+}
+
+async function ensureColumn(env, tableName, columnName, definition) {
+  const columns = await getTableColumns(env, tableName);
+  if (!columns.has(columnName)) {
+    await env.DB.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`).run();
+  }
+}
+
+function hasPrimaryKey(tableInfo, columnNames) {
+  const pkColumns = tableInfo
+    .filter((column) => Number(column.pk) > 0)
+    .sort((a, b) => Number(a.pk) - Number(b.pk))
+    .map((column) => column.name);
+  return stableStringify(pkColumns) === stableStringify(columnNames);
+}
+
+async function migrateBoardUsersTable(env) {
+  const tableInfo = await getTableInfo(env, "board_users");
+  if (hasPrimaryKey(tableInfo, ["board_id", "email"])) return;
+
+  await env.DB.prepare("ALTER TABLE board_users RENAME TO board_users_legacy").run();
+  await env.DB.prepare(
+    "CREATE TABLE board_users (board_id TEXT NOT NULL, email TEXT NOT NULL, name TEXT DEFAULT '', avatar_url TEXT DEFAULT '', avatar_key TEXT DEFAULT '', is_admin INTEGER DEFAULT 0, is_approved INTEGER DEFAULT 1, updated_at TEXT, PRIMARY KEY (board_id, email))"
+  ).run();
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO board_users (board_id, email, name, avatar_url, avatar_key, is_admin, is_approved, updated_at)
+     SELECT
+       COALESCE(NULLIF(board_id, ''), 'default'),
+       LOWER(TRIM(COALESCE(NULLIF(email, ''), NULLIF(name, '')))),
+       COALESCE(name, ''),
+       COALESCE(avatar_url, ''),
+       COALESCE(avatar_key, ''),
+       COALESCE(is_admin, 0),
+       COALESCE(is_approved, 1),
+       updated_at
+     FROM board_users_legacy
+     WHERE TRIM(COALESCE(NULLIF(email, ''), NULLIF(name, ''))) <> ''`
+  ).run();
+  await env.DB.prepare("DROP TABLE board_users_legacy").run();
+}
+
+async function migrateBoardUserCredentialsTable(env) {
+  const tableInfo = await getTableInfo(env, "board_user_credentials");
+  if (hasPrimaryKey(tableInfo, ["board_id", "email"])) return;
+
+  await env.DB.prepare("ALTER TABLE board_user_credentials RENAME TO board_user_credentials_legacy").run();
+  await env.DB.prepare(
+    "CREATE TABLE board_user_credentials (board_id TEXT NOT NULL, email TEXT NOT NULL, pin_hash TEXT NOT NULL, pin_salt TEXT NOT NULL, updated_at TEXT, PRIMARY KEY (board_id, email))"
+  ).run();
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO board_user_credentials (board_id, email, pin_hash, pin_salt, updated_at)
+     SELECT
+       COALESCE(NULLIF(board_id, ''), 'default'),
+       LOWER(TRIM(COALESCE(NULLIF(email, ''), NULLIF(name, '')))),
+       pin_hash,
+       pin_salt,
+       updated_at
+     FROM board_user_credentials_legacy
+     WHERE TRIM(COALESCE(NULLIF(email, ''), NULLIF(name, ''))) <> ''
+       AND COALESCE(pin_hash, '') <> ''
+       AND COALESCE(pin_salt, '') <> ''`
+  ).run();
+  await env.DB.prepare("DROP TABLE board_user_credentials_legacy").run();
+}
+
+async function migrateBoardSessionsTable(env) {
+  const tableInfo = await getTableInfo(env, "board_sessions");
+  const columns = new Set(tableInfo.map((column) => column.name));
+  if (!columns.has("user_name")) return;
+
+  await env.DB.prepare("ALTER TABLE board_sessions RENAME TO board_sessions_legacy").run();
+  await env.DB.prepare(
+    "CREATE TABLE board_sessions (token TEXT PRIMARY KEY, board_id TEXT NOT NULL, user_email TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL)"
+  ).run();
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO board_sessions (token, board_id, user_email, created_at, expires_at)
+     SELECT
+       token,
+       COALESCE(NULLIF(board_id, ''), 'default'),
+       LOWER(TRIM(COALESCE(NULLIF(user_email, ''), NULLIF(user_name, '')))),
+       created_at,
+       expires_at
+     FROM board_sessions_legacy
+     WHERE COALESCE(token, '') <> ''
+       AND TRIM(COALESCE(NULLIF(user_email, ''), NULLIF(user_name, ''))) <> ''`
+  ).run();
+  await env.DB.prepare("DROP TABLE board_sessions_legacy").run();
+}
+
 let schemaReady = null;
 
 async function ensureSchema(env) {
@@ -242,6 +335,27 @@ async function ensureSchema(env) {
     await env.DB.prepare(
       "CREATE TABLE IF NOT EXISTS board_sessions (token TEXT PRIMARY KEY, board_id TEXT NOT NULL, user_email TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL)"
     ).run();
+    await ensureColumn(env, "boards", "updated_at", "TEXT");
+    await ensureColumn(env, "board_users", "board_id", "TEXT DEFAULT 'default'");
+    await ensureColumn(env, "board_users", "email", "TEXT DEFAULT ''");
+    await ensureColumn(env, "board_users", "name", "TEXT DEFAULT ''");
+    await ensureColumn(env, "board_users", "avatar_url", "TEXT DEFAULT ''");
+    await ensureColumn(env, "board_users", "avatar_key", "TEXT DEFAULT ''");
+    await ensureColumn(env, "board_users", "is_admin", "INTEGER DEFAULT 0");
+    await ensureColumn(env, "board_users", "is_approved", "INTEGER DEFAULT 1");
+    await ensureColumn(env, "board_users", "updated_at", "TEXT");
+    await ensureColumn(env, "board_user_credentials", "board_id", "TEXT DEFAULT 'default'");
+    await ensureColumn(env, "board_user_credentials", "email", "TEXT DEFAULT ''");
+    await ensureColumn(env, "board_user_credentials", "pin_hash", "TEXT DEFAULT ''");
+    await ensureColumn(env, "board_user_credentials", "pin_salt", "TEXT DEFAULT ''");
+    await ensureColumn(env, "board_user_credentials", "updated_at", "TEXT");
+    await migrateBoardUsersTable(env);
+    await migrateBoardUserCredentialsTable(env);
+    await ensureColumn(env, "board_sessions", "board_id", "TEXT DEFAULT 'default'");
+    await ensureColumn(env, "board_sessions", "user_email", "TEXT DEFAULT ''");
+    await ensureColumn(env, "board_sessions", "created_at", "TEXT");
+    await ensureColumn(env, "board_sessions", "expires_at", "TEXT");
+    await migrateBoardSessionsTable(env);
     await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_board_users_board_id ON board_users(board_id)").run();
     await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_board_user_credentials_board_id ON board_user_credentials(board_id)").run();
     await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_board_sessions_board_id ON board_sessions(board_id)").run();

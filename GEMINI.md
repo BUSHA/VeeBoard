@@ -5,7 +5,7 @@ VeeBoard is a minimal, Trello-inspired Kanban board application designed to be l
 ## Project Overview
 - **Purpose:** A personal productivity tool for managing tasks using a Kanban-style board.
 - **Architecture:** 
-    - **Frontend:** Single-page application (SPA) built with vanilla HTML, CSS, and JavaScript.
+    - **Frontend:** Single-page application (SPA) built with vanilla HTML, CSS, and JavaScript, served as Cloudflare Workers assets.
     - **Persistence:** Uses **Cloudflare D1** via a Cloudflare Worker for board data.
 - **Main Technologies:**
     - HTML5 / CSS3 / JavaScript (ES6+)
@@ -13,38 +13,32 @@ VeeBoard is a minimal, Trello-inspired Kanban board application designed to be l
     - Native HTML5 Drag and Drop API
 
 ## Key Files & Directories
-- `index.html`: Entry point of the application.
-- `script.js`: Core application logic, organized into modules (Utils, Store, UI, Dnd, App).
-- `styles.css`: All styling, including light and dark mode support.
-- `translations.js`: i18n data supporting English (`en`) and Ukrainian (`uk`).
-- `cloudflare-worker/`: Contains the backend code for Cloudflare D1 synchronization.
+- `cloudflare-worker/public/index.html`: Entry point of the application.
+- `cloudflare-worker/public/script.js`: Core application logic, organized into modules (Utils, Store, UI, Dnd, App).
+- `cloudflare-worker/public/styles.css`: All styling, including light and dark mode support.
+- `cloudflare-worker/public/translations.js`: i18n data supporting English (`en`) and Ukrainian (`uk`).
+- `cloudflare-worker/`: Contains the Worker API and static assets configuration.
     - `src/index.js`: Worker logic for D1 (`/load`, `/save`) and R2 (`/upload`, `/delete-image`, `/image`).
     - `wrangler.json`: Configuration for Cloudflare Worker including D1 and R2 bindings.
     - `schema.sql`: Database schema for D1.
 
 ## Building and Running
 
-### Frontend
-The frontend is a static site and does not require a build step.
-- **Running locally:** Use any static file server.
-    - `npx serve .`
-    - `python -m http.server 8000`
-    - Or simply open `index.html` in a browser.
-
-### Cloudflare Worker (Backend)
-Required only if cloud synchronization is enabled.
+### Cloudflare Worker App
+The frontend has no build step, but local development should use Wrangler so assets and API share one origin.
 1. **Navigate to directory:** `cd cloudflare-worker`
 2. **Install dependencies:** `npm install` (if applicable, though it's mostly wrangler-based).
 3. **Authentication:** `npx wrangler login`
-4. **Deploy:** `npx wrangler deploy`
-5. **Database Initialization:** `npx wrangler d1 execute veeboard_db --remote --file=./schema.sql`
-6. **R2 Setup:** Create the bucket named `veeboard-attachments`:
+4. **Local dev:** `npx wrangler dev`
+5. **Deploy:** `npx wrangler deploy`
+6. **Database Initialization:** `npx wrangler d1 execute veeboard_db --remote --file=./schema.sql`
+7. **R2 Setup:** Create the bucket named `veeboard-attachments`:
     - `npx wrangler r2 bucket create veeboard-attachments`
 
 ## Development Conventions
 - **No Frameworks:** Strictly vanilla JavaScript and CSS. Avoid adding heavy libraries unless absolutely necessary.
 - **Modular JavaScript:** `script.js` is structured into several functional modules. Maintain this structure for readability.
-- **I18n:** All user-facing strings must be added to `translations.js` for both supported languages. Use `I18n.t('key')` in the code.
+- **I18n:** All user-facing strings must be added to `cloudflare-worker/public/translations.js` for both supported languages. Use `I18n.t('key')` in the code.
 - **Capitalization:** Avoid redundant capitalization in UI labels. Use sentence case unless it's a proper noun or specific brand name (e.g., "Cloudflare D1").
 - **Styling:** Adhere to the existing CSS variables in `styles.css` for consistent theming. Do not use hover effects or scaling on UI elements as per global preferences.
 - **Persistence:** Ensure all state changes are synchronized with Cloudflare D1.
@@ -53,7 +47,7 @@ Required only if cloud synchronization is enabled.
 - **Limits:** Maximum 4 pictures per card, each limited to 5MB.
 - **Processing:** Client-side conversion to **WebP** is required before upload to save space.
 - **Lifecycle:** Images are automatically deleted from R2 when the associated card or picture is removed.
-- **Authorization:** Requires Board ID and API Key (passed in headers for API calls and query params for direct image URLs).
+- **Authorization:** Requires Board ID and session token (passed in headers for API calls and query params for direct image URLs).
 
 ## User & Tag Management
 - **Autocomplete:** Smart autocomplete triggers on focus and typing. It dynamically pulls users or tags directly from the board's existing data to build comprehensive suggestions.

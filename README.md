@@ -1,9 +1,9 @@
 # VeeBoard
 
 VeeBoard is a lightweight Kanban board built with plain HTML, CSS, and JavaScript.
-The frontend is static, while board data, users, and attachments are handled through a Cloudflare Worker backed by D1 and R2.
+The static frontend is deployed as Cloudflare Workers assets alongside a Worker API backed by D1 and R2.
 
-![Vibecode alert](vibealert.png "Vibecode alert!")
+![Vibecode alert](cloudflare-worker/public/vibealert.png "Vibecode alert!")
 
 ## Features
 
@@ -40,31 +40,23 @@ The frontend is static, while board data, users, and attachments are handled thr
 
 ## Configuration
 
-The app needs a deployed Cloudflare Worker URL to be usable.
-
-In the app:
-
-1. Open `Settings`.
-2. Enter the Worker URL.
-3. Optionally enter a board ID.
-4. Save settings.
-5. Create the first owner account or log in with an approved account.
+The deployed app uses its same-origin Worker API by default. In the app, open `Settings` only if you need to override the Worker URL or use a non-default board ID.
 
 ## Development
 
-The frontend has no build step.
+The frontend has no build step and lives in the Worker assets directory.
 
-- Run a simple static server for the root directory.
-- Deploy the worker from [`cloudflare-worker/`](/Users/busha/projects/VeeBoard/cloudflare-worker).
+- Run the full app locally with `wrangler dev` from [`cloudflare-worker/`](/Users/busha/projects/VeeBoard/cloudflare-worker).
+- Deploy the full app with `wrangler deploy` from [`cloudflare-worker/`](/Users/busha/projects/VeeBoard/cloudflare-worker).
 
 Detailed setup steps are in [CLOUDFLARE_DEPLOY.md](/Users/busha/projects/VeeBoard/CLOUDFLARE_DEPLOY.md).
 
 ## Project Structure
 
-- [index.html](/Users/busha/projects/VeeBoard/index.html): app markup and dialogs
-- [styles.css](/Users/busha/projects/VeeBoard/styles.css): all styles
-- [script.js](/Users/busha/projects/VeeBoard/script.js): frontend logic
-- [translations.js](/Users/busha/projects/VeeBoard/translations.js): English and Ukrainian strings
+- [cloudflare-worker/public/index.html](/Users/busha/projects/VeeBoard/cloudflare-worker/public/index.html): app markup and dialogs
+- [cloudflare-worker/public/styles.css](/Users/busha/projects/VeeBoard/cloudflare-worker/public/styles.css): all styles
+- [cloudflare-worker/public/script.js](/Users/busha/projects/VeeBoard/cloudflare-worker/public/script.js): frontend logic
+- [cloudflare-worker/public/translations.js](/Users/busha/projects/VeeBoard/cloudflare-worker/public/translations.js): English and Ukrainian strings
 - [cloudflare-worker/src/index.js](/Users/busha/projects/VeeBoard/cloudflare-worker/src/index.js): worker API
 - [cloudflare-worker/schema.sql](/Users/busha/projects/VeeBoard/cloudflare-worker/schema.sql): database schema
 
