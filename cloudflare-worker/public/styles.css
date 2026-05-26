@@ -1445,7 +1445,7 @@ dialog:focus-visible {
   gap: 8px;
 }
 
-.admin-user-board-toggle {
+.admin-panel .admin-user-board-toggle {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1458,15 +1458,16 @@ dialog:focus-visible {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  flex-direction: row;
 }
 
-.admin-user-board-toggle input {
+.admin-panel .admin-user-board-toggle input {
   width: auto;
   height: auto;
   max-height: none;
 }
 
-.admin-user-board-toggle.is-current {
+.admin-panel .admin-user-board-toggle.is-current {
   opacity: 0.55;
   cursor: not-allowed;
 }
