@@ -28,9 +28,25 @@
       <h1 class="title" data-i18n="app_title">ChimBoard</h1>
       <div class="toolbar-actions">
         <input id="search" class="search" type="search" placeholder="Search by title, tags or users…" aria-label="Search" data-i18n-placeholder="search_placeholder" />
-        <div class="lang-tabs" role="group" aria-label="Language selection">
-          <button class="lang-tab" data-lang="uk">Укр</button>
-          <button class="lang-tab" data-lang="en">Eng</button>
+        <div id="themeSelector" class="theme-selector" role="group" aria-label="Theme" data-i18n-aria-label="theme">
+          <button type="button" class="theme-option" data-theme-option="light" title="Light mode" aria-label="Light mode" data-i18n-title="theme_light" data-i18n-aria-label="theme_light">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="4"></circle>
+              <path d="M12 2v2"></path>
+              <path d="M12 20v2"></path>
+              <path d="m4.93 4.93 1.41 1.41"></path>
+              <path d="m17.66 17.66 1.41 1.41"></path>
+              <path d="M2 12h2"></path>
+              <path d="M20 12h2"></path>
+              <path d="m6.34 17.66-1.41 1.41"></path>
+              <path d="m19.07 4.93-1.41 1.41"></path>
+            </svg>
+          </button>
+          <button type="button" class="theme-option" data-theme-option="dark" title="Dark mode" aria-label="Dark mode" data-i18n-title="theme_dark" data-i18n-aria-label="theme_dark">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path class="theme-fill" fill-rule="evenodd" d="M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17Zm2.75 1.35a7.15 7.15 0 0 0 0 14.3A7.5 7.5 0 1 1 14.75 4.85Z"></path>
+            </svg>
+          </button>
         </div>
         <div class="actions">
           <div class="dropdown-menu">
@@ -39,7 +55,6 @@
               <button id="addColumnBtn" class="btn" title="Add column" data-i18n="add_column" data-i18n-title="add_column">Add column</button>
               <button id="toggleArchiveBtn" class="btn" title="Show/hide archive" data-i18n="show_archive" data-i18n-title="show_archive">Show archive</button>
               <button id="dbSettingsBtn" class="btn" title="Database & sync" data-i18n="db_sync" data-i18n-title="db_sync">Database & sync</button>
-              <button id="themeToggle" class="btn" title="Dark/light theme" data-i18n-title="theme_toggle">Theme mode</button>
               <hr>
               <button id="adminPanelBtn" class="btn" title="Admin panel" data-i18n="admin_panel" data-i18n-title="admin_panel" style="display:none;">Admin panel</button>
               <button id="profileBtn" class="btn" title="Profile" data-i18n="profile" data-i18n-title="profile" style="display:none;">Profile</button>
@@ -229,6 +244,13 @@
     <form id="dbForm" method="dialog" class="editor-form">
       <h3 data-i18n="db_sync_title">Cloudflare settings</h3>
       <div class="db-settings-section">
+        <p class="label-text" data-i18n="language">Language</p>
+        <div class="lang-tabs" role="group" aria-label="Language selection" data-i18n-aria-label="language">
+          <button type="button" class="lang-tab" data-lang="uk">Українська</button>
+          <button type="button" class="lang-tab" data-lang="en">English</button>
+        </div>
+      </div>
+      <div class="db-settings-section">
         <p class="label-text" data-i18n="cloudflare_hint">
           Enter your Cloudflare worker URL and an optional board ID.
         </p>
@@ -236,8 +258,13 @@
           <input id="cfWorkerUrl" type="url" placeholder="https://your-worker.workers.dev" />
         </label>
         <label data-i18n="board_id">Board ID (optional)
+          <select id="cfBoardSelect"></select>
           <input id="cfBoardId" type="text" placeholder="default" />
         </label>
+        <div id="createBoardRow" class="board-create-row" style="display:none;">
+          <input id="newBoardName" type="text" maxlength="80" data-i18n-placeholder="new_board_placeholder" placeholder="New board name" />
+          <button type="button" id="createBoardBtn" class="btn secondary" data-i18n="create_board">Create board</button>
+        </div>
       </div>
 
       <div class="editor-actions">

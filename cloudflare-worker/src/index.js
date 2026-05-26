@@ -164,6 +164,15 @@ function getUserToken(request, url) {
   return request.headers.get("X-User-Token") || url.searchParams.get("token") || "";
 }
 
+function normalizeBoardId(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
 function bytesToBase64(bytes) {
   let binary = "";
   bytes.forEach((b) => {
@@ -325,7 +334,7 @@ let schemaReady = null;
 async function ensureSchema(env) {
   if (schemaReady) return schemaReady;
   schemaReady = (async () => {
-    await env.DB.prepare("CREATE TABLE IF NOT EXISTS boards (id TEXT PRIMARY KEY, data TEXT, updated_at TEXT)").run();
+    await env.DB.prepare("CREATE TABLE IF NOT EXISTS boards (id TEXT PRIMARY KEY, name TEXT DEFAULT '', created_by TEXT DEFAULT '', data TEXT, created_at TEXT, updated_at TEXT)").run();
     await env.DB.prepare(
       "CREATE TABLE IF NOT EXISTS board_users (board_id TEXT NOT NULL, email TEXT NOT NULL, name TEXT DEFAULT '', avatar_url TEXT DEFAULT '', avatar_key TEXT DEFAULT '', is_admin INTEGER DEFAULT 0, is_approved INTEGER DEFAULT 1, updated_at TEXT, PRIMARY KEY (board_id, email))"
     ).run();
@@ -336,6 +345,9 @@ async function ensureSchema(env) {
       "CREATE TABLE IF NOT EXISTS board_sessions (token TEXT PRIMARY KEY, board_id TEXT NOT NULL, user_email TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL)"
     ).run();
     await ensureColumn(env, "boards", "updated_at", "TEXT");
+    await ensureColumn(env, "boards", "name", "TEXT DEFAULT ''");
+    await ensureColumn(env, "boards", "created_by", "TEXT DEFAULT ''");
+    await ensureColumn(env, "boards", "created_at", "TEXT");
     await ensureColumn(env, "board_users", "board_id", "TEXT DEFAULT 'default'");
     await ensureColumn(env, "board_users", "email", "TEXT DEFAULT ''");
     await ensureColumn(env, "board_users", "name", "TEXT DEFAULT ''");
@@ -364,7 +376,65 @@ async function ensureSchema(env) {
 }
 
 async function readBoardRow(env, boardId) {
-  return env.DB.prepare("SELECT data FROM boards WHERE id = ?").bind(boardId).first();
+  return env.DB.prepare("SELECT id, name, data FROM boards WHERE id = ?").bind(boardId).first();
+}
+
+async function ensureBoardRecord(env, boardId, { name = "", createdBy = "" } = {}) {
+  const id = normalizeBoardId(boardId) || "default";
+  const now = new Date().toISOString();
+  const existing = await env.DB.prepare("SELECT id, name FROM boards WHERE id = ?").bind(id).first();
+  if (existing) {
+    if (name && !existing.name) {
+      await env.DB.prepare("UPDATE boards SET name = ?, updated_at = COALESCE(updated_at, ?) WHERE id = ?").bind(name, now, id).run();
+    }
+    return { id, name: existing.name || name || id };
+  }
+  await env.DB.prepare(
+    "INSERT INTO boards (id, name, created_by, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(id, name || id, normalizeEmail(createdBy || ""), JSON.stringify(boardStatePayload({ columns: [] })), now, now).run();
+  return { id, name: name || id };
+}
+
+async function listAccessibleBoards(env, email) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) return [];
+  const result = await env.DB.prepare(
+    `SELECT
+       u.board_id AS id,
+       COALESCE(NULLIF(b.name, ''), u.board_id) AS name,
+       u.is_admin AS isAdmin,
+       u.is_approved AS isApproved
+     FROM board_users u
+     LEFT JOIN boards b ON b.id = u.board_id
+     WHERE u.email = ? AND u.is_approved = 1
+     ORDER BY COALESCE(NULLIF(b.name, ''), u.board_id) COLLATE NOCASE`
+  ).bind(normalizedEmail).all();
+  return (result.results || []).map((row) => ({
+    id: row.id || "default",
+    name: row.name || row.id || "default",
+    isAdmin: !!row.isAdmin,
+    isApproved: row.isApproved === undefined ? true : !!row.isApproved,
+  }));
+}
+
+async function listUserBoardIds(env, email) {
+  const result = await env.DB.prepare(
+    "SELECT board_id AS boardId FROM board_users WHERE email = ? AND is_approved = 1 ORDER BY board_id COLLATE NOCASE"
+  ).bind(normalizeEmail(email)).all();
+  return (result.results || []).map((row) => row.boardId).filter(Boolean);
+}
+
+async function adminUsersPayload(env, boardId, adminEmail) {
+  const users = await listPublicUsers(env, boardId, { includePending: true });
+  const adminBoards = (await listAccessibleBoards(env, adminEmail)).filter((board) => board.isAdmin);
+  const usersWithBoards = [];
+  for (const user of users) {
+    usersWithBoards.push({
+      ...user,
+      boards: await listUserBoardIds(env, user.email),
+    });
+  }
+  return { users: usersWithBoards, boards: adminBoards };
 }
 
 async function listPublicUsers(env, boardId, { includePending = false } = {}) {
@@ -388,6 +458,13 @@ async function getUserCredential(env, boardId, email) {
   return env.DB.prepare(
     "SELECT email, pin_hash AS pinHash, pin_salt AS pinSalt FROM board_user_credentials WHERE board_id = ? AND email = ?"
   ).bind(boardId, normalizeEmail(email)).first();
+}
+
+async function listCredentialsForEmail(env, email) {
+  const result = await env.DB.prepare(
+    "SELECT board_id AS boardId, email, pin_hash AS pinHash, pin_salt AS pinSalt FROM board_user_credentials WHERE email = ?"
+  ).bind(normalizeEmail(email)).all();
+  return result.results || [];
 }
 
 async function upsertUserRecord(env, boardId, user, pinCode = null) {
@@ -478,7 +555,9 @@ async function loadSanitizedBoard(env, boardId) {
 async function persistBoardState(env, boardId, state) {
   const data = JSON.stringify(boardStatePayload(state));
   await env.DB.prepare(
-    "INSERT OR REPLACE INTO boards (id, data, updated_at) VALUES (?, ?, ?)"
+    `INSERT INTO boards (id, data, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`
   ).bind(boardId, data, new Date().toISOString()).run();
 }
 
@@ -517,6 +596,113 @@ export default {
 
     try {
       await ensureSchema(env);
+
+      if (path === "/boards" && method === "GET") {
+        const currentUserEmail = await getSessionUser(env, boardId, getUserToken(request, url));
+        if (!currentUserEmail) {
+          return jsonResponse({ error: "Unauthorized" }, headers, 401);
+        }
+        return jsonResponse({
+          boards: await listAccessibleBoards(env, currentUserEmail),
+        }, headers);
+      }
+
+      if (path === "/boards" && method === "POST") {
+        const currentUserEmail = await getSessionUser(env, boardId, getUserToken(request, url));
+        if (!currentUserEmail || !(await isUserAdmin(env, boardId, currentUserEmail))) {
+          return jsonResponse({ error: "Only admin can create boards." }, headers, 403);
+        }
+
+        const body = await parseJson(request);
+        const requestedName = (body.name || body.boardId || "").trim();
+        const nextBoardId = normalizeBoardId(body.boardId || requestedName);
+        if (!nextBoardId) {
+          return jsonResponse({ error: "Board name is required." }, headers, 400);
+        }
+
+        const existingBoard = await readBoardRow(env, nextBoardId);
+        const existingUsers = await listPublicUsers(env, nextBoardId, { includePending: true });
+        if (existingBoard || existingUsers.length > 0) {
+          return jsonResponse({ error: "A board with this name already exists." }, headers, 409);
+        }
+
+        await ensureBoardRecord(env, nextBoardId, { name: requestedName || nextBoardId, createdBy: currentUserEmail });
+        const currentUser = await getPublicUser(env, boardId, currentUserEmail);
+        const currentCredential = await getUserCredential(env, boardId, currentUserEmail);
+        await upsertUserRecord(env, nextBoardId, {
+          ...(currentUser || { email: currentUserEmail }),
+          email: currentUserEmail,
+          isAdmin: true,
+          isApproved: true,
+        });
+        if (currentCredential?.pinHash && currentCredential?.pinSalt) {
+          await env.DB.prepare(
+            "INSERT OR REPLACE INTO board_user_credentials (board_id, email, pin_hash, pin_salt, updated_at) VALUES (?, ?, ?, ?, ?)"
+          ).bind(nextBoardId, currentUserEmail, currentCredential.pinHash, currentCredential.pinSalt, new Date().toISOString()).run();
+        }
+        const session = await createSession(env, nextBoardId, currentUserEmail);
+        const targetUser = await getPublicUser(env, nextBoardId, currentUserEmail);
+        return jsonResponse({
+          success: true,
+          board: { id: nextBoardId, name: requestedName || nextBoardId, isAdmin: true, isApproved: true },
+          boards: await listAccessibleBoards(env, currentUserEmail),
+          user: targetUser,
+          token: session.token,
+          expiresAt: session.expiresAt,
+          isAdmin: true,
+        }, headers);
+      }
+
+      if (path === "/boards-for-login" && method === "POST") {
+        const body = await parseJson(request);
+        const email = normalizeEmail(body.email || "");
+        const pinCode = (body.pinCode || "").trim();
+        if (!email || !pinCode) {
+          return jsonResponse({ error: "Email and password are required." }, headers, 400);
+        }
+
+        const credentials = await listCredentialsForEmail(env, email);
+        const matchedBoards = [];
+        for (const credential of credentials) {
+          if (!(await verifyPin(pinCode, credential.pinSalt, credential.pinHash))) continue;
+          const publicUser = await getPublicUser(env, credential.boardId, email);
+          if (publicUser?.isApproved) {
+            matchedBoards.push(credential.boardId);
+          }
+        }
+        if (!matchedBoards.length) {
+          return jsonResponse({ error: "Invalid email or password." }, headers, 403);
+        }
+        const boards = await listAccessibleBoards(env, email);
+        return jsonResponse({
+          boards: boards.filter((board) => matchedBoards.includes(board.id)),
+        }, headers);
+      }
+
+      if (path === "/board-session" && method === "POST") {
+        const currentUserEmail = await getSessionUser(env, boardId, getUserToken(request, url));
+        if (!currentUserEmail) {
+          return jsonResponse({ error: "Unauthorized" }, headers, 401);
+        }
+
+        const body = await parseJson(request);
+        const targetBoardId = String(body.boardId || "").trim();
+        if (!targetBoardId) {
+          return jsonResponse({ error: "Board is required." }, headers, 400);
+        }
+        const targetUser = await getPublicUser(env, targetBoardId, currentUserEmail);
+        if (!targetUser || !targetUser.isApproved) {
+          return jsonResponse({ error: "You do not have access to this board." }, headers, 403);
+        }
+        const session = await createSession(env, targetBoardId, currentUserEmail);
+        return jsonResponse({
+          success: true,
+          user: targetUser,
+          token: session.token,
+          expiresAt: session.expiresAt,
+          isAdmin: !!targetUser.isAdmin,
+        }, headers);
+      }
 
       if (path === "/load" && method === "GET") {
         const publicUsers = await listPublicUsers(env, boardId);
@@ -607,14 +793,27 @@ export default {
           return jsonResponse({ error: "Unauthorized" }, headers, 401);
         }
         const pinCode = typeof body.pinCode === "string" ? body.pinCode.trim() : "";
+        const nextName = (body.name || "").trim();
+        const nextAvatarUrl = body.avatarUrl !== undefined ? body.avatarUrl : currentUser.avatarUrl;
+        const nextAvatarKey = body.avatarKey !== undefined ? body.avatarKey : currentUser.avatarKey;
         await upsertUserRecord(env, boardId, {
           email: currentUser.email,
-          name: (body.name || "").trim(),
-          avatarUrl: body.avatarUrl !== undefined ? body.avatarUrl : currentUser.avatarUrl,
-          avatarKey: body.avatarKey !== undefined ? body.avatarKey : currentUser.avatarKey,
+          name: nextName,
+          avatarUrl: nextAvatarUrl,
+          avatarKey: nextAvatarKey,
           isAdmin: !!currentUser.isAdmin,
           isApproved: !!currentUser.isApproved,
         }, pinCode || null);
+        
+        const allBoardIds = await listUserBoardIds(env, currentUser.email);
+        for (const otherBoardId of allBoardIds) {
+          if (otherBoardId === boardId) continue;
+          const otherUser = await getPublicUser(env, otherBoardId, currentUser.email);
+          if (!otherUser) continue;
+          await env.DB.prepare(
+            "UPDATE board_users SET name = ?, avatar_url = ?, avatar_key = ?, updated_at = ? WHERE board_id = ? AND email = ?"
+          ).bind(nextName, nextAvatarUrl, nextAvatarKey, new Date().toISOString(), otherBoardId, currentUser.email).run();
+        }
         
         if (pinCode) {
           await env.DB.prepare("DELETE FROM board_sessions WHERE board_id = ? AND user_email = ?").bind(boardId, currentUser.email).run();
@@ -631,7 +830,56 @@ export default {
         if (!currentUserEmail || !(await isUserAdmin(env, boardId, currentUserEmail))) {
           return jsonResponse({ error: "Only admin can view all users." }, headers, 403);
         }
-        return jsonResponse({ users: await listPublicUsers(env, boardId, { includePending: true }) }, headers);
+        return jsonResponse(await adminUsersPayload(env, boardId, currentUserEmail), headers);
+      }
+
+      if (path === "/user-board-access" && method === "POST") {
+        const currentUserEmail = await getSessionUser(env, boardId, getUserToken(request, url));
+        if (!currentUserEmail || !(await isUserAdmin(env, boardId, currentUserEmail))) {
+          return jsonResponse({ error: "Only admin can modify board access." }, headers, 403);
+        }
+
+        const body = await parseJson(request);
+        const email = normalizeEmail(body.email || "");
+        const targetBoardId = String(body.boardId || "").trim();
+        const hasAccess = !!body.hasAccess;
+        if (!email || !targetBoardId) {
+          return jsonResponse({ error: "User and board are required." }, headers, 400);
+        }
+        if (targetBoardId === boardId) {
+          return jsonResponse({ error: "Current board access is managed by approval/removal." }, headers, 400);
+        }
+        if (!(await isUserAdmin(env, targetBoardId, currentUserEmail))) {
+          return jsonResponse({ error: "You can assign only boards where you are admin." }, headers, 403);
+        }
+
+        const sourceUser = await getPublicUser(env, boardId, email);
+        if (!sourceUser) {
+          return jsonResponse({ error: "User is not on the current board." }, headers, 404);
+        }
+
+        if (hasAccess) {
+          const existingTargetUser = await getPublicUser(env, targetBoardId, email);
+          await upsertUserRecord(env, targetBoardId, {
+            ...sourceUser,
+            isAdmin: !!existingTargetUser?.isAdmin,
+            isApproved: true,
+          });
+          const existingCredential = await getUserCredential(env, targetBoardId, email);
+          const sourceCredential = await getUserCredential(env, boardId, email);
+          if (!existingCredential && sourceCredential?.pinHash && sourceCredential?.pinSalt) {
+            await env.DB.prepare(
+              "INSERT OR REPLACE INTO board_user_credentials (board_id, email, pin_hash, pin_salt, updated_at) VALUES (?, ?, ?, ?, ?)"
+            ).bind(targetBoardId, email, sourceCredential.pinHash, sourceCredential.pinSalt, new Date().toISOString()).run();
+          }
+        } else {
+          if (await isUserAdmin(env, targetBoardId, email)) {
+            return jsonResponse({ error: "Admin user cannot be removed from that board." }, headers, 403);
+          }
+          await deleteUserRecords(env, targetBoardId, email);
+        }
+
+        return jsonResponse(await adminUsersPayload(env, boardId, currentUserEmail), headers);
       }
 
       if (path === "/user" && method === "POST") {
@@ -669,7 +917,7 @@ export default {
           await env.DB.prepare("DELETE FROM board_sessions WHERE board_id = ? AND user_email = ?").bind(boardId, nextEmail).run();
         }
 
-        return jsonResponse({ success: true, users: await listPublicUsers(env, boardId, { includePending: true }) }, headers);
+        return jsonResponse({ success: true, ...(await adminUsersPayload(env, boardId, currentUserEmail)) }, headers);
       }
 
       if (path === "/user" && method === "DELETE") {
@@ -685,7 +933,7 @@ export default {
           return jsonResponse({ error: "Admin user cannot be deleted." }, headers, 403);
         }
         await deleteUserRecords(env, boardId, email);
-        return jsonResponse({ success: true, users: await listPublicUsers(env, boardId, { includePending: true }) }, headers);
+        return jsonResponse({ success: true, ...(await adminUsersPayload(env, boardId, currentUserEmail)) }, headers);
       }
 
       if (path === "/save" && method === "POST") {

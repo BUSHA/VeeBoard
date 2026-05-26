@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.10.1"
+  version: "0.2.1"
 }
 
 /* Live sync echo guard */
@@ -205,6 +205,7 @@ const I18n = {
       const browserLang = navigator.language.split("-")[0]
       this.current = TRANSLATIONS[browserLang] ? browserLang : "uk"
     }
+    document.documentElement.lang = this.current
     this.updatePage()
     
     this.updateTabs()
@@ -220,6 +221,7 @@ const I18n = {
     if (TRANSLATIONS[lang]) {
       this.current = lang
       localStorage.setItem(this.LANG_KEY, lang)
+      document.documentElement.lang = lang
       this.updatePage()
       this.updateTabs()
       // Re-render board to update dynamic text like "(Overdue)"
@@ -269,6 +271,10 @@ const I18n = {
       const key = el.dataset.i18nTitle
       el.title = this.t(key)
     })
+    Utils.qsa("[data-i18n-aria-label]").forEach(el => {
+      const key = el.dataset.i18nAriaLabel
+      el.setAttribute("aria-label", this.t(key))
+    })
   }
 }
 
@@ -312,23 +318,46 @@ const DbSettings = {
         cfBoardId: "default",
         cfUserEmail: "",
         cfUserName: "",
-        cfUserToken: ""
+        cfUserToken: "",
+        cfBoardSessions: {},
       }
       const saved = JSON.parse(localStorage.getItem(this.KEY)) || {}
-      return { ...defaults, ...saved, cfWorkerUrl: saved.cfWorkerUrl || defaultWorkerUrl }
+      return {
+        ...defaults,
+        ...saved,
+        cfWorkerUrl: saved.cfWorkerUrl || defaultWorkerUrl,
+        cfBoardSessions: saved.cfBoardSessions && typeof saved.cfBoardSessions === "object" ? saved.cfBoardSessions : {},
+      }
     } catch {
-      return { cfWorkerUrl: "", cfBoardId: "default", cfUserEmail: "", cfUserName: "", cfUserToken: "" }
+      return { cfWorkerUrl: "", cfBoardId: "default", cfUserEmail: "", cfUserName: "", cfUserToken: "", cfBoardSessions: {} }
     }
   },
   set(v) {
     const cfWorkerUrl = (v.cfWorkerUrl || "").trim()
+    const cfBoardId = v.cfBoardId || "default"
+    const cfBoardSessions = v.cfBoardSessions && typeof v.cfBoardSessions === "object" ? { ...v.cfBoardSessions } : {}
+    if (v.cfUserToken && v.cfUserEmail) {
+      const existingSession = cfBoardSessions[cfBoardId] || {}
+      cfBoardSessions[cfBoardId] = {
+        cfUserEmail: v.cfUserEmail || "",
+        cfUserName: v.cfUserName || "",
+        cfUserToken: v.cfUserToken || "",
+        isAdmin: v.isAdmin !== undefined ? !!v.isAdmin : !!existingSession.isAdmin,
+      }
+    }
     localStorage.setItem(this.KEY, JSON.stringify({
       cfWorkerUrl: cfWorkerUrl || this.defaultWorkerUrl(),
-      cfBoardId: v.cfBoardId || "default",
+      cfBoardId,
       cfUserEmail: v.cfUserEmail || "",
       cfUserName: v.cfUserName || "",
       cfUserToken: v.cfUserToken || "",
+      cfBoardSessions,
     }))
+  },
+  getBoardSession(boardId, config = this.get()) {
+    const session = config.cfBoardSessions?.[boardId || "default"]
+    if (!session?.cfUserToken) return null
+    return session
   },
 }
 
@@ -356,10 +385,9 @@ const CloudflareBackend = {
       if (u.pathname === "/image" && u.searchParams.get("key")) {
         u.protocol = worker.protocol
         u.host = worker.host
-        u.searchParams.set("token", config.cfUserToken)
-        if (!u.searchParams.get("boardId")) {
-          u.searchParams.set("boardId", config.cfBoardId || "default")
-        }
+        const imageBoardId = u.searchParams.get("boardId") || config.cfBoardId || "default"
+        const boardSession = DbSettings.getBoardSession(imageBoardId, config)
+        u.searchParams.set("token", boardSession?.cfUserToken || config.cfUserToken)
         return u.toString()
       }
       if (u.origin === worker.origin) {
@@ -388,6 +416,52 @@ const CloudflareBackend = {
     }
 
     return await response.json()
+  },
+  async listBoards(config) {
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
+    if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
+    const response = await fetch(`${cfWorkerUrl}/boards`, {
+      headers: this.buildHeaders(config),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "Failed to load boards")
+    return data
+  },
+  async createBoard(config, name) {
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
+    if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
+    const response = await fetch(`${cfWorkerUrl}/boards`, {
+      method: "POST",
+      headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ name }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "Failed to create board")
+    return data
+  },
+  async listBoardsForLogin(config, email, pinCode) {
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
+    if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
+    const response = await fetch(`${cfWorkerUrl}/boards-for-login`, {
+      method: "POST",
+      headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ email, pinCode }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "Failed to load boards")
+    return data
+  },
+  async switchBoard(config, boardId) {
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
+    if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
+    const response = await fetch(`${cfWorkerUrl}/board-session`, {
+      method: "POST",
+      headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ boardId }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "Failed to switch board")
+    return data
   },
   async authenticate(config, email, pinCode) {
     const cfWorkerUrl = this.resolveWorkerUrl(config)
@@ -510,6 +584,18 @@ const CloudflareBackend = {
     })
     const data = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(data?.error || "User delete failed")
+    return data
+  },
+  async setUserBoardAccess(email, boardId, hasAccess, config) {
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
+    if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
+    const response = await fetch(`${cfWorkerUrl}/user-board-access`, {
+      method: "POST",
+      headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ email, boardId, hasAccess }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "Board access update failed")
     return data
   }
 }
@@ -1104,6 +1190,8 @@ const UI = {
   replyToCommentId: "",
   authMode: "login",
   adminUsers: [],
+  adminBoards: [],
+  accessibleBoards: [],
   pendingProfileAvatarFile: null,
   pendingProfileAvatarRemoved: false,
   pendingCardAttachments: [],
@@ -1181,10 +1269,12 @@ const UI = {
       ...cfg,
       cfUserEmail: "",
       cfUserToken: "",
+      cfBoardSessions: {},
     }
     if (!keepUserName) nextCfg.cfUserName = ""
     DbSettings.set(nextCfg)
     Store.isAdmin = false
+    this.accessibleBoards = []
     this.updateAdminPanelVisibility()
     this.updateAuthButtonsVisibility()
     this.updateMenuButtonAvatar()
@@ -1220,6 +1310,39 @@ const UI = {
       this.menuBtn.appendChild(img)
     } else {
       this.menuBtn.textContent = "☰"
+    }
+  },
+
+  renderBoardSelect(selectEl, fallbackInput, boards = this.accessibleBoards) {
+    if (!selectEl) return
+    const cfg = DbSettings.get()
+    selectEl.innerHTML = ""
+    const currentBoardId = cfg.cfBoardId || "default"
+    const normalizedBoards = Array.isArray(boards) ? [...boards] : []
+    if (!normalizedBoards.length) {
+      selectEl.style.display = "none"
+      if (fallbackInput) {
+        fallbackInput.value = currentBoardId
+        fallbackInput.style.display = ""
+      }
+      return
+    }
+
+    if (!normalizedBoards.some((board) => board.id === currentBoardId)) {
+      normalizedBoards.unshift({ id: currentBoardId, name: currentBoardId })
+    }
+
+    normalizedBoards.forEach((board) => {
+      const option = document.createElement("option")
+      option.value = board.id
+      option.textContent = board.name || board.id
+      selectEl.append(option)
+    })
+    selectEl.value = currentBoardId
+    selectEl.style.display = ""
+    if (fallbackInput) {
+      fallbackInput.value = currentBoardId
+      fallbackInput.style.display = "none"
     }
   },
 
@@ -1330,6 +1453,11 @@ const UI = {
               <span>${I18n.t("pin_code")}</span>
               <input id="boardLoginPinCode" type="password" data-i18n-placeholder="login_password_placeholder" placeholder="Enter your password">
             </label>
+            <label id="boardLoginBoardWrap" style="display:none;">
+              <span>${I18n.t("board_id")}</span>
+              <select id="boardLoginBoard"></select>
+            </label>
+            <button type="button" id="findLoginBoardsBtn" class="btn secondary">${I18n.t("find_boards")}</button>
             <button type="submit" class="btn primary">${I18n.t("login")}</button>
           </form>
           <div class="board-auth-switch">
@@ -1343,6 +1471,7 @@ const UI = {
     const boardLoginForm = Utils.qs("#boardLoginForm", this.board)
     if (boardLoginForm) {
       boardLoginForm.addEventListener("submit", App.handleCloudflareLogin.bind(App))
+      Utils.qs("#findLoginBoardsBtn", boardLoginForm)?.addEventListener("click", App.handleFindLoginBoards.bind(App))
     }
     const signupForm = Utils.qs("#boardSignupForm", this.board)
     if (signupForm) {
@@ -1480,7 +1609,41 @@ const UI = {
       passwordField.append(passwordLabel, pinInp);
       this.enhancePasswordField(pinInp, { allowEmpty: true });
 
-      body.append(passwordField);
+      const boardAccess = document.createElement("div");
+      boardAccess.className = "admin-user-board-access";
+      const boardAccessLabel = document.createElement("span");
+      boardAccessLabel.className = "admin-user-field-label";
+      boardAccessLabel.textContent = I18n.t("board_access");
+      const boardList = document.createElement("div");
+      boardList.className = "admin-user-board-list";
+      const userBoards = new Set(Array.isArray(u.boards) ? u.boards : []);
+      (this.adminBoards || []).forEach((board) => {
+        const boardToggle = document.createElement("label");
+        boardToggle.className = "admin-user-board-toggle";
+        const boardInput = document.createElement("input");
+        boardInput.type = "checkbox";
+        boardInput.checked = board.id === cfg.cfBoardId || userBoards.has(board.id);
+        boardInput.disabled = board.id === cfg.cfBoardId || isSelf;
+        boardToggle.classList.toggle("is-current", board.id === cfg.cfBoardId || isSelf);
+        const boardText = document.createElement("span");
+        boardText.textContent = board.name || board.id;
+        boardToggle.append(boardInput, boardText);
+        boardInput.addEventListener("change", async () => {
+          try {
+            const result = await CloudflareBackend.setUserBoardAccess(u.email, board.id, boardInput.checked, cfg);
+            UI.adminUsers = result.users || UI.adminUsers;
+            UI.adminBoards = result.boards || UI.adminBoards;
+            UI.renderAdminUsers();
+          } catch (err) {
+            boardInput.checked = !boardInput.checked;
+            UI.showAlert(err.message || "Board access update failed");
+          }
+        });
+        boardList.append(boardToggle);
+      });
+      boardAccess.append(boardAccessLabel, boardList);
+
+      body.append(passwordField, boardAccess);
       row.append(header, body);
 
       // --- Footer: Actions ---
@@ -2581,11 +2744,11 @@ const UI = {
   },
   applyTheme(theme) {
     document.documentElement.setAttribute("data-theme", theme)
-    const btn = Utils.qs("#themeToggle")
-    if (btn) {
-      const nextTheme = theme === "dark" ? "light" : "dark"
-      btn.textContent = I18n.t(`theme_${nextTheme}`)
-    }
+    Utils.qsa("[data-theme-option]").forEach(btn => {
+      const isActive = btn.dataset.themeOption === theme
+      btn.classList.toggle("active", isActive)
+      btn.setAttribute("aria-pressed", String(isActive))
+    })
     if (typeof I18n !== "undefined") I18n.updatePage()
     localStorage.setItem(this.THEME_KEY, theme)
   },
@@ -2945,12 +3108,50 @@ const App = {
     Store.startRealtime()
   },
 
+  async handleFindLoginBoards(e) {
+    e.preventDefault()
+    const form = e.currentTarget.closest("form")
+    const cfg = DbSettings.get()
+    const email = (Utils.qs("#boardLoginEmail", form)?.value || "").trim().toLowerCase()
+    const pinCode = (Utils.qs("#boardLoginPinCode", form)?.value || "").trim()
+    if (!cfg.cfWorkerUrl) {
+      UI.showAlert(I18n.t("cloudflare_hint"))
+      return
+    }
+    if (!email || !pinCode) {
+      UI.showAlert(I18n.t("email_pin_required"))
+      return
+    }
+    try {
+      const result = await CloudflareBackend.listBoardsForLogin(cfg, email, pinCode)
+      const boards = result.boards || []
+      const select = Utils.qs("#boardLoginBoard", form)
+      const wrap = Utils.qs("#boardLoginBoardWrap", form)
+      if (!select || !wrap) return
+      select.innerHTML = ""
+      boards.forEach((board) => {
+        const option = document.createElement("option")
+        option.value = board.id
+        option.textContent = board.name || board.id
+        select.append(option)
+      })
+      if (boards.length) {
+        select.value = boards.some((board) => board.id === cfg.cfBoardId) ? cfg.cfBoardId : boards[0].id
+        wrap.style.display = ""
+      }
+    } catch (err) {
+      UI.showAlert(err.message || "Failed to load boards")
+    }
+  },
+
   async handleCloudflareLogin(e) {
     e.preventDefault()
     const form = e.currentTarget
     const cfg = DbSettings.get()
     const email = (Utils.qs("#boardLoginEmail", form)?.value || "").trim().toLowerCase()
     const pinCode = (Utils.qs("#boardLoginPinCode", form)?.value || "").trim()
+    const selectedBoardId = Utils.qs("#boardLoginBoard", form)?.value || cfg.cfBoardId || "default"
+    const loginCfg = { ...cfg, cfBoardId: selectedBoardId }
 
     if (!cfg.cfWorkerUrl) {
       UI.showAlert(I18n.t("cloudflare_hint"))
@@ -2962,14 +3163,21 @@ const App = {
     }
 
     try {
-      const auth = await CloudflareBackend.authenticate(cfg, email, pinCode)
+      const auth = await CloudflareBackend.authenticate(loginCfg, email, pinCode)
       DbSettings.set({
-        ...cfg,
+        ...loginCfg,
         cfUserEmail: email,
         cfUserName: auth.user?.name || email,
         cfUserToken: auth.token || "",
+        isAdmin: !!auth.isAdmin,
       })
       Store.isAdmin = !!auth.isAdmin
+      try {
+        const boards = await CloudflareBackend.listBoards(DbSettings.get())
+        UI.accessibleBoards = boards.boards || []
+      } catch (err) {
+        console.warn("Failed to load boards:", err)
+      }
       await Store.loadState()
       UI.renderBoard()
       UI.updateMenuButtonAvatar()
@@ -3269,6 +3477,7 @@ const App = {
         try {
           const result = await CloudflareBackend.listUsers(cfg);
           UI.adminUsers = result.users || [];
+          UI.adminBoards = result.boards || [];
         } catch (err) {
           UI.showAlert(err.message || "Failed to load users");
           return;
@@ -3284,6 +3493,7 @@ const App = {
           adminDialog.close();
         });
       }
+
     }
 
     const profileBtn = Utils.qs("#profileBtn")
@@ -3388,11 +3598,26 @@ const App = {
     const dbForm = Utils.qs("#dbForm")
     const cfUrlInput = Utils.qs("#cfWorkerUrl", dbDialog)
     const cfIdInput = Utils.qs("#cfBoardId", dbDialog)
+    const cfBoardSelect = Utils.qs("#cfBoardSelect", dbDialog)
+    const createBoardRow = Utils.qs("#createBoardRow", dbDialog)
+    const newBoardNameInput = Utils.qs("#newBoardName", dbDialog)
+    const createBoardBtn = Utils.qs("#createBoardBtn", dbDialog)
 
-    dbBtn.addEventListener("click", () => {
+    dbBtn.addEventListener("click", async () => {
       const cfg = DbSettings.get()
       cfUrlInput.value = cfg.cfWorkerUrl || ""
       cfIdInput.value = cfg.cfBoardId || ""
+      UI.renderBoardSelect(cfBoardSelect, cfIdInput, UI.accessibleBoards)
+      if (createBoardRow) createBoardRow.style.display = Store.hasCloudflareSession() && Store.isAdmin ? "grid" : "none"
+      if (Store.hasCloudflareSession()) {
+        try {
+          const result = await CloudflareBackend.listBoards(cfg)
+          UI.accessibleBoards = result.boards || []
+          UI.renderBoardSelect(cfBoardSelect, cfIdInput, UI.accessibleBoards)
+        } catch (err) {
+          console.warn("Failed to load boards:", err)
+        }
+      }
       UI.showDialog(dbDialog)
     })
 
@@ -3414,22 +3639,47 @@ const App = {
     dbForm.addEventListener("submit", async (e) => {
       e.preventDefault()
       const prevCfg = DbSettings.get()
+      const selectedBoardId = (cfBoardSelect?.style.display !== "none" ? cfBoardSelect.value : cfIdInput.value.trim()) || "default"
+      const nextWorkerUrl = cfUrlInput.value.trim()
+      const workerChanged = nextWorkerUrl !== (prevCfg.cfWorkerUrl || "")
 
       const newCfg = {
-        cfWorkerUrl: cfUrlInput.value.trim(),
-        cfBoardId: cfIdInput.value.trim() || "default",
+        cfWorkerUrl: nextWorkerUrl,
+        cfBoardId: selectedBoardId,
         cfUserEmail: prevCfg.cfUserEmail || "",
         cfUserName: prevCfg.cfUserName || "",
         cfUserToken: prevCfg.cfUserToken || "",
+        cfBoardSessions: workerChanged ? {} : { ...(prevCfg.cfBoardSessions || {}) },
       }
 
       const cloudflareChanged =
-        newCfg.cfWorkerUrl !== (prevCfg.cfWorkerUrl || "") ||
+        workerChanged ||
         newCfg.cfBoardId !== (prevCfg.cfBoardId || "default")
-      if (cloudflareChanged) {
+      if (cloudflareChanged && !workerChanged && prevCfg.cfUserToken) {
+        try {
+          const switched = await CloudflareBackend.switchBoard(prevCfg, newCfg.cfBoardId)
+          newCfg.cfUserEmail = prevCfg.cfUserEmail || switched.user?.email || ""
+          newCfg.cfUserName = switched.user?.name || prevCfg.cfUserName || newCfg.cfUserEmail || ""
+          newCfg.cfUserToken = switched.token || ""
+          newCfg.isAdmin = !!switched.isAdmin
+          Store.isAdmin = !!switched.isAdmin
+        } catch (err) {
+          UI.showAlert(err.message || "Failed to switch board")
+          return
+        }
+      } else if (cloudflareChanged && !workerChanged && !prevCfg.cfUserToken) {
+        const cachedSession = DbSettings.getBoardSession(newCfg.cfBoardId, prevCfg)
+        if (cachedSession) {
+          newCfg.cfUserEmail = cachedSession.cfUserEmail || ""
+          newCfg.cfUserName = cachedSession.cfUserName || newCfg.cfUserEmail || ""
+          newCfg.cfUserToken = cachedSession.cfUserToken || ""
+          Store.isAdmin = !!cachedSession.isAdmin
+        }
+      } else if (cloudflareChanged) {
         newCfg.cfUserEmail = ""
         newCfg.cfUserName = ""
         newCfg.cfUserToken = ""
+        newCfg.cfBoardSessions = {}
         Store.isAdmin = false
       }
 
@@ -3441,11 +3691,43 @@ const App = {
       dbDialog.close()
     })
 
+    if (createBoardBtn) {
+      createBoardBtn.addEventListener("click", async () => {
+        const cfg = DbSettings.get()
+        const name = (newBoardNameInput?.value || "").trim()
+        if (!name) {
+          UI.showAlert(I18n.t("new_board_placeholder"))
+          return
+        }
+        try {
+          const created = await CloudflareBackend.createBoard(cfg, name)
+          const nextCfg = {
+            ...cfg,
+            cfBoardId: created.board?.id || cfg.cfBoardId || "default",
+            cfUserName: created.user?.name || cfg.cfUserName || cfg.cfUserEmail || "",
+            cfUserToken: created.token || cfg.cfUserToken || "",
+            isAdmin: !!created.isAdmin,
+          }
+          DbSettings.set(nextCfg)
+          Store.isAdmin = !!created.isAdmin
+          UI.accessibleBoards = created.boards || []
+          if (newBoardNameInput) newBoardNameInput.value = ""
+          UI.renderBoardSelect(cfBoardSelect, cfIdInput, UI.accessibleBoards)
+          await Store.loadState()
+          UI.renderBoard()
+          UI.updateMenuButtonAvatar()
+          UI.updateAuthButtonsVisibility()
+          UI.updateAdminPanelVisibility()
+        } catch (err) {
+          UI.showAlert(err.message || "Failed to create board")
+        }
+      })
+    }
+
     // --- Theme ---
-    Utils.qs("#themeToggle").addEventListener(
-      "click",
-      UI.toggleTheme.bind(UI)
-    )
+    Utils.qsa("[data-theme-option]").forEach(btn => {
+      btn.addEventListener("click", () => UI.applyTheme(btn.dataset.themeOption))
+    })
 
     // --- Image Upload UI ---
     const addAttBtn = Utils.qs("#addAttachmentBtn")
