@@ -243,6 +243,12 @@ const I18n = {
     return text
   },
 
+  serverError(message) {
+    if (!message) return ""
+    const key = BACKEND_ERROR_MAP[message]
+    return key ? this.t(key) : message
+  },
+
   updatePage() {
     Utils.qsa("[data-i18n]").forEach(el => {
       const key = el.dataset.i18n
@@ -276,6 +282,69 @@ const I18n = {
       el.setAttribute("aria-label", this.t(key))
     })
   }
+}
+
+// Map backend error strings to I18n keys
+const BACKEND_ERROR_MAP = {
+  "Unauthorized": "unauthorized",
+  "Only admin can create boards.": "admin_only_create_boards",
+  "Board name is required.": "board_name_required",
+  "A board with this name already exists.": "board_name_exists",
+  "Only admin can rename boards.": "admin_only_rename_boards",
+  "Board ID is required.": "board_id_required",
+  "Board not found.": "board_not_found",
+  "Only admin of the target board can rename it.": "admin_only_target_rename",
+  "Only admin can delete boards.": "admin_only_delete_boards",
+  "The default board cannot be deleted.": "default_board_no_delete",
+  "Only admin of the target board can delete it.": "admin_only_target_delete",
+  "Email and password are required.": "email_pin_required",
+  "Invalid email or password.": "incorrect_pin",
+  "Board is required.": "board_required",
+  "You do not have access to this board.": "no_board_access",
+  "Your account is waiting for admin approval.": "account_pending_approval",
+  "An account with this email already exists.": "account_exists",
+  "Only admin can view all users.": "admin_only_view_users",
+  "Only admin can modify board access.": "admin_only_modify_board_access",
+  "User and board are required.": "user_board_required",
+  "Current board access is managed by approval/removal.": "board_access_managed",
+  "You can assign only boards where you are admin.": "assign_only_admin_boards",
+  "User is not on the current board.": "user_not_on_board",
+  "Admin user cannot be removed from that board.": "admin_cannot_be_removed_from_board",
+  "Only admin can modify users.": "admin_only_modify_users",
+  "User email is required.": "user_email_required",
+  "Changing account email is not supported.": "email_change_not_supported",
+  "Password is required for a new user.": "password_required_new_user",
+  "Only admin can delete users.": "admin_only_delete_users",
+  "Missing user email.": "missing_user_email",
+  "Admin user cannot be deleted.": "admin_user_cannot_be_deleted",
+  "Only admin can modify users list.": "admin_only_modify_users_list",
+  "Only admin can modify board structure.": "admin_only_modify_board_structure",
+  "You can edit or delete only your own cards.": "own_card_only_error",
+  "You can edit or delete only your own comments.": "own_comment_only_error",
+  "Card author cannot be changed.": "card_author_cannot_be_changed",
+  "New cards must belong to the current user.": "new_cards_must_belong_to_user",
+  "You can add only your own comments.": "own_comments_only",
+  "Only admins can perform remote deletion": "admins_only_remote_deletion",
+
+  // CloudflareBackend fallback strings
+  "Cloudflare load failed": "cloudflare_load_failed",
+  "Cloudflare save failed": "cloudflare_save_failed",
+  "Cloudflare not configured": "cloudflare_not_configured",
+  "Authentication failed": "auth_failed",
+  "Signup failed": "signup_failed",
+  "Upload failed": "upload_failed",
+  "User save failed": "user_save_failed",
+  "Failed to load users": "users_load_failed",
+  "Profile save failed": "profile_save_failed",
+  "Board access update failed": "board_access_update_failed",
+  "Failed to create board": "board_create_failed",
+  "Failed to rename board": "board_rename_failed",
+  "Failed to switch board": "board_switch_failed",
+  "Failed to delete board": "board_delete_failed",
+  "Failed to load boards": "boards_load_failed",
+  "Failed to save user": "user_save_failed",
+  "Failed to delete user": "user_delete_failed",
+  "User delete failed": "user_delete_failed",
 }
 
 /**
@@ -650,7 +719,7 @@ const Store = {
         } else {
           console.warn("Cloudflare load failed:", e)
           if (typeof UI !== "undefined" && UI.showAlert) {
-            UI.showAlert(e.message || "Cloudflare load failed")
+            UI.showAlert(I18n.serverError(e.message) || I18n.t("cloudflare_load_failed"))
           }
         }
       }
@@ -723,7 +792,7 @@ const Store = {
         console.warn("Cloudflare save failed:", e)
       }
       if (typeof UI !== "undefined" && UI.showAlert) {
-        UI.showAlert(e.message || "Cloudflare save failed")
+        UI.showAlert(I18n.serverError(e.message) || I18n.t("cloudflare_save_failed"))
       }
     }
   },
@@ -1595,7 +1664,7 @@ const UI = {
       identity.className = "admin-user-identity";
       const displayNameEl = document.createElement("span");
       displayNameEl.className = "admin-user-display-name";
-      displayNameEl.textContent = u.name || u.email || "New user";
+      displayNameEl.textContent = u.name || u.email || I18n.t("new_user");
       const emailHintEl = document.createElement("span");
       emailHintEl.className = "admin-user-email-hint";
       emailHintEl.textContent = u.name ? (u.email || "") : "";
@@ -1643,7 +1712,7 @@ const UI = {
       const pinInp = document.createElement("input");
       pinInp.type = "password";
       pinInp.className = "admin-user-input";
-      pinInp.placeholder = I18n.t("password_leave_blank_hint") || "Leave blank to keep";
+      pinInp.placeholder = I18n.t("password_leave_blank_hint");
       passwordField.append(passwordLabel, pinInp);
       this.enhancePasswordField(pinInp, { allowEmpty: true });
 
@@ -1674,7 +1743,7 @@ const UI = {
             UI.renderAdminUsers();
           } catch (err) {
             boardInput.checked = !boardInput.checked;
-            UI.showAlert(err.message || "Board access update failed");
+            UI.showAlert(I18n.serverError(err.message) || I18n.t("board_access_update_failed"));
           }
         });
         boardList.append(boardToggle);
@@ -1695,7 +1764,7 @@ const UI = {
 
       const delBtn = document.createElement("button");
       delBtn.className = "btn-link error admin-user-delete";
-      delBtn.textContent = I18n.t("delete_user") || "Remove user";
+      delBtn.textContent = I18n.t("delete_user");
       if (isProtectedAdmin) delBtn.style.display = "none";
 
       footerContainer.append(delBtn, saveBtn);
@@ -1741,7 +1810,7 @@ const UI = {
             UI.renderBoard();
             UI.renderAdminUsers();
           } catch (err) {
-            UI.showAlert(err.message || "Failed to save user");
+            UI.showAlert(I18n.serverError(err.message) || I18n.t("user_save_failed"));
           }
           return;
         }
@@ -1770,7 +1839,7 @@ const UI = {
                 CloudflareBackend.deleteImage(avatarKey, cfg).catch(console.error)
               }
             })
-            .catch((err) => UI.showAlert(err.message || "Failed to delete user"));
+            .catch((err) => UI.showAlert(I18n.serverError(err.message) || I18n.t("user_delete_failed")));
         }
       });
       list.appendChild(row);
@@ -1882,7 +1951,7 @@ const UI = {
           const authUrl = CloudflareBackend.getAuthenticatedImageUrl(att.url)
           img.src = authUrl
           img.loading = "lazy"
-          img.alt = "Attachment"
+          img.alt = I18n.t("attachment")
           item.append(img)
           
           item.addEventListener("pointerdown", (e) => {
@@ -2501,7 +2570,7 @@ const UI = {
     })
   },
 
-  showAlert(message, title = "Alert") {
+  showAlert(message, title = I18n.t("alert")) {
     return new Promise((resolve) => {
       const dialog = this.confirmDialog
       const titleEl = dialog.querySelector("#confirmTitle")
@@ -2511,7 +2580,7 @@ const UI = {
       const actionsContainer = deleteButton.parentElement
 
       titleEl.textContent = title
-      deleteButton.textContent = "Ok"
+      deleteButton.textContent = I18n.t("ok")
       archiveButton.parentElement.style.display = "none"
       cancelButton.style.display = "none"
 
@@ -3225,7 +3294,7 @@ const App = {
       UI.updateAuthButtonsVisibility()
       form.closest("dialog")?.close()
     } catch (err) {
-      UI.showAlert(err.message || (I18n.t("incorrect_pin") || "Incorrect password for this email"))
+      UI.showAlert(I18n.serverError(err.message) || I18n.t("incorrect_pin"))
     }
   },
 
@@ -3258,7 +3327,7 @@ const App = {
       UI.renderBoard()
       UI.showAlert(I18n.t(result?.bootstrapOwner ? "signup_owner_created" : "signup_pending"))
     } catch (err) {
-      UI.showAlert(err.message || I18n.t("signup_failed"))
+      UI.showAlert(I18n.serverError(err.message) || I18n.t("signup_failed"))
     }
   },
 
@@ -3520,7 +3589,7 @@ const App = {
           UI.adminUsers = result.users || [];
           UI.adminBoards = result.boards || [];
         } catch (err) {
-          UI.showAlert(err.message || "Failed to load users");
+          UI.showAlert(I18n.serverError(err.message) || I18n.t("users_load_failed"));
           return;
         }
         UI.renderAdminUsers();
@@ -3608,7 +3677,7 @@ const App = {
           UI.updateMenuButtonAvatar()
           profileDialog.close()
         } catch (err) {
-          UI.showAlert(err.message || "Failed to save profile")
+          UI.showAlert(I18n.serverError(err.message) || I18n.t("profile_save_failed"))
         }
       })
     }
@@ -3738,7 +3807,7 @@ const App = {
           newCfg.isAdmin = !!switched.isAdmin
           Store.isAdmin = !!switched.isAdmin
         } catch (err) {
-          UI.showAlert(err.message || "Failed to switch board")
+          UI.showAlert(I18n.serverError(err.message) || I18n.t("board_switch_failed"))
           return
         }
       } else if (cloudflareChanged && !workerChanged && !prevCfg.cfUserToken) {
@@ -3789,7 +3858,7 @@ const App = {
           UI.updateAuthButtonsVisibility()
           UI.updateAdminPanelVisibility()
         } catch (err) {
-          UI.showAlert(err.message || "Failed to create board")
+          UI.showAlert(I18n.serverError(err.message) || I18n.t("board_create_failed"))
         }
       })
     }
@@ -3806,7 +3875,7 @@ const App = {
           const result = await CloudflareBackend.renameBoard(cfg, targetBoardId, newName)
           await refreshAfterBoardAction(result.boards)
         } catch (err) {
-          UI.showAlert(err.message || "Failed to rename board")
+          UI.showAlert(I18n.serverError(err.message) || I18n.t("board_rename_failed"))
         }
       })
     }
@@ -3874,7 +3943,7 @@ const App = {
             UI.updateBoardNameLabel()
           }
         } catch (err) {
-          UI.showAlert(err.message || "Failed to delete board")
+          UI.showAlert(I18n.serverError(err.message) || I18n.t("board_delete_failed"))
         }
       })
     }
@@ -4050,12 +4119,12 @@ const App = {
     if (!Store.canCurrentUserManageBoardStructure()) return
     const col = Store.findColumn(colId)
     const context = {
-      title: I18n.t("delete_column") + "?",
+      title: I18n.t("delete_column_title"),
       deleteText: I18n.t("delete"),
       showArchiveButton: false,
     }
     const choice = await UI.showConfirm(
-      I18n.t("delete_col_confirm", { title: col.title }) || `Delete column “${col.title}” with all its cards?`,
+      I18n.t("delete_col_confirm", { title: col.title }),
       context
     )
 
@@ -4090,7 +4159,7 @@ const App = {
       } else {
         // If no Done column exists, alert the user or maybe create one? 
         // For now, let's just alert.
-        UI.showAlert(I18n.t("no_done_col_error") || "No 'Done' column found. Please mark a column as for completed cards in column settings.")
+        UI.showAlert(I18n.t("no_done_col_error"))
         return
       }
     }
@@ -4166,7 +4235,7 @@ const App = {
       if (existingUser) {
         cardData.assignedUser = existingUser
       } else {
-        UI.showAlert(I18n.t("user_not_found") || "User not found. Users must be registered in Cloudflare D1 first.");
+        UI.showAlert(I18n.t("user_not_found"));
         return;
       }
     }
@@ -4249,18 +4318,18 @@ const App = {
 
     const context = col.isArchive
       ? {
-          title: I18n.t("archived_card_title") || "Archived card",
-          deleteText: I18n.t("delete_permanently") || "Delete permanently",
+          title: I18n.t("archived_card_title"),
+          deleteText: I18n.t("delete_permanently"),
           showArchiveButton: false,
         }
       : {
-          title: I18n.t("delete_card_title") || "Delete or archive card?",
-          deleteText: I18n.t("delete") || "Delete",
+          title: I18n.t("delete_card_title"),
+          deleteText: I18n.t("delete"),
           showArchiveButton: true,
         }
 
     const choice = await UI.showConfirm(
-      I18n.t("delete_or_archive_confirm", { title: card.title }) || `Do you want to archive “${card.title}” card or permanently delete it?`,
+      I18n.t("delete_or_archive_confirm", { title: card.title }),
       context
     )
 
