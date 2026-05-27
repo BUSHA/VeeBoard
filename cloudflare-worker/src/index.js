@@ -1171,15 +1171,36 @@ export default {
       if (path === "/image" && method === "GET") {
         const key = url.searchParams.get("key");
         if (!key) return new Response("Missing key", { status: 400, headers });
-        if (!key.startsWith(`${boardId}/`)) return new Response("Unauthorized", { status: 401, headers });
 
-        const publicUsers = await listPublicUsers(env, boardId);
-        if (publicUsers.length > 0) {
-          const currentUserEmail = await getSessionUser(env, boardId, getUserToken(request, url));
-          if (!currentUserEmail) {
-            return new Response("Unauthorized", { status: 401, headers });
+        const slashIdx = key.indexOf("/");
+        const imageBoardId = slashIdx > 0 ? key.slice(0, slashIdx) : boardId;
+        const isCrossBoard = imageBoardId !== boardId;
+
+        if (!isCrossBoard && !key.startsWith(`${boardId}/`)) {
+          return new Response("Unauthorized", { status: 401, headers });
+        }
+
+        const token = getUserToken(request, url);
+        if (!token) return new Response("Unauthorized", { status: 401, headers });
+
+        let authorized = false;
+        if (isCrossBoard) {
+          const currentUserEmail = await getSessionUser(env, boardId, token);
+          if (currentUserEmail) {
+            const imageBoardUser = await getPublicUser(env, imageBoardId, currentUserEmail);
+            if (imageBoardUser?.isApproved) authorized = true;
+          }
+        } else {
+          const publicUsers = await listPublicUsers(env, boardId);
+          if (publicUsers.length > 0) {
+            const currentUserEmail = await getSessionUser(env, boardId, token);
+            if (currentUserEmail) authorized = true;
+          } else {
+            authorized = true;
           }
         }
+
+        if (!authorized) return new Response("Unauthorized", { status: 401, headers });
 
         const object = await env.BUCKET.get(key);
         if (!object) return new Response("Not Found", { status: 404, headers });

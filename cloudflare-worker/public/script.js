@@ -393,9 +393,12 @@ const CloudflareBackend = {
       if (u.pathname === "/image" && u.searchParams.get("key")) {
         u.protocol = worker.protocol
         u.host = worker.host
-        const imageBoardId = u.searchParams.get("boardId") || config.cfBoardId || "default"
+        const key = u.searchParams.get("key")
+        const keyBoardId = key.indexOf("/") > 0 ? key.slice(0, key.indexOf("/")) : null
+        const imageBoardId = u.searchParams.get("boardId") || keyBoardId || config.cfBoardId || "default"
         const boardSession = DbSettings.getBoardSession(imageBoardId, config)
         u.searchParams.set("token", boardSession?.cfUserToken || config.cfUserToken)
+        if (boardSession?.cfUserToken) u.searchParams.set("boardId", imageBoardId)
         return u.toString()
       }
       if (u.origin === worker.origin) {
@@ -445,18 +448,6 @@ const CloudflareBackend = {
     })
     const data = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(data?.error || "Failed to create board")
-    return data
-  },
-  async listBoardsForLogin(config, email, pinCode) {
-    const cfWorkerUrl = this.resolveWorkerUrl(config)
-    if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
-    const response = await fetch(`${cfWorkerUrl}/boards-for-login`, {
-      method: "POST",
-      headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
-      body: JSON.stringify({ email, pinCode }),
-    })
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(data?.error || "Failed to load boards")
     return data
   },
   async switchBoard(config, boardId) {
@@ -1292,9 +1283,14 @@ const UI = {
     const label = Utils.qs("#boardNameLabel")
     if (!label) return
     const cfg = DbSettings.get()
+    const isLoggedIn = !!cfg.cfWorkerUrl && Store.hasCloudflareSession()
+    if (!isLoggedIn) {
+      label.style.display = "none"
+      return
+    }
     const board = (this.accessibleBoards || []).find((b) => b.id === cfg.cfBoardId)
     label.textContent = board?.name || cfg.cfBoardId || ""
-    label.style.display = cfg.cfWorkerUrl ? "" : "none"
+    label.style.display = ""
   },
 
   updateBoardActionsVisibility() {
@@ -1484,6 +1480,7 @@ const UI = {
             <button type="submit" class="btn primary">${I18n.t("signup_action")}</button>
           </form>
           <div class="board-auth-switch">
+            <button type="button" id="signupBackBtn" class="board-auth-link">&larr; ${I18n.t("back")}</button>
             ${isOwnerBootstrap ? "" : `<button type="button" id="showLoginMode" class="board-auth-link">${I18n.t("go_to_login")}</button>`}
           </div>
         ` : `
@@ -1496,11 +1493,6 @@ const UI = {
               <span>${I18n.t("pin_code")}</span>
               <input id="boardLoginPinCode" type="password" data-i18n-placeholder="login_password_placeholder" placeholder="Enter your password">
             </label>
-            <label id="boardLoginBoardWrap" style="display:none;">
-              <span>${I18n.t("board_id")}</span>
-              <select id="boardLoginBoard"></select>
-            </label>
-            <button type="button" id="findLoginBoardsBtn" class="btn secondary">${I18n.t("find_boards")}</button>
             <button type="submit" class="btn primary">${I18n.t("login")}</button>
           </form>
           <div class="board-auth-switch">
@@ -1514,13 +1506,16 @@ const UI = {
     const boardLoginForm = Utils.qs("#boardLoginForm", this.board)
     if (boardLoginForm) {
       boardLoginForm.addEventListener("submit", App.handleCloudflareLogin.bind(App))
-      Utils.qs("#findLoginBoardsBtn", boardLoginForm)?.addEventListener("click", App.handleFindLoginBoards.bind(App))
     }
     const signupForm = Utils.qs("#boardSignupForm", this.board)
     if (signupForm) {
       this.enhancePasswordField(Utils.qs("#boardSignupPinCode", signupForm))
       signupForm.addEventListener("submit", App.handleCloudflareSignup.bind(App))
     }
+    Utils.qs("#signupBackBtn", this.board)?.addEventListener("click", () => {
+      this.authMode = "login"
+      this.renderLoginGate()
+    })
     Utils.qs("#showSignupMode", this.board)?.addEventListener("click", () => {
       this.authMode = "signup"
       this.renderLoginGate()
@@ -3188,41 +3183,7 @@ const App = {
     Store.startRealtime()
   },
 
-  async handleFindLoginBoards(e) {
-    e.preventDefault()
-    const form = e.currentTarget.closest("form")
-    const cfg = DbSettings.get()
-    const email = (Utils.qs("#boardLoginEmail", form)?.value || "").trim().toLowerCase()
-    const pinCode = (Utils.qs("#boardLoginPinCode", form)?.value || "").trim()
-    if (!cfg.cfWorkerUrl) {
-      UI.showAlert(I18n.t("cloudflare_hint"))
-      return
-    }
-    if (!email || !pinCode) {
-      UI.showAlert(I18n.t("email_pin_required"))
-      return
-    }
-    try {
-      const result = await CloudflareBackend.listBoardsForLogin(cfg, email, pinCode)
-      const boards = result.boards || []
-      const select = Utils.qs("#boardLoginBoard", form)
-      const wrap = Utils.qs("#boardLoginBoardWrap", form)
-      if (!select || !wrap) return
-      select.innerHTML = ""
-      boards.forEach((board) => {
-        const option = document.createElement("option")
-        option.value = board.id
-        option.textContent = board.name || board.id
-        select.append(option)
-      })
-      if (boards.length) {
-        select.value = boards.some((board) => board.id === cfg.cfBoardId) ? cfg.cfBoardId : boards[0].id
-        wrap.style.display = ""
-      }
-    } catch (err) {
-      UI.showAlert(err.message || "Failed to load boards")
-    }
-  },
+
 
   async handleCloudflareLogin(e) {
     e.preventDefault()
@@ -3230,7 +3191,7 @@ const App = {
     const cfg = DbSettings.get()
     const email = (Utils.qs("#boardLoginEmail", form)?.value || "").trim().toLowerCase()
     const pinCode = (Utils.qs("#boardLoginPinCode", form)?.value || "").trim()
-    const selectedBoardId = Utils.qs("#boardLoginBoard", form)?.value || cfg.cfBoardId || "default"
+    const selectedBoardId = cfg.cfBoardId || "default"
     const loginCfg = { ...cfg, cfBoardId: selectedBoardId }
 
     if (!cfg.cfWorkerUrl) {
