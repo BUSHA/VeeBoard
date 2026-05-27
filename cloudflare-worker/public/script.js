@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.2.1"
+  version: "0.2.5"
 }
 
 /* Live sync echo guard */
@@ -243,6 +243,12 @@ const I18n = {
     return text
   },
 
+  serverError(message) {
+    if (!message) return ""
+    const key = BACKEND_ERROR_MAP[message]
+    return key ? this.t(key) : message
+  },
+
   updatePage() {
     Utils.qsa("[data-i18n]").forEach(el => {
       const key = el.dataset.i18n
@@ -276,6 +282,69 @@ const I18n = {
       el.setAttribute("aria-label", this.t(key))
     })
   }
+}
+
+// Map backend error strings to I18n keys
+const BACKEND_ERROR_MAP = {
+  "Unauthorized": "unauthorized",
+  "Only admin can create boards.": "admin_only_create_boards",
+  "Board name is required.": "board_name_required",
+  "A board with this name already exists.": "board_name_exists",
+  "Only admin can rename boards.": "admin_only_rename_boards",
+  "Board ID is required.": "board_id_required",
+  "Board not found.": "board_not_found",
+  "Only admin of the target board can rename it.": "admin_only_target_rename",
+  "Only admin can delete boards.": "admin_only_delete_boards",
+  "The default board cannot be deleted.": "default_board_no_delete",
+  "Only admin of the target board can delete it.": "admin_only_target_delete",
+  "Email and password are required.": "email_pin_required",
+  "Invalid email or password.": "incorrect_pin",
+  "Board is required.": "board_required",
+  "You do not have access to this board.": "no_board_access",
+  "Your account is waiting for admin approval.": "account_pending_approval",
+  "An account with this email already exists.": "account_exists",
+  "Only admin can view all users.": "admin_only_view_users",
+  "Only admin can modify board access.": "admin_only_modify_board_access",
+  "User and board are required.": "user_board_required",
+  "Current board access is managed by approval/removal.": "board_access_managed",
+  "You can assign only boards where you are admin.": "assign_only_admin_boards",
+  "User is not on the current board.": "user_not_on_board",
+  "Admin user cannot be removed from that board.": "admin_cannot_be_removed_from_board",
+  "Only admin can modify users.": "admin_only_modify_users",
+  "User email is required.": "user_email_required",
+  "Changing account email is not supported.": "email_change_not_supported",
+  "Password is required for a new user.": "password_required_new_user",
+  "Only admin can delete users.": "admin_only_delete_users",
+  "Missing user email.": "missing_user_email",
+  "Admin user cannot be deleted.": "admin_user_cannot_be_deleted",
+  "Only admin can modify users list.": "admin_only_modify_users_list",
+  "Only admin can modify board structure.": "admin_only_modify_board_structure",
+  "You can edit or delete only your own cards.": "own_card_only_error",
+  "You can edit or delete only your own comments.": "own_comment_only_error",
+  "Card author cannot be changed.": "card_author_cannot_be_changed",
+  "New cards must belong to the current user.": "new_cards_must_belong_to_user",
+  "You can add only your own comments.": "own_comments_only",
+  "Only admins can perform remote deletion": "admins_only_remote_deletion",
+
+  // CloudflareBackend fallback strings
+  "Cloudflare load failed": "cloudflare_load_failed",
+  "Cloudflare save failed": "cloudflare_save_failed",
+  "Cloudflare not configured": "cloudflare_not_configured",
+  "Authentication failed": "auth_failed",
+  "Signup failed": "signup_failed",
+  "Upload failed": "upload_failed",
+  "User save failed": "user_save_failed",
+  "Failed to load users": "users_load_failed",
+  "Profile save failed": "profile_save_failed",
+  "Board access update failed": "board_access_update_failed",
+  "Failed to create board": "board_create_failed",
+  "Failed to rename board": "board_rename_failed",
+  "Failed to switch board": "board_switch_failed",
+  "Failed to delete board": "board_delete_failed",
+  "Failed to load boards": "boards_load_failed",
+  "Failed to save user": "user_save_failed",
+  "Failed to delete user": "user_delete_failed",
+  "User delete failed": "user_delete_failed",
 }
 
 /**
@@ -393,9 +462,12 @@ const CloudflareBackend = {
       if (u.pathname === "/image" && u.searchParams.get("key")) {
         u.protocol = worker.protocol
         u.host = worker.host
-        const imageBoardId = u.searchParams.get("boardId") || config.cfBoardId || "default"
+        const key = u.searchParams.get("key")
+        const keyBoardId = key.indexOf("/") > 0 ? key.slice(0, key.indexOf("/")) : null
+        const imageBoardId = u.searchParams.get("boardId") || keyBoardId || config.cfBoardId || "default"
         const boardSession = DbSettings.getBoardSession(imageBoardId, config)
         u.searchParams.set("token", boardSession?.cfUserToken || config.cfUserToken)
+        u.searchParams.set("boardId", boardSession?.cfUserToken ? imageBoardId : (config.cfBoardId || "default"))
         return u.toString()
       }
       if (u.origin === worker.origin) {
@@ -447,18 +519,6 @@ const CloudflareBackend = {
     if (!response.ok) throw new Error(data?.error || "Failed to create board")
     return data
   },
-  async listBoardsForLogin(config, email, pinCode) {
-    const cfWorkerUrl = this.resolveWorkerUrl(config)
-    if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
-    const response = await fetch(`${cfWorkerUrl}/boards-for-login`, {
-      method: "POST",
-      headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
-      body: JSON.stringify({ email, pinCode }),
-    })
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(data?.error || "Failed to load boards")
-    return data
-  },
   async switchBoard(config, boardId) {
     const cfWorkerUrl = this.resolveWorkerUrl(config)
     if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
@@ -469,6 +529,30 @@ const CloudflareBackend = {
     })
     const data = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(data?.error || "Failed to switch board")
+    return data
+  },
+  async renameBoard(config, boardId, name) {
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
+    if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
+    const response = await fetch(`${cfWorkerUrl}/boards`, {
+      method: "PUT",
+      headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ boardId, name }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "Failed to rename board")
+    return data
+  },
+  async deleteBoard(config, boardId) {
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
+    if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
+    const response = await fetch(`${cfWorkerUrl}/boards`, {
+      method: "DELETE",
+      headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ boardId }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "Failed to delete board")
     return data
   },
   async authenticate(config, email, pinCode) {
@@ -635,7 +719,7 @@ const Store = {
         } else {
           console.warn("Cloudflare load failed:", e)
           if (typeof UI !== "undefined" && UI.showAlert) {
-            UI.showAlert(e.message || "Cloudflare load failed")
+            UI.showAlert(I18n.serverError(e.message) || I18n.t("cloudflare_load_failed"))
           }
         }
       }
@@ -708,7 +792,7 @@ const Store = {
         console.warn("Cloudflare save failed:", e)
       }
       if (typeof UI !== "undefined" && UI.showAlert) {
-        UI.showAlert(e.message || "Cloudflare save failed")
+        UI.showAlert(I18n.serverError(e.message) || I18n.t("cloudflare_save_failed"))
       }
     }
   },
@@ -1179,6 +1263,7 @@ const UI = {
   colDialog: Utils.qs("#colDialog"),
   renameDialog: Utils.qs("#renameDialog"),
   confirmDialog: Utils.qs("#confirmDialog"),
+  promptDialog: Utils.qs("#promptDialog"),
   dropzone: Utils.qs("#dropzone"),
   // Templates
   columnTemplate: Utils.qs("#columnTemplate"),
@@ -1267,9 +1352,14 @@ const UI = {
     const label = Utils.qs("#boardNameLabel")
     if (!label) return
     const cfg = DbSettings.get()
+    const isLoggedIn = !!cfg.cfWorkerUrl && Store.hasCloudflareSession()
+    if (!isLoggedIn) {
+      label.style.display = "none"
+      return
+    }
     const board = (this.accessibleBoards || []).find((b) => b.id === cfg.cfBoardId)
     label.textContent = board?.name || cfg.cfBoardId || ""
-    label.style.display = cfg.cfWorkerUrl ? "" : "none"
+    label.style.display = ""
   },
 
   updateBoardActionsVisibility() {
@@ -1459,6 +1549,7 @@ const UI = {
             <button type="submit" class="btn primary">${I18n.t("signup_action")}</button>
           </form>
           <div class="board-auth-switch">
+            <button type="button" id="signupBackBtn" class="board-auth-link">&larr; ${I18n.t("back")}</button>
             ${isOwnerBootstrap ? "" : `<button type="button" id="showLoginMode" class="board-auth-link">${I18n.t("go_to_login")}</button>`}
           </div>
         ` : `
@@ -1471,11 +1562,6 @@ const UI = {
               <span>${I18n.t("pin_code")}</span>
               <input id="boardLoginPinCode" type="password" data-i18n-placeholder="login_password_placeholder" placeholder="Enter your password">
             </label>
-            <label id="boardLoginBoardWrap" style="display:none;">
-              <span>${I18n.t("board_id")}</span>
-              <select id="boardLoginBoard"></select>
-            </label>
-            <button type="button" id="findLoginBoardsBtn" class="btn secondary">${I18n.t("find_boards")}</button>
             <button type="submit" class="btn primary">${I18n.t("login")}</button>
           </form>
           <div class="board-auth-switch">
@@ -1489,13 +1575,16 @@ const UI = {
     const boardLoginForm = Utils.qs("#boardLoginForm", this.board)
     if (boardLoginForm) {
       boardLoginForm.addEventListener("submit", App.handleCloudflareLogin.bind(App))
-      Utils.qs("#findLoginBoardsBtn", boardLoginForm)?.addEventListener("click", App.handleFindLoginBoards.bind(App))
     }
     const signupForm = Utils.qs("#boardSignupForm", this.board)
     if (signupForm) {
       this.enhancePasswordField(Utils.qs("#boardSignupPinCode", signupForm))
       signupForm.addEventListener("submit", App.handleCloudflareSignup.bind(App))
     }
+    Utils.qs("#signupBackBtn", this.board)?.addEventListener("click", () => {
+      this.authMode = "login"
+      this.renderLoginGate()
+    })
     Utils.qs("#showSignupMode", this.board)?.addEventListener("click", () => {
       this.authMode = "signup"
       this.renderLoginGate()
@@ -1575,7 +1664,7 @@ const UI = {
       identity.className = "admin-user-identity";
       const displayNameEl = document.createElement("span");
       displayNameEl.className = "admin-user-display-name";
-      displayNameEl.textContent = u.name || u.email || "New user";
+      displayNameEl.textContent = u.name || u.email || I18n.t("new_user");
       const emailHintEl = document.createElement("span");
       emailHintEl.className = "admin-user-email-hint";
       emailHintEl.textContent = u.name ? (u.email || "") : "";
@@ -1623,7 +1712,7 @@ const UI = {
       const pinInp = document.createElement("input");
       pinInp.type = "password";
       pinInp.className = "admin-user-input";
-      pinInp.placeholder = I18n.t("password_leave_blank_hint") || "Leave blank to keep";
+      pinInp.placeholder = I18n.t("password_leave_blank_hint");
       passwordField.append(passwordLabel, pinInp);
       this.enhancePasswordField(pinInp, { allowEmpty: true });
 
@@ -1654,7 +1743,7 @@ const UI = {
             UI.renderAdminUsers();
           } catch (err) {
             boardInput.checked = !boardInput.checked;
-            UI.showAlert(err.message || "Board access update failed");
+            UI.showAlert(I18n.serverError(err.message) || I18n.t("board_access_update_failed"));
           }
         });
         boardList.append(boardToggle);
@@ -1675,7 +1764,7 @@ const UI = {
 
       const delBtn = document.createElement("button");
       delBtn.className = "btn-link error admin-user-delete";
-      delBtn.textContent = I18n.t("delete_user") || "Remove user";
+      delBtn.textContent = I18n.t("delete_user");
       if (isProtectedAdmin) delBtn.style.display = "none";
 
       footerContainer.append(delBtn, saveBtn);
@@ -1721,7 +1810,7 @@ const UI = {
             UI.renderBoard();
             UI.renderAdminUsers();
           } catch (err) {
-            UI.showAlert(err.message || "Failed to save user");
+            UI.showAlert(I18n.serverError(err.message) || I18n.t("user_save_failed"));
           }
           return;
         }
@@ -1729,25 +1818,28 @@ const UI = {
       
       saveBtn.addEventListener("click", () => { saveChanges(); });
       
-      delBtn.addEventListener("click", () => {
+      delBtn.addEventListener("click", async () => {
         if (isProtectedAdmin) return
-        if (confirm(`${I18n.t("delete_user") || "Remove user"} ${u.email || u.name}?`)) {
-          const avatarKey = u.avatarKey
-          if (cfg.cfWorkerUrl) {
-            CloudflareBackend.deleteUser(u.email, cfg)
-              .then(async (result) => {
-                UI.adminUsers = result.users || [];
-                await Store.loadState();
-                UI.renderBoard();
-                UI.renderAdminUsers();
-                UI.updateMenuButtonAvatar();
-                if (avatarKey) {
-                  CloudflareBackend.deleteImage(avatarKey, cfg).catch(console.error)
-                }
-              })
-              .catch((err) => UI.showAlert(err.message || "Failed to delete user"));
-            return;
-          }
+        const choice = await UI.showConfirm(I18n.t("delete_user_confirm", { id: u.email || u.name }), {
+          title: I18n.t("delete_user"),
+          deleteText: I18n.t("delete"),
+          showArchiveButton: false,
+        })
+        if (choice !== "delete") return
+        const avatarKey = u.avatarKey
+        if (cfg.cfWorkerUrl) {
+          CloudflareBackend.deleteUser(u.email, cfg)
+            .then(async (result) => {
+              UI.adminUsers = result.users || [];
+              await Store.loadState();
+              UI.renderBoard();
+              UI.renderAdminUsers();
+              UI.updateMenuButtonAvatar();
+              if (avatarKey) {
+                CloudflareBackend.deleteImage(avatarKey, cfg).catch(console.error)
+              }
+            })
+            .catch((err) => UI.showAlert(I18n.serverError(err.message) || I18n.t("user_delete_failed")));
         }
       });
       list.appendChild(row);
@@ -1859,7 +1951,7 @@ const UI = {
           const authUrl = CloudflareBackend.getAuthenticatedImageUrl(att.url)
           img.src = authUrl
           img.loading = "lazy"
-          img.alt = "Attachment"
+          img.alt = I18n.t("attachment")
           item.append(img)
           
           item.addEventListener("pointerdown", (e) => {
@@ -2478,7 +2570,7 @@ const UI = {
     })
   },
 
-  showAlert(message, title = "Alert") {
+  showAlert(message, title = I18n.t("alert")) {
     return new Promise((resolve) => {
       const dialog = this.confirmDialog
       const titleEl = dialog.querySelector("#confirmTitle")
@@ -2488,7 +2580,7 @@ const UI = {
       const actionsContainer = deleteButton.parentElement
 
       titleEl.textContent = title
-      deleteButton.textContent = "Ok"
+      deleteButton.textContent = I18n.t("ok")
       archiveButton.parentElement.style.display = "none"
       cancelButton.style.display = "none"
 
@@ -2503,6 +2595,40 @@ const UI = {
       }
       dialog.addEventListener("close", closeHandler)
       this.showDialog(dialog)
+    })
+  },
+
+  showPrompt(title, placeholder = "", defaultValue = "") {
+    return new Promise((resolve) => {
+      const dialog = this.promptDialog
+      const titleEl = dialog.querySelector("#promptTitle")
+      const input = dialog.querySelector("#promptInput")
+      const okBtn = dialog.querySelector("#promptOk")
+      const cancelBtn = dialog.querySelector('button[value="cancel"]')
+
+      titleEl.textContent = title
+      input.placeholder = placeholder
+      input.value = defaultValue
+      okBtn.disabled = !defaultValue.trim()
+
+      const inputHandler = () => {
+        okBtn.disabled = !input.value.trim()
+      }
+      input.addEventListener("input", inputHandler)
+
+      const closeHandler = () => {
+        dialog.removeEventListener("close", closeHandler)
+        input.removeEventListener("input", inputHandler)
+        resolve(dialog.returnValue === "ok" ? input.value.trim() : null)
+      }
+      dialog.addEventListener("close", closeHandler)
+
+      okBtn.onclick = () => dialog.close("ok")
+      cancelBtn.onclick = () => dialog.close("cancel")
+
+      this.showDialog(dialog)
+      input.focus()
+      if (defaultValue) input.select()
     })
   },
 
@@ -3126,41 +3252,7 @@ const App = {
     Store.startRealtime()
   },
 
-  async handleFindLoginBoards(e) {
-    e.preventDefault()
-    const form = e.currentTarget.closest("form")
-    const cfg = DbSettings.get()
-    const email = (Utils.qs("#boardLoginEmail", form)?.value || "").trim().toLowerCase()
-    const pinCode = (Utils.qs("#boardLoginPinCode", form)?.value || "").trim()
-    if (!cfg.cfWorkerUrl) {
-      UI.showAlert(I18n.t("cloudflare_hint"))
-      return
-    }
-    if (!email || !pinCode) {
-      UI.showAlert(I18n.t("email_pin_required"))
-      return
-    }
-    try {
-      const result = await CloudflareBackend.listBoardsForLogin(cfg, email, pinCode)
-      const boards = result.boards || []
-      const select = Utils.qs("#boardLoginBoard", form)
-      const wrap = Utils.qs("#boardLoginBoardWrap", form)
-      if (!select || !wrap) return
-      select.innerHTML = ""
-      boards.forEach((board) => {
-        const option = document.createElement("option")
-        option.value = board.id
-        option.textContent = board.name || board.id
-        select.append(option)
-      })
-      if (boards.length) {
-        select.value = boards.some((board) => board.id === cfg.cfBoardId) ? cfg.cfBoardId : boards[0].id
-        wrap.style.display = ""
-      }
-    } catch (err) {
-      UI.showAlert(err.message || "Failed to load boards")
-    }
-  },
+
 
   async handleCloudflareLogin(e) {
     e.preventDefault()
@@ -3168,7 +3260,7 @@ const App = {
     const cfg = DbSettings.get()
     const email = (Utils.qs("#boardLoginEmail", form)?.value || "").trim().toLowerCase()
     const pinCode = (Utils.qs("#boardLoginPinCode", form)?.value || "").trim()
-    const selectedBoardId = Utils.qs("#boardLoginBoard", form)?.value || cfg.cfBoardId || "default"
+    const selectedBoardId = cfg.cfBoardId || "default"
     const loginCfg = { ...cfg, cfBoardId: selectedBoardId }
 
     if (!cfg.cfWorkerUrl) {
@@ -3202,7 +3294,7 @@ const App = {
       UI.updateAuthButtonsVisibility()
       form.closest("dialog")?.close()
     } catch (err) {
-      UI.showAlert(err.message || (I18n.t("incorrect_pin") || "Incorrect password for this email"))
+      UI.showAlert(I18n.serverError(err.message) || I18n.t("incorrect_pin"))
     }
   },
 
@@ -3235,7 +3327,7 @@ const App = {
       UI.renderBoard()
       UI.showAlert(I18n.t(result?.bootstrapOwner ? "signup_owner_created" : "signup_pending"))
     } catch (err) {
-      UI.showAlert(err.message || I18n.t("signup_failed"))
+      UI.showAlert(I18n.serverError(err.message) || I18n.t("signup_failed"))
     }
   },
 
@@ -3497,7 +3589,7 @@ const App = {
           UI.adminUsers = result.users || [];
           UI.adminBoards = result.boards || [];
         } catch (err) {
-          UI.showAlert(err.message || "Failed to load users");
+          UI.showAlert(I18n.serverError(err.message) || I18n.t("users_load_failed"));
           return;
         }
         UI.renderAdminUsers();
@@ -3585,7 +3677,7 @@ const App = {
           UI.updateMenuButtonAvatar()
           profileDialog.close()
         } catch (err) {
-          UI.showAlert(err.message || "Failed to save profile")
+          UI.showAlert(I18n.serverError(err.message) || I18n.t("profile_save_failed"))
         }
       })
     }
@@ -3617,16 +3709,49 @@ const App = {
     const cfUrlInput = Utils.qs("#cfWorkerUrl", dbDialog)
     const cfIdInput = Utils.qs("#cfBoardId", dbDialog)
     const cfBoardSelect = Utils.qs("#cfBoardSelect", dbDialog)
-    const createBoardRow = Utils.qs("#createBoardRow", dbDialog)
-    const newBoardNameInput = Utils.qs("#newBoardName", dbDialog)
-    const createBoardBtn = Utils.qs("#createBoardBtn", dbDialog)
+    const boardActionBtns = Utils.qs("#boardActionBtns", dbDialog)
+    const newBoardBtn = Utils.qs("#newBoardBtn", dbDialog)
+    const renameBoardBtn = Utils.qs("#renameBoardBtn", dbDialog)
+    const deleteBoardBtn = Utils.qs("#deleteBoardBtn", dbDialog)
+
+    const getSelectedBoardId = () =>
+      (cfBoardSelect?.style.display !== "none" ? cfBoardSelect.value : cfIdInput.value.trim()) || "default"
+
+    const refreshAfterBoardAction = async (boards) => {
+      UI.accessibleBoards = boards || []
+      UI.renderBoardSelect(cfBoardSelect, cfIdInput, UI.accessibleBoards)
+      UI.updateBoardNameLabel()
+      const cfg = DbSettings.get()
+      const selId = getSelectedBoardId()
+      if (selId !== cfg.cfBoardId) {
+        const nextCfg = { ...cfg, cfBoardId: selId }
+        const cachedSession = DbSettings.getBoardSession(selId, cfg)
+        if (cachedSession?.cfUserToken) {
+          nextCfg.cfUserToken = cachedSession.cfUserToken
+          nextCfg.cfUserEmail = cachedSession.cfUserEmail || ""
+          nextCfg.cfUserName = cachedSession.cfUserName || ""
+          Store.isAdmin = !!cachedSession.isAdmin
+        } else {
+          nextCfg.cfUserToken = ""
+          nextCfg.cfUserEmail = ""
+          nextCfg.cfUserName = ""
+          Store.isAdmin = false
+        }
+        DbSettings.set(nextCfg)
+        await Store.loadState()
+        UI.renderBoard()
+        UI.updateMenuButtonAvatar()
+        UI.updateAuthButtonsVisibility()
+        UI.updateAdminPanelVisibility()
+      }
+    }
 
     dbBtn.addEventListener("click", async () => {
       const cfg = DbSettings.get()
       cfUrlInput.value = cfg.cfWorkerUrl || ""
       cfIdInput.value = cfg.cfBoardId || ""
       UI.renderBoardSelect(cfBoardSelect, cfIdInput, UI.accessibleBoards)
-      if (createBoardRow) createBoardRow.style.display = Store.hasCloudflareSession() && Store.isAdmin ? "grid" : "none"
+      if (boardActionBtns) boardActionBtns.style.display = Store.hasCloudflareSession() && Store.isAdmin ? "" : "none"
       if (Store.hasCloudflareSession()) {
         try {
           const result = await CloudflareBackend.listBoards(cfg)
@@ -3657,7 +3782,7 @@ const App = {
     dbForm.addEventListener("submit", async (e) => {
       e.preventDefault()
       const prevCfg = DbSettings.get()
-      const selectedBoardId = (cfBoardSelect?.style.display !== "none" ? cfBoardSelect.value : cfIdInput.value.trim()) || "default"
+      const selectedBoardId = getSelectedBoardId()
       const nextWorkerUrl = cfUrlInput.value.trim()
       const workerChanged = nextWorkerUrl !== (prevCfg.cfWorkerUrl || "")
 
@@ -3682,7 +3807,7 @@ const App = {
           newCfg.isAdmin = !!switched.isAdmin
           Store.isAdmin = !!switched.isAdmin
         } catch (err) {
-          UI.showAlert(err.message || "Failed to switch board")
+          UI.showAlert(I18n.serverError(err.message) || I18n.t("board_switch_failed"))
           return
         }
       } else if (cloudflareChanged && !workerChanged && !prevCfg.cfUserToken) {
@@ -3709,14 +3834,11 @@ const App = {
       dbDialog.close()
     })
 
-    if (createBoardBtn) {
-      createBoardBtn.addEventListener("click", async () => {
+    if (newBoardBtn) {
+      newBoardBtn.addEventListener("click", async () => {
         const cfg = DbSettings.get()
-        const name = (newBoardNameInput?.value || "").trim()
-        if (!name) {
-          UI.showAlert(I18n.t("new_board_placeholder"))
-          return
-        }
+        const name = await UI.showPrompt(I18n.t("new_board_title"), I18n.t("new_board_placeholder"))
+        if (!name) return
         try {
           const created = await CloudflareBackend.createBoard(cfg, name)
           const nextCfg = {
@@ -3729,7 +3851,6 @@ const App = {
           DbSettings.set(nextCfg)
           Store.isAdmin = !!created.isAdmin
           UI.accessibleBoards = created.boards || []
-          if (newBoardNameInput) newBoardNameInput.value = ""
           UI.renderBoardSelect(cfBoardSelect, cfIdInput, UI.accessibleBoards)
           await Store.loadState()
           UI.renderBoard()
@@ -3737,7 +3858,92 @@ const App = {
           UI.updateAuthButtonsVisibility()
           UI.updateAdminPanelVisibility()
         } catch (err) {
-          UI.showAlert(err.message || "Failed to create board")
+          UI.showAlert(I18n.serverError(err.message) || I18n.t("board_create_failed"))
+        }
+      })
+    }
+
+    if (renameBoardBtn) {
+      renameBoardBtn.addEventListener("click", async () => {
+        const cfg = DbSettings.get()
+        const targetBoardId = getSelectedBoardId()
+        const boardInfo = (UI.accessibleBoards || []).find((b) => b.id === targetBoardId)
+        const currentName = boardInfo?.name || targetBoardId
+        const newName = await UI.showPrompt(I18n.t("rename_board_title"), "", currentName)
+        if (!newName || newName === currentName) return
+        try {
+          const result = await CloudflareBackend.renameBoard(cfg, targetBoardId, newName)
+          await refreshAfterBoardAction(result.boards)
+        } catch (err) {
+          UI.showAlert(I18n.serverError(err.message) || I18n.t("board_rename_failed"))
+        }
+      })
+    }
+
+    if (deleteBoardBtn) {
+      deleteBoardBtn.addEventListener("click", async () => {
+        const cfg = DbSettings.get()
+        const targetBoardId = getSelectedBoardId()
+        if (targetBoardId === "default") {
+          UI.showAlert(I18n.t("default_board_no_delete"))
+          return
+        }
+        const boardInfo = (UI.accessibleBoards || []).find((b) => b.id === targetBoardId)
+        const boardName = boardInfo?.name || targetBoardId
+        const choice = await UI.showConfirm(I18n.t("delete_board_confirm", { name: boardName }), {
+          title: I18n.t("delete_board"),
+          deleteText: I18n.t("delete"),
+          showArchiveButton: false,
+        })
+        if (choice !== "delete") return
+        try {
+          const result = await CloudflareBackend.deleteBoard(cfg, targetBoardId)
+          UI.accessibleBoards = result.boards || []
+          if (UI.accessibleBoards.length === 0) {
+            const nextCfg = { ...cfg, cfBoardId: "default", cfUserToken: "", cfUserEmail: "", cfUserName: "" }
+            const defaultSession = DbSettings.getBoardSession("default", cfg)
+            if (defaultSession?.cfUserToken) {
+              nextCfg.cfUserToken = defaultSession.cfUserToken
+              nextCfg.cfUserEmail = defaultSession.cfUserEmail || ""
+              nextCfg.cfUserName = defaultSession.cfUserName || ""
+            }
+            DbSettings.set(nextCfg)
+            Store.isAdmin = false
+            await Store.loadState()
+            UI.renderBoard()
+            UI.updateMenuButtonAvatar()
+            UI.updateAuthButtonsVisibility()
+            UI.updateAdminPanelVisibility()
+            dbDialog.close()
+          } else {
+            const currentBoardId = cfg.cfBoardId || "default"
+            if (targetBoardId === currentBoardId) {
+              const nextBoardId = UI.accessibleBoards[0].id
+              const nextCfg = { ...cfg, cfBoardId: nextBoardId }
+              const cachedSession = DbSettings.getBoardSession(nextBoardId, cfg)
+              if (cachedSession?.cfUserToken) {
+                nextCfg.cfUserToken = cachedSession.cfUserToken
+                nextCfg.cfUserEmail = cachedSession.cfUserEmail || ""
+                nextCfg.cfUserName = cachedSession.cfUserName || ""
+                Store.isAdmin = !!cachedSession.isAdmin
+              } else {
+                nextCfg.cfUserToken = ""
+                nextCfg.cfUserEmail = ""
+                nextCfg.cfUserName = ""
+                Store.isAdmin = false
+              }
+              DbSettings.set(nextCfg)
+              await Store.loadState()
+              UI.renderBoard()
+              UI.updateMenuButtonAvatar()
+              UI.updateAuthButtonsVisibility()
+              UI.updateAdminPanelVisibility()
+            }
+            UI.renderBoardSelect(cfBoardSelect, cfIdInput, UI.accessibleBoards)
+            UI.updateBoardNameLabel()
+          }
+        } catch (err) {
+          UI.showAlert(I18n.serverError(err.message) || I18n.t("board_delete_failed"))
         }
       })
     }
@@ -3913,12 +4119,12 @@ const App = {
     if (!Store.canCurrentUserManageBoardStructure()) return
     const col = Store.findColumn(colId)
     const context = {
-      title: I18n.t("delete_column") + "?",
+      title: I18n.t("delete_column_title"),
       deleteText: I18n.t("delete"),
       showArchiveButton: false,
     }
     const choice = await UI.showConfirm(
-      I18n.t("delete_col_confirm", { title: col.title }) || `Delete column “${col.title}” with all its cards?`,
+      I18n.t("delete_col_confirm", { title: col.title }),
       context
     )
 
@@ -3953,7 +4159,7 @@ const App = {
       } else {
         // If no Done column exists, alert the user or maybe create one? 
         // For now, let's just alert.
-        UI.showAlert(I18n.t("no_done_col_error") || "No 'Done' column found. Please mark a column as for completed cards in column settings.")
+        UI.showAlert(I18n.t("no_done_col_error"))
         return
       }
     }
@@ -4029,7 +4235,7 @@ const App = {
       if (existingUser) {
         cardData.assignedUser = existingUser
       } else {
-        UI.showAlert(I18n.t("user_not_found") || "User not found. Users must be registered in Cloudflare D1 first.");
+        UI.showAlert(I18n.t("user_not_found"));
         return;
       }
     }
@@ -4112,18 +4318,18 @@ const App = {
 
     const context = col.isArchive
       ? {
-          title: I18n.t("archived_card_title") || "Archived card",
-          deleteText: I18n.t("delete_permanently") || "Delete permanently",
+          title: I18n.t("archived_card_title"),
+          deleteText: I18n.t("delete_permanently"),
           showArchiveButton: false,
         }
       : {
-          title: I18n.t("delete_card_title") || "Delete or archive card?",
-          deleteText: I18n.t("delete") || "Delete",
+          title: I18n.t("delete_card_title"),
+          deleteText: I18n.t("delete"),
           showArchiveButton: true,
         }
 
     const choice = await UI.showConfirm(
-      I18n.t("delete_or_archive_confirm", { title: card.title }) || `Do you want to archive “${card.title}” card or permanently delete it?`,
+      I18n.t("delete_or_archive_confirm", { title: card.title }),
       context
     )
 
