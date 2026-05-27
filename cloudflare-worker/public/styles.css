@@ -1735,6 +1735,9 @@ dialog:focus-visible {
     width: 100%;
     justify-content: flex-start;
   }
+  .board-action-btns .btn {
+    flex: 1 1 0;
+  }
 }
 
 #deleteBoardRow {
