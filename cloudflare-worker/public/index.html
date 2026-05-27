@@ -243,6 +243,21 @@
     </form>
   </dialog>
 
+  <dialog id="promptDialog" aria-label="Prompt" tabindex="-1">
+    <form id="promptForm" method="dialog" class="editor-form">
+      <h3 id="promptTitle">Prompt</h3>
+      <input id="promptInput" type="text" maxlength="80" style="margin:8px 0" />
+      <p id="promptText" style="margin:4px 0 0; display:none;"></p>
+      <div class="editor-actions">
+        <div class="actions-extra"></div>
+        <div class="actions-main">
+          <button type="button" value="cancel" class="btn secondary" formnovalidate data-i18n="cancel">Cancel</button>
+          <button id="promptOk" value="ok" class="btn primary" data-i18n="save">Save</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="dbDialog" aria-label="Database & sync" tabindex="-1">
     <form id="dbForm" method="dialog" class="editor-form">
       <h3 data-i18n="db_sync_title">Cloudflare settings</h3>
@@ -261,13 +276,16 @@
           <input id="cfWorkerUrl" type="url" placeholder="https://your-worker.workers.dev" />
         </label>
         <label data-i18n="board_id">Board ID (optional)
-          <select id="cfBoardSelect"></select>
-          <input id="cfBoardId" type="text" placeholder="default" />
+          <div class="board-selector-row">
+            <select id="cfBoardSelect"></select>
+            <input id="cfBoardId" type="text" placeholder="default" />
+            <div id="boardActionBtns" class="board-action-btns" style="display:none;">
+              <button type="button" id="newBoardBtn" class="btn secondary" data-i18n="create_board">New</button>
+              <button type="button" id="renameBoardBtn" class="btn secondary" data-i18n="rename_board">Rename</button>
+              <button type="button" id="deleteBoardBtn" class="btn error" data-i18n="delete_board">Delete</button>
+            </div>
+          </div>
         </label>
-        <div id="createBoardRow" class="board-create-row" style="display:none;">
-          <input id="newBoardName" type="text" maxlength="80" data-i18n-placeholder="new_board_placeholder" placeholder="New board name" />
-          <button type="button" id="createBoardBtn" class="btn secondary" data-i18n="create_board">Create board</button>
-        </div>
       </div>
 
       <div class="editor-actions">

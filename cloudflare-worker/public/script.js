@@ -471,6 +471,30 @@ const CloudflareBackend = {
     if (!response.ok) throw new Error(data?.error || "Failed to switch board")
     return data
   },
+  async renameBoard(config, boardId, name) {
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
+    if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
+    const response = await fetch(`${cfWorkerUrl}/boards`, {
+      method: "PUT",
+      headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ boardId, name }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "Failed to rename board")
+    return data
+  },
+  async deleteBoard(config, boardId) {
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
+    if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
+    const response = await fetch(`${cfWorkerUrl}/boards`, {
+      method: "DELETE",
+      headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ boardId }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "Failed to delete board")
+    return data
+  },
   async authenticate(config, email, pinCode) {
     const cfWorkerUrl = this.resolveWorkerUrl(config)
     if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
@@ -1179,6 +1203,7 @@ const UI = {
   colDialog: Utils.qs("#colDialog"),
   renameDialog: Utils.qs("#renameDialog"),
   confirmDialog: Utils.qs("#confirmDialog"),
+  promptDialog: Utils.qs("#promptDialog"),
   dropzone: Utils.qs("#dropzone"),
   // Templates
   columnTemplate: Utils.qs("#columnTemplate"),
@@ -2506,6 +2531,40 @@ const UI = {
     })
   },
 
+  showPrompt(title, placeholder = "", defaultValue = "") {
+    return new Promise((resolve) => {
+      const dialog = this.promptDialog
+      const titleEl = dialog.querySelector("#promptTitle")
+      const input = dialog.querySelector("#promptInput")
+      const okBtn = dialog.querySelector("#promptOk")
+      const cancelBtn = dialog.querySelector('button[value="cancel"]')
+
+      titleEl.textContent = title
+      input.placeholder = placeholder
+      input.value = defaultValue
+      okBtn.disabled = !defaultValue.trim()
+
+      const inputHandler = () => {
+        okBtn.disabled = !input.value.trim()
+      }
+      input.addEventListener("input", inputHandler)
+
+      const closeHandler = () => {
+        dialog.removeEventListener("close", closeHandler)
+        input.removeEventListener("input", inputHandler)
+        resolve(dialog.returnValue === "ok" ? input.value.trim() : null)
+      }
+      dialog.addEventListener("close", closeHandler)
+
+      okBtn.onclick = () => dialog.close("ok")
+      cancelBtn.onclick = () => dialog.close("cancel")
+
+      this.showDialog(dialog)
+      input.focus()
+      if (defaultValue) input.select()
+    })
+  },
+
   // --- Filtering & Searching ---
   updateTagFilters() {
     const tagBox = Utils.qs("#tagFilters")
@@ -3617,16 +3676,49 @@ const App = {
     const cfUrlInput = Utils.qs("#cfWorkerUrl", dbDialog)
     const cfIdInput = Utils.qs("#cfBoardId", dbDialog)
     const cfBoardSelect = Utils.qs("#cfBoardSelect", dbDialog)
-    const createBoardRow = Utils.qs("#createBoardRow", dbDialog)
-    const newBoardNameInput = Utils.qs("#newBoardName", dbDialog)
-    const createBoardBtn = Utils.qs("#createBoardBtn", dbDialog)
+    const boardActionBtns = Utils.qs("#boardActionBtns", dbDialog)
+    const newBoardBtn = Utils.qs("#newBoardBtn", dbDialog)
+    const renameBoardBtn = Utils.qs("#renameBoardBtn", dbDialog)
+    const deleteBoardBtn = Utils.qs("#deleteBoardBtn", dbDialog)
+
+    const getSelectedBoardId = () =>
+      (cfBoardSelect?.style.display !== "none" ? cfBoardSelect.value : cfIdInput.value.trim()) || "default"
+
+    const refreshAfterBoardAction = async (boards) => {
+      UI.accessibleBoards = boards || []
+      UI.renderBoardSelect(cfBoardSelect, cfIdInput, UI.accessibleBoards)
+      UI.updateBoardNameLabel()
+      const cfg = DbSettings.get()
+      const selId = getSelectedBoardId()
+      if (selId !== cfg.cfBoardId) {
+        const nextCfg = { ...cfg, cfBoardId: selId }
+        const cachedSession = DbSettings.getBoardSession(selId, cfg)
+        if (cachedSession?.cfUserToken) {
+          nextCfg.cfUserToken = cachedSession.cfUserToken
+          nextCfg.cfUserEmail = cachedSession.cfUserEmail || ""
+          nextCfg.cfUserName = cachedSession.cfUserName || ""
+          Store.isAdmin = !!cachedSession.isAdmin
+        } else {
+          nextCfg.cfUserToken = ""
+          nextCfg.cfUserEmail = ""
+          nextCfg.cfUserName = ""
+          Store.isAdmin = false
+        }
+        DbSettings.set(nextCfg)
+        await Store.loadState()
+        UI.renderBoard()
+        UI.updateMenuButtonAvatar()
+        UI.updateAuthButtonsVisibility()
+        UI.updateAdminPanelVisibility()
+      }
+    }
 
     dbBtn.addEventListener("click", async () => {
       const cfg = DbSettings.get()
       cfUrlInput.value = cfg.cfWorkerUrl || ""
       cfIdInput.value = cfg.cfBoardId || ""
       UI.renderBoardSelect(cfBoardSelect, cfIdInput, UI.accessibleBoards)
-      if (createBoardRow) createBoardRow.style.display = Store.hasCloudflareSession() && Store.isAdmin ? "grid" : "none"
+      if (boardActionBtns) boardActionBtns.style.display = Store.hasCloudflareSession() && Store.isAdmin ? "" : "none"
       if (Store.hasCloudflareSession()) {
         try {
           const result = await CloudflareBackend.listBoards(cfg)
@@ -3657,7 +3749,7 @@ const App = {
     dbForm.addEventListener("submit", async (e) => {
       e.preventDefault()
       const prevCfg = DbSettings.get()
-      const selectedBoardId = (cfBoardSelect?.style.display !== "none" ? cfBoardSelect.value : cfIdInput.value.trim()) || "default"
+      const selectedBoardId = getSelectedBoardId()
       const nextWorkerUrl = cfUrlInput.value.trim()
       const workerChanged = nextWorkerUrl !== (prevCfg.cfWorkerUrl || "")
 
@@ -3709,14 +3801,11 @@ const App = {
       dbDialog.close()
     })
 
-    if (createBoardBtn) {
-      createBoardBtn.addEventListener("click", async () => {
+    if (newBoardBtn) {
+      newBoardBtn.addEventListener("click", async () => {
         const cfg = DbSettings.get()
-        const name = (newBoardNameInput?.value || "").trim()
-        if (!name) {
-          UI.showAlert(I18n.t("new_board_placeholder"))
-          return
-        }
+        const name = await UI.showPrompt(I18n.t("new_board_title"), I18n.t("new_board_placeholder"))
+        if (!name) return
         try {
           const created = await CloudflareBackend.createBoard(cfg, name)
           const nextCfg = {
@@ -3729,7 +3818,6 @@ const App = {
           DbSettings.set(nextCfg)
           Store.isAdmin = !!created.isAdmin
           UI.accessibleBoards = created.boards || []
-          if (newBoardNameInput) newBoardNameInput.value = ""
           UI.renderBoardSelect(cfBoardSelect, cfIdInput, UI.accessibleBoards)
           await Store.loadState()
           UI.renderBoard()
@@ -3738,6 +3826,91 @@ const App = {
           UI.updateAdminPanelVisibility()
         } catch (err) {
           UI.showAlert(err.message || "Failed to create board")
+        }
+      })
+    }
+
+    if (renameBoardBtn) {
+      renameBoardBtn.addEventListener("click", async () => {
+        const cfg = DbSettings.get()
+        const targetBoardId = getSelectedBoardId()
+        const boardInfo = (UI.accessibleBoards || []).find((b) => b.id === targetBoardId)
+        const currentName = boardInfo?.name || targetBoardId
+        const newName = await UI.showPrompt(I18n.t("rename_board_title"), "", currentName)
+        if (!newName || newName === currentName) return
+        try {
+          const result = await CloudflareBackend.renameBoard(cfg, targetBoardId, newName)
+          await refreshAfterBoardAction(result.boards)
+        } catch (err) {
+          UI.showAlert(err.message || "Failed to rename board")
+        }
+      })
+    }
+
+    if (deleteBoardBtn) {
+      deleteBoardBtn.addEventListener("click", async () => {
+        const cfg = DbSettings.get()
+        const targetBoardId = getSelectedBoardId()
+        if (targetBoardId === "default") {
+          UI.showAlert(I18n.t("default_board_no_delete"))
+          return
+        }
+        const boardInfo = (UI.accessibleBoards || []).find((b) => b.id === targetBoardId)
+        const boardName = boardInfo?.name || targetBoardId
+        const choice = await UI.showConfirm(I18n.t("delete_board_confirm", { name: boardName }), {
+          title: I18n.t("delete_board"),
+          deleteText: I18n.t("delete"),
+          showArchiveButton: false,
+        })
+        if (choice !== "delete") return
+        try {
+          const result = await CloudflareBackend.deleteBoard(cfg, targetBoardId)
+          UI.accessibleBoards = result.boards || []
+          if (UI.accessibleBoards.length === 0) {
+            const nextCfg = { ...cfg, cfBoardId: "default", cfUserToken: "", cfUserEmail: "", cfUserName: "" }
+            const defaultSession = DbSettings.getBoardSession("default", cfg)
+            if (defaultSession?.cfUserToken) {
+              nextCfg.cfUserToken = defaultSession.cfUserToken
+              nextCfg.cfUserEmail = defaultSession.cfUserEmail || ""
+              nextCfg.cfUserName = defaultSession.cfUserName || ""
+            }
+            DbSettings.set(nextCfg)
+            Store.isAdmin = false
+            await Store.loadState()
+            UI.renderBoard()
+            UI.updateMenuButtonAvatar()
+            UI.updateAuthButtonsVisibility()
+            UI.updateAdminPanelVisibility()
+            dbDialog.close()
+          } else {
+            const currentBoardId = cfg.cfBoardId || "default"
+            if (targetBoardId === currentBoardId) {
+              const nextBoardId = UI.accessibleBoards[0].id
+              const nextCfg = { ...cfg, cfBoardId: nextBoardId }
+              const cachedSession = DbSettings.getBoardSession(nextBoardId, cfg)
+              if (cachedSession?.cfUserToken) {
+                nextCfg.cfUserToken = cachedSession.cfUserToken
+                nextCfg.cfUserEmail = cachedSession.cfUserEmail || ""
+                nextCfg.cfUserName = cachedSession.cfUserName || ""
+                Store.isAdmin = !!cachedSession.isAdmin
+              } else {
+                nextCfg.cfUserToken = ""
+                nextCfg.cfUserEmail = ""
+                nextCfg.cfUserName = ""
+                Store.isAdmin = false
+              }
+              DbSettings.set(nextCfg)
+              await Store.loadState()
+              UI.renderBoard()
+              UI.updateMenuButtonAvatar()
+              UI.updateAuthButtonsVisibility()
+              UI.updateAdminPanelVisibility()
+            }
+            UI.renderBoardSelect(cfBoardSelect, cfIdInput, UI.accessibleBoards)
+            UI.updateBoardNameLabel()
+          }
+        } catch (err) {
+          UI.showAlert(err.message || "Failed to delete board")
         }
       })
     }

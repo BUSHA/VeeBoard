@@ -584,7 +584,7 @@ export default {
 
     const headers = {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, X-Board-ID, X-User-Token",
     };
 
@@ -653,6 +653,88 @@ export default {
           token: session.token,
           expiresAt: session.expiresAt,
           isAdmin: true,
+        }, headers);
+      }
+
+      if (path === "/boards" && method === "PUT") {
+        const currentUserEmail = await getSessionUser(env, boardId, getUserToken(request, url));
+        if (!currentUserEmail || !(await isUserAdmin(env, boardId, currentUserEmail))) {
+          return jsonResponse({ error: "Only admin can rename boards." }, headers, 403);
+        }
+
+        const body = await parseJson(request);
+        const targetBoardId = normalizeBoardId(body.boardId || "");
+        const newName = (body.name || "").trim();
+        if (!targetBoardId) {
+          return jsonResponse({ error: "Board ID is required." }, headers, 400);
+        }
+        if (!newName) {
+          return jsonResponse({ error: "Board name is required." }, headers, 400);
+        }
+
+        const board = await readBoardRow(env, targetBoardId);
+        if (!board) {
+          return jsonResponse({ error: "Board not found." }, headers, 404);
+        }
+
+        const isTargetAdmin = await isUserAdmin(env, targetBoardId, currentUserEmail);
+        if (!isTargetAdmin) {
+          return jsonResponse({ error: "Only admin of the target board can rename it." }, headers, 403);
+        }
+
+        await env.DB.prepare("UPDATE boards SET name = ?, updated_at = ? WHERE id = ?")
+          .bind(newName, new Date().toISOString(), targetBoardId).run();
+
+        return jsonResponse({
+          success: true,
+          board: { id: targetBoardId, name: newName },
+          boards: await listAccessibleBoards(env, currentUserEmail),
+        }, headers);
+      }
+
+      if (path === "/boards" && method === "DELETE") {
+        const currentUserEmail = await getSessionUser(env, boardId, getUserToken(request, url));
+        if (!currentUserEmail || !(await isUserAdmin(env, boardId, currentUserEmail))) {
+          return jsonResponse({ error: "Only admin can delete boards." }, headers, 403);
+        }
+
+        const body = await parseJson(request);
+        const targetBoardId = normalizeBoardId(body.boardId || "");
+        if (!targetBoardId) {
+          return jsonResponse({ error: "Board ID is required." }, headers, 400);
+        }
+        if (targetBoardId === "default") {
+          return jsonResponse({ error: "The default board cannot be deleted." }, headers, 403);
+        }
+
+        const board = await readBoardRow(env, targetBoardId);
+        if (!board) {
+          return jsonResponse({ error: "Board not found." }, headers, 404);
+        }
+
+        const isTargetAdmin = await isUserAdmin(env, targetBoardId, currentUserEmail);
+        if (!isTargetAdmin) {
+          return jsonResponse({ error: "Only admin of the target board can delete it." }, headers, 403);
+        }
+
+        if (env.BUCKET) {
+          try {
+            const prefix = `${targetBoardId}/`;
+            const objects = await env.BUCKET.list({ prefix });
+            for (const obj of objects.objects) {
+              await env.BUCKET.delete(obj.key);
+            }
+          } catch {}
+        }
+
+        await env.DB.prepare("DELETE FROM board_sessions WHERE board_id = ?").bind(targetBoardId).run();
+        await env.DB.prepare("DELETE FROM board_user_credentials WHERE board_id = ?").bind(targetBoardId).run();
+        await env.DB.prepare("DELETE FROM board_users WHERE board_id = ?").bind(targetBoardId).run();
+        await env.DB.prepare("DELETE FROM boards WHERE id = ?").bind(targetBoardId).run();
+
+        return jsonResponse({
+          success: true,
+          boards: await listAccessibleBoards(env, currentUserEmail),
         }, headers);
       }
 

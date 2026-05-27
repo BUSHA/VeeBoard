@@ -1208,7 +1208,8 @@ dialog:focus-visible {
 
 /* Ensure alerts/choice dialogs stay compact and centered */
 #confirmDialog .editor-form,
-#importChoice .editor-form {
+#importChoice .editor-form,
+#promptDialog .editor-form {
   width: min(380px, 90vw);
   max-height: 85vh;
 }
@@ -1702,6 +1703,47 @@ dialog:focus-visible {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
+}
+
+.board-selector-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.board-selector-row select,
+.board-selector-row input[type="text"] {
+  flex: 1 1 0;
+  min-width: 120px;
+  width: auto;
+}
+
+.board-action-btns {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.board-action-btns .btn {
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .board-action-btns {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+#deleteBoardRow {
+  margin-top: 8px;
+}
+
+#promptDialog input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* Profile dialog redesign */
