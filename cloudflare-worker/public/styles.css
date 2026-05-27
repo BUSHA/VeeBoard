@@ -1355,8 +1355,9 @@ dialog:focus-visible {
 
 .admin-user-badges {
   display: flex;
-  gap: 16px;
-  align-items: center;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
   flex-shrink: 0;
 }
 
@@ -1633,6 +1634,7 @@ dialog:focus-visible {
 
   .admin-user-badges {
     flex-basis: 100%;
+    flex-direction: row;
     gap: 20px;
   }
 
