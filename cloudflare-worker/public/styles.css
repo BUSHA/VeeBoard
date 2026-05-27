@@ -628,7 +628,7 @@ hr {
 
 .card-due {
   font-variant-numeric: tabular-nums;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted);
 }
 
