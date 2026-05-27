@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.2.1"
+  version: "0.2.5"
 }
 
 /* Live sync echo guard */
@@ -398,7 +398,7 @@ const CloudflareBackend = {
         const imageBoardId = u.searchParams.get("boardId") || keyBoardId || config.cfBoardId || "default"
         const boardSession = DbSettings.getBoardSession(imageBoardId, config)
         u.searchParams.set("token", boardSession?.cfUserToken || config.cfUserToken)
-        if (boardSession?.cfUserToken) u.searchParams.set("boardId", imageBoardId)
+        u.searchParams.set("boardId", boardSession?.cfUserToken ? imageBoardId : (config.cfBoardId || "default"))
         return u.toString()
       }
       if (u.origin === worker.origin) {
