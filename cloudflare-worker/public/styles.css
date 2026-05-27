@@ -55,6 +55,10 @@ html[data-theme="dark"] {
     scrollbar-width: thin;
     scrollbar-color: var(--border) var(--panel);
   }
+
+  .logo {
+    filter: invert(1);
+  }
 }
 
 * {
