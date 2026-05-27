@@ -1754,25 +1754,28 @@ const UI = {
       
       saveBtn.addEventListener("click", () => { saveChanges(); });
       
-      delBtn.addEventListener("click", () => {
+      delBtn.addEventListener("click", async () => {
         if (isProtectedAdmin) return
-        if (confirm(`${I18n.t("delete_user") || "Remove user"} ${u.email || u.name}?`)) {
-          const avatarKey = u.avatarKey
-          if (cfg.cfWorkerUrl) {
-            CloudflareBackend.deleteUser(u.email, cfg)
-              .then(async (result) => {
-                UI.adminUsers = result.users || [];
-                await Store.loadState();
-                UI.renderBoard();
-                UI.renderAdminUsers();
-                UI.updateMenuButtonAvatar();
-                if (avatarKey) {
-                  CloudflareBackend.deleteImage(avatarKey, cfg).catch(console.error)
-                }
-              })
-              .catch((err) => UI.showAlert(err.message || "Failed to delete user"));
-            return;
-          }
+        const choice = await UI.showConfirm(I18n.t("delete_user_confirm", { id: u.email || u.name }), {
+          title: I18n.t("delete_user"),
+          deleteText: I18n.t("delete"),
+          showArchiveButton: false,
+        })
+        if (choice !== "delete") return
+        const avatarKey = u.avatarKey
+        if (cfg.cfWorkerUrl) {
+          CloudflareBackend.deleteUser(u.email, cfg)
+            .then(async (result) => {
+              UI.adminUsers = result.users || [];
+              await Store.loadState();
+              UI.renderBoard();
+              UI.renderAdminUsers();
+              UI.updateMenuButtonAvatar();
+              if (avatarKey) {
+                CloudflareBackend.deleteImage(avatarKey, cfg).catch(console.error)
+              }
+            })
+            .catch((err) => UI.showAlert(err.message || "Failed to delete user"));
         }
       });
       list.appendChild(row);
