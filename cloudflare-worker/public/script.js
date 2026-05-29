@@ -2633,16 +2633,7 @@ const UI = {
   },
 
   // --- Filtering & Searching ---
-  updateTagFilters() {
-    const tagBox = Utils.qs("#tagFilters")
-    const userBox = Utils.qs("#userFilters")
-    if (Store.requiresCloudflareLogin()) {
-      tagBox.innerHTML = ""
-      userBox.innerHTML = ""
-      tagBox.style.display = "none"
-      userBox.style.display = "none"
-      return
-    }
+  getAvailableFilters() {
     const allTags = new Set()
     const allUsers = new Map() // name -> user object
 
@@ -2657,6 +2648,45 @@ const UI = {
           }
         })
       )
+
+    return { allTags, allUsers }
+  },
+
+  pruneUnavailableFilters(allTags, allUsers) {
+    let changed = false
+
+    for (const tag of [...this.activeTagFilters]) {
+      if (!allTags.has(tag)) {
+        this.activeTagFilters.delete(tag)
+        changed = true
+      }
+    }
+
+    for (const userKey of [...this.activeUserFilters]) {
+      if (!allUsers.has(userKey)) {
+        this.activeUserFilters.delete(userKey)
+        changed = true
+      }
+    }
+
+    return changed
+  },
+
+  updateTagFilters() {
+    const tagBox = Utils.qs("#tagFilters")
+    const userBox = Utils.qs("#userFilters")
+    if (Store.requiresCloudflareLogin()) {
+      tagBox.innerHTML = ""
+      userBox.innerHTML = ""
+      tagBox.style.display = "none"
+      userBox.style.display = "none"
+      this.activeTagFilters.clear()
+      this.activeUserFilters.clear()
+      return
+    }
+
+    const { allTags, allUsers } = this.getAvailableFilters()
+    const filtersChanged = this.pruneUnavailableFilters(allTags, allUsers)
 
     tagBox.innerHTML = ""
     userBox.innerHTML = ""
@@ -2705,6 +2735,8 @@ const UI = {
     } else {
       tagBox.style.display = "none"
     }
+
+    if (filtersChanged) this.applyFilters()
   },
 
   toggleTagFilter(tag) {
