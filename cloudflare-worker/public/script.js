@@ -1050,6 +1050,8 @@ const Store = {
       card.lastChangedBy = Meta.clientId
       card.seq = Meta.nextSeq()
       card.contentChangedAt = card.lastChanged
+      card.contentChangedBy = currentUser?.name || currentUser?.email || ""
+      card.contentChangedByEmail = currentUser?.email || ""
       this.saveState()
       return card
     }
@@ -2158,24 +2160,10 @@ const UI = {
     const attBox = Utils.qs(".card-attachments", node)
     if (attBox) {
       attBox.innerHTML = ""
-      if (card.attachments && card.attachments.length > 0) {
+      const attachmentCount = card.attachments?.length || 0
+      if (attachmentCount > 0) {
         attBox.style.display = ""
-        card.attachments.forEach((att) => {
-          const item = document.createElement("div")
-          item.className = "attachment-item"
-          const img = document.createElement("img")
-          const authUrl = CloudflareBackend.getAuthenticatedImageUrl(att.url)
-          img.src = authUrl
-          img.loading = "lazy"
-          img.alt = I18n.t("attachment")
-          item.append(img)
-          
-          item.addEventListener("pointerdown", (e) => {
-            e.stopPropagation()
-            this.showLightbox(authUrl)
-          })
-          attBox.append(item)
-        })
+        attBox.textContent = I18n.t("attachments_count", { count: attachmentCount })
       } else {
         attBox.style.display = "none"
       }
@@ -2198,42 +2186,6 @@ const UI = {
       deleteBtn.style.display = Store.canCurrentUserEditCard(card) ? "" : "none"
     }
 
-    const creatorEl = Utils.qs(".card-creator", node)
-    if (creatorEl) {
-      const creatorName = (card.createdBy || "").trim()
-      if (creatorName) {
-        creatorEl.innerHTML = ""
-        const createdAtTs = card.createdAt ? Date.parse(card.createdAt) : 0
-        const editedAtTs = card.contentChangedAt ? Date.parse(card.contentChangedAt) : 0
-        const isEdited = !!createdAtTs && !!editedAtTs && editedAtTs > createdAtTs
-        const timestamp = isEdited ? card.contentChangedAt : card.createdAt
-        const formattedTimestamp = timestamp
-          ? new Date(timestamp).toLocaleDateString(undefined, {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            })
-          : ""
-        const label = document.createElement("span")
-        label.className = "card-creator-label"
-        label.textContent = `${I18n.t(isEdited ? "edited_label" : "author_label")}:`
-        const meta = document.createElement("span")
-        meta.className = "card-creator-meta"
-        meta.textContent = formattedTimestamp
-        creatorEl.append(
-          label,
-          this.createUserBadge({ name: creatorName, email: card.createdByEmail || "" }, { subtle: true }),
-          meta
-        )
-        creatorEl.style.display = ""
-      } else {
-        creatorEl.innerHTML = ""
-        creatorEl.style.display = "none"
-      }
-    }
-    
     // Hide card-meta if all its children are hidden
     const cardMeta = Utils.qs(".card-meta", node)
     if (cardMeta) {
@@ -2540,9 +2492,35 @@ const UI = {
     }
 
     const edited = Utils.qs("#cardDetailEdited")
-    const editedValue = card.contentChangedAt || card.lastChanged || ""
-    edited.textContent = editedValue ? this.formatDateTime(editedValue) : I18n.t("not_edited")
-    edited.classList.toggle("card-detail-empty", !editedValue)
+    edited.innerHTML = ""
+    const createdAtTs = card.createdAt ? Date.parse(card.createdAt) : 0
+    const editedAtTs = card.contentChangedAt ? Date.parse(card.contentChangedAt) : 0
+    const isEdited = !!createdAtTs && !!editedAtTs && editedAtTs > createdAtTs
+    if (isEdited) {
+      edited.classList.remove("card-detail-empty")
+      const row = document.createElement("div")
+      row.className = "card-detail-person-meta"
+      const editorName = (card.contentChangedBy || "").trim() || (card.createdBy || "").trim()
+      const editorEmail = (card.contentChangedByEmail || "").trim() || (card.createdByEmail || "").trim()
+      if (editorName || editorEmail) {
+        row.append(this.createUserBadge({ name: editorName || editorEmail, email: editorEmail }, { subtle: true }))
+      } else {
+        const unknown = document.createElement("span")
+        unknown.textContent = I18n.t("unknown")
+        row.append(unknown)
+      }
+      const editedDate = this.formatDateTime(card.contentChangedAt)
+      if (editedDate) {
+        const date = document.createElement("span")
+        date.className = "card-detail-meta-date"
+        date.textContent = editedDate
+        row.append(date)
+      }
+      edited.append(row)
+    } else {
+      edited.textContent = I18n.t("not_edited")
+      edited.classList.add("card-detail-empty")
+    }
 
     Utils.qs("#cardDetailUserInput").value = card.assignedUser?.name || ""
     Utils.qs("#cardDetailTagsInput").value = (card.tags || []).join(", ")

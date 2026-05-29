@@ -2553,15 +2553,18 @@ html[data-theme="dark"] .board-selector-row select {
 }
 
 .card-creator {
+  display: none;
+}
+
+.card-stats-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: color-mix(in srgb, var(--muted), transparent 22%);
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .card-comments-count {
-  align-self: flex-end;
+  margin-left: auto;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.4;
@@ -2770,10 +2773,11 @@ html[data-theme="dark"] .board-selector-row select {
    Card Attachments
    ================================= */
 .card-attachments {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
-  gap: 8px;
-  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 500;
+  text-align: right;
 }
 
 .attachment-item {
