@@ -905,6 +905,10 @@ const Store = {
 
   canCurrentUserManageComment(comment) {
     if (this.isCurrentUserAdmin()) return true
+    return this.canCurrentUserEditComment(comment)
+  },
+
+  canCurrentUserEditComment(comment) {
     const currentUser = this.getCurrentUserProfile()
     return !!currentUser && !!comment && (
       ((comment.authorEmail || "").trim().toLowerCase() && (comment.authorEmail || "").trim().toLowerCase() === currentUser.email) ||
@@ -2635,7 +2639,7 @@ const UI = {
         actions.append(replyBtn)
       }
 
-      if (Store.canCurrentUserManageComment(comment)) {
+      if (Store.canCurrentUserEditComment(comment)) {
         const editBtn = document.createElement("button")
         editBtn.type = "button"
         editBtn.className = "btn-link"
@@ -2645,6 +2649,10 @@ const UI = {
         editBtn.title = I18n.t("edit_comment")
         editBtn.setAttribute("aria-label", I18n.t("edit_comment"))
 
+        actions.append(editBtn)
+      }
+
+      if (Store.canCurrentUserManageComment(comment)) {
         const deleteBtn = document.createElement("button")
         deleteBtn.type = "button"
         deleteBtn.className = "btn-link"
@@ -2654,7 +2662,7 @@ const UI = {
         deleteBtn.title = I18n.t("delete_comment")
         deleteBtn.setAttribute("aria-label", I18n.t("delete_comment"))
 
-        actions.append(editBtn, deleteBtn)
+        actions.append(deleteBtn)
       }
 
       header.append(actions)
@@ -3665,7 +3673,7 @@ const App = {
       }
 
       if (actionEl.dataset.commentAction === "edit") {
-        if (!Store.canCurrentUserManageComment(comment)) {
+        if (!Store.canCurrentUserEditComment(comment)) {
           UI.showAlert(I18n.t("own_comment_only_error"))
           return
         }
@@ -4521,7 +4529,7 @@ const App = {
 
     if (UI.editingCommentId) {
       const comment = Store.findComment(card, UI.editingCommentId).comment
-      if (!comment || !Store.canCurrentUserManageComment(comment)) {
+      if (!comment || !Store.canCurrentUserEditComment(comment)) {
         UI.showAlert(I18n.t("own_comment_only_error"))
         return
       }

@@ -127,16 +127,17 @@ function cardLabel(card = {}) {
   return truncateText(card.title || "Untitled card", 90);
 }
 
-function commentsChangeAllowed(oldComments = [], newComments = [], currentUser = {}) {
+function commentsChangeAllowed(oldComments = [], newComments = [], currentUser = {}, options = {}) {
   const oldList = flattenComments(oldComments);
   const newList = flattenComments(newComments);
   const oldById = new Map(oldList.map((comment) => [comment.id, comment]));
   const newById = new Map(newList.map((comment) => [comment.id, comment]));
+  const canDeleteAny = !!options.canDeleteAny;
 
   for (const oldComment of oldList) {
     const next = newById.get(oldComment.id);
     if (!next) {
-      if (!currentUserMatchesIdentity({ email: oldComment.authorEmail, name: oldComment.author }, currentUser)) return false;
+      if (!canDeleteAny && !currentUserMatchesIdentity({ email: oldComment.authorEmail, name: oldComment.author }, currentUser)) return false;
       continue;
     }
     if ((next.author || "").trim() !== (oldComment.author || "").trim()) return false;
@@ -1399,13 +1400,34 @@ export default {
           return jsonResponse({ error: "Only admin can modify users list." }, headers, 403);
         }
 
+        const oldCards = flattenCards(existingState);
+        const newCards = flattenCards(body);
+
+        for (const [cardId, oldEntry] of oldCards.entries()) {
+          const newEntry = newCards.get(cardId);
+          if (!newEntry) continue;
+
+          const commentsChanged =
+            stableStringify(normalizeComments(oldEntry.card.comments)) !==
+            stableStringify(normalizeComments(newEntry.card.comments));
+
+          if (commentsChanged && !commentsChangeAllowed(oldEntry.card.comments, newEntry.card.comments, currentUser, { canDeleteAny: isAdmin })) {
+            return jsonResponse({ error: "You can edit or delete only your own comments." }, headers, 403);
+          }
+        }
+
+        for (const [cardId, newEntry] of newCards.entries()) {
+          if (oldCards.has(cardId)) continue;
+          const newComments = flattenComments(newEntry.card.comments);
+          if (newComments.some((comment) => !currentUserMatchesIdentity({ email: comment.authorEmail, name: comment.author }, currentUser))) {
+            return jsonResponse({ error: "You can add only your own comments." }, headers, 403);
+          }
+        }
+
         if (!isAdmin) {
           if (normalizeColumnShells(existingState.columns) !== normalizeColumnShells(body.columns)) {
             return jsonResponse({ error: "Only admin can modify board structure." }, headers, 403);
           }
-
-          const oldCards = flattenCards(existingState);
-          const newCards = flattenCards(body);
 
           for (const [cardId, oldEntry] of oldCards.entries()) {
             const newEntry = newCards.get(cardId);
@@ -1425,10 +1447,6 @@ export default {
             const commentsChanged =
               stableStringify(normalizeComments(oldEntry.card.comments)) !==
               stableStringify(normalizeComments(newEntry.card.comments));
-
-            if (commentsChanged && !commentsChangeAllowed(oldEntry.card.comments, newEntry.card.comments, currentUser)) {
-              return jsonResponse({ error: "You can edit or delete only your own comments." }, headers, 403);
-            }
 
             const cardChanged =
               JSON.stringify(oldEntry.card) !== JSON.stringify(newEntry.card) ||
@@ -1481,10 +1499,6 @@ export default {
             if (oldCards.has(cardId)) continue;
             if (!currentUserMatchesIdentity({ email: newEntry.card.createdByEmail, name: newEntry.card.createdBy }, currentUser)) {
               return jsonResponse({ error: "New cards must belong to the current user." }, headers, 403);
-            }
-            const newComments = flattenComments(newEntry.card.comments);
-            if (newComments.some((comment) => !currentUserMatchesIdentity({ email: comment.authorEmail, name: comment.author }, currentUser))) {
-              return jsonResponse({ error: "You can add only your own comments." }, headers, 403);
             }
           }
         }
