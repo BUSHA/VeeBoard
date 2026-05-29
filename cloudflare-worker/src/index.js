@@ -833,6 +833,7 @@ async function generateBoardChangeNotifications(env, boardId, existingState, nex
       const commentAuthorEmail = normalizeEmail(comment.authorEmail || "");
       if (commentAuthorEmail && commentAuthorEmail !== actorEmail) continue;
       const commentText = truncateText(comment.text || "", 140);
+      const repliedTo = new Set();
       if (comment.parentId) {
         const parent = oldCommentsById.get(comment.parentId) || newComments.find((item) => item.id === comment.parentId);
         await notify(parent?.authorEmail, "reply_to_comment", newEntry, {
@@ -841,8 +842,10 @@ async function generateBoardChangeNotifications(env, boardId, existingState, nex
           commentText,
           body: commentText || cardLabel(newEntry.card),
         });
+        if (parent?.authorEmail) repliedTo.add(normalizeEmail(parent.authorEmail));
       }
       for (const recipientEmail of recipientSet({ email: newEntry.card.createdByEmail }, newAssignee)) {
+        if (repliedTo.has(normalizeEmail(recipientEmail))) continue;
         await notify(recipientEmail, "comment_on_owned_or_assigned_card", newEntry, {
           title: "New comment",
           commentId: comment.id,
