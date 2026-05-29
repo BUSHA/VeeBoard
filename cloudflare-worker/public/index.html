@@ -206,6 +206,105 @@
     </form>
   </dialog>
 
+  <dialog id="cardDetailDialog" aria-label="Card details" tabindex="-1">
+    <form id="cardDetailForm" method="dialog" class="card-detail">
+      <header class="card-detail-header">
+        <div class="card-detail-heading">
+          <span id="cardDetailColumn" class="card-detail-column"></span>
+          <h2 id="cardDetailTitle" class="card-detail-title"></h2>
+          <input id="cardDetailTitleInput" name="title" class="card-detail-title-input" required maxlength="160" />
+        </div>
+        <div class="card-detail-header-actions">
+          <button id="cardDetailEditBtn" type="button" class="btn secondary" data-i18n="edit_details">Edit details</button>
+          <button id="cardDetailDeleteBtn" type="button" class="btn secondary danger" data-i18n="delete">Delete</button>
+          <button id="cardDetailCloseBtn" type="button" class="btn secondary" value="cancel" formnovalidate data-i18n="close">Close</button>
+        </div>
+      </header>
+
+      <div class="card-detail-body">
+        <main class="card-detail-main">
+          <section class="card-detail-section">
+            <div class="card-detail-section-title" data-i18n="description_label">Description</div>
+            <div id="cardDetailDescription" class="card-detail-description"></div>
+            <div id="cardDetailDescriptionEditor" class="content-editor card-detail-description-editor" contenteditable="true" role="textbox"></div>
+          </section>
+
+          <section class="card-detail-section">
+            <div class="card-detail-section-title" data-i18n="attachments">Attachments</div>
+            <div id="cardDetailAttachments" class="card-detail-attachments"></div>
+            <div id="cardDetailAttachmentAction" class="attachment-action">
+              <button type="button" id="cardDetailAddAttachmentBtn" class="btn-link" data-i18n="attach_picture">Attach picture</button>
+              <span class="attachment-hint" data-i18n="attach_picture_hint">— or drag & drop / paste</span>
+            </div>
+          </section>
+
+          <section id="cardDetailCommentsSection" class="editor-comments-section card-detail-comments" style="display: none;">
+            <div class="card-detail-section-title" data-i18n="activity">Activity</div>
+            <div id="cardDetailComments" class="editor-comments-list"></div>
+            <div id="cardDetailCommentReplyingTo" class="comment-replying-to" style="display: none;"></div>
+            <div class="comment-composer-actions">
+              <input id="cardDetailCommentInput" type="text" data-i18n-placeholder="comment_placeholder" placeholder="Write a comment..." />
+              <button type="button" id="cardDetailCancelCommentEditBtn" class="btn secondary comment-icon-btn" style="display: none;" data-i18n-title="cancel" title="Cancel"></button>
+              <button type="button" id="cardDetailSaveCommentBtn" class="btn primary comment-icon-btn" aria-label="Add comment" data-i18n-title="add_comment" title="Add comment"></button>
+            </div>
+          </section>
+        </main>
+
+        <aside class="card-detail-sidebar">
+          <section class="card-detail-panel">
+            <div class="card-detail-section-title" data-i18n="details">Details</div>
+            <div class="card-detail-field">
+              <span data-i18n="assigned_user_label">Assigned user</span>
+              <div id="cardDetailAssignee" class="card-detail-field-value"></div>
+              <div class="user-input-wrapper card-detail-edit-field">
+                <input id="cardDetailUserInput" name="user" placeholder="Type name..." autocomplete="off" data-i18n-placeholder="users_placeholder" />
+                <button type="button" id="cardDetailClearUserBtn" class="clear-input-btn" title="Clear user" aria-label="Clear user">&times;</button>
+                <div id="cardDetailUserAutocomplete" class="autocomplete-suggestions"></div>
+              </div>
+            </div>
+            <div class="card-detail-field">
+              <span data-i18n="due_date_label">Due date</span>
+              <time id="cardDetailDue" class="card-detail-field-value"></time>
+              <input id="cardDetailDueInput" name="due" type="datetime-local" class="card-detail-edit-field" />
+            </div>
+            <div class="card-detail-field">
+              <span data-i18n="tags_label">Tags (comma-separated)</span>
+              <div id="cardDetailTags" class="tags card-detail-field-value"></div>
+              <div class="tags-input-wrapper card-detail-edit-field">
+                <input id="cardDetailTagsInput" name="tags" placeholder="ui, bug, research" autocomplete="off" data-i18n-placeholder="tags_placeholder" />
+                <div id="cardDetailTagAutocomplete" class="autocomplete-suggestions"></div>
+              </div>
+            </div>
+            <div class="card-detail-field">
+              <span data-i18n="author_label">Created</span>
+              <div id="cardDetailAuthor" class="card-detail-field-value"></div>
+            </div>
+            <div class="card-detail-field">
+              <span data-i18n="edited_label">Edited</span>
+              <div id="cardDetailEdited" class="card-detail-field-value"></div>
+            </div>
+          </section>
+
+          <section id="cardDetailMovePanel" class="card-detail-panel">
+            <div class="card-detail-section-title" data-i18n="manage_card">Manage card</div>
+            <button id="cardDetailMarkDoneBtn" type="button" class="btn secondary" data-i18n="mark_as_done">Mark as done</button>
+            <div id="cardDetailMoveToWrap" class="move-to-menu-wrap" style="display: none;">
+              <button id="cardDetailMoveToBtn" type="button" class="btn secondary" data-i18n="move_to">Move to</button>
+              <div id="cardDetailMoveToMenu" class="editor-move-menu dropdown-content" role="menu"></div>
+            </div>
+          </section>
+        </aside>
+      </div>
+
+      <footer id="cardDetailEditActions" class="editor-actions card-detail-edit-actions">
+        <div class="actions-main">
+          <button id="cardDetailCancelEditBtn" type="button" class="btn secondary" formnovalidate data-i18n="exit_edit">Exit edit</button>
+          <button id="cardDetailSaveBtn" type="submit" class="btn primary" data-i18n="save_changes">Save changes</button>
+        </div>
+      </footer>
+    </form>
+  </dialog>
+
   <dialog id="colDialog" aria-label="Create column" tabindex="-1">
     <form id="colForm" method="dialog" class="editor-form">
       <h3 data-i18n="create_column">Create column</h3>
