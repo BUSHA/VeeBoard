@@ -2491,9 +2491,22 @@ const UI = {
     }
 
     const due = Utils.qs("#cardDetailDue")
-    due.textContent = card.due ? this.formatDateTime(card.due) : I18n.t("no_due_date")
+    due.classList.remove("due-badge", "due-badge--soon", "due-badge--overdue")
+    const formattedDue = card.due ? this.formatDateTime(card.due) : ""
+    due.textContent = formattedDue || I18n.t("no_due_date")
     due.dateTime = card.due || ""
     due.classList.toggle("card-detail-empty", !card.due)
+    if (card.due) {
+      const dueDate = new Date(card.due)
+      const hoursLeft = (dueDate.getTime() - Date.now()) / (1000 * 60 * 60)
+      const isCompletedColumn = col.isDone || col.isArchive
+      if (!isCompletedColumn && hoursLeft < 0) {
+        due.textContent = `${formattedDue} ${I18n.t("overdue")}`
+        due.classList.add("due-badge", "due-badge--overdue")
+      } else if (!isCompletedColumn && hoursLeft < 48) {
+        due.classList.add("due-badge", "due-badge--soon")
+      }
+    }
 
     const tags = Utils.qs("#cardDetailTags")
     tags.innerHTML = ""
@@ -2510,9 +2523,17 @@ const UI = {
     const authorName = (card.createdBy || "").trim()
     if (authorName) {
       author.classList.remove("card-detail-empty")
-      author.append(this.createUserBadge({ name: authorName, email: card.createdByEmail || "" }, { subtle: true }))
+      const row = document.createElement("div")
+      row.className = "card-detail-person-meta"
+      row.append(this.createUserBadge({ name: authorName, email: card.createdByEmail || "" }, { subtle: true }))
       const created = this.formatDateTime(card.createdAt)
-      if (created) author.append(document.createTextNode(` ${created}`))
+      if (created) {
+        const date = document.createElement("span")
+        date.className = "card-detail-meta-date"
+        date.textContent = created
+        row.append(date)
+      }
+      author.append(row)
     } else {
       author.textContent = I18n.t("unknown")
       author.classList.add("card-detail-empty")
@@ -4630,6 +4651,16 @@ const App = {
 
     // --- Dialogs ---
     Utils.qsa("dialog").forEach((dialog) => {
+      dialog.addEventListener("cancel", (e) => {
+        if (dialog === UI.cardDetailDialog) {
+          const form = Utils.qs("#cardDetailForm")
+          if (form?.dataset.editMode === "true") {
+            e.preventDefault()
+            form.dataset.editMode = "false"
+            UI.renderCardDetail()
+          }
+        }
+      })
       dialog.addEventListener("click", (e) => {
         if (e.target === dialog) dialog.close("cancel")
       })

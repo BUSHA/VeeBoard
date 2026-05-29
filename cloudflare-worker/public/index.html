@@ -214,11 +214,6 @@
           <h2 id="cardDetailTitle" class="card-detail-title"></h2>
           <input id="cardDetailTitleInput" name="title" class="card-detail-title-input" required maxlength="160" />
         </div>
-        <div class="card-detail-header-actions">
-          <button id="cardDetailEditBtn" type="button" class="btn secondary" data-i18n="edit_details">Edit details</button>
-          <button id="cardDetailDeleteBtn" type="button" class="btn secondary danger" data-i18n="delete">Delete</button>
-          <button id="cardDetailCloseBtn" type="button" class="btn secondary" value="cancel" formnovalidate data-i18n="close">Close</button>
-        </div>
       </header>
 
       <div class="card-detail-body">
@@ -255,7 +250,7 @@
             <div class="card-detail-section-title" data-i18n="details">Details</div>
             <div class="card-detail-field">
               <span data-i18n="assigned_user_label">Assigned user</span>
-              <div id="cardDetailAssignee" class="card-detail-field-value"></div>
+              <div id="cardDetailAssignee" class="card-detail-field-value card-detail-editable-value"></div>
               <div class="user-input-wrapper card-detail-edit-field">
                 <input id="cardDetailUserInput" name="user" placeholder="Type name..." autocomplete="off" data-i18n-placeholder="users_placeholder" />
                 <button type="button" id="cardDetailClearUserBtn" class="clear-input-btn" title="Clear user" aria-label="Clear user">&times;</button>
@@ -264,12 +259,12 @@
             </div>
             <div class="card-detail-field">
               <span data-i18n="due_date_label">Due date</span>
-              <time id="cardDetailDue" class="card-detail-field-value"></time>
+              <time id="cardDetailDue" class="card-detail-field-value card-detail-editable-value"></time>
               <input id="cardDetailDueInput" name="due" type="datetime-local" class="card-detail-edit-field" />
             </div>
             <div class="card-detail-field">
               <span data-i18n="tags_label">Tags (comma-separated)</span>
-              <div id="cardDetailTags" class="tags card-detail-field-value"></div>
+              <div id="cardDetailTags" class="tags card-detail-field-value card-detail-editable-value"></div>
               <div class="tags-input-wrapper card-detail-edit-field">
                 <input id="cardDetailTagsInput" name="tags" placeholder="ui, bug, research" autocomplete="off" data-i18n-placeholder="tags_placeholder" />
                 <div id="cardDetailTagAutocomplete" class="autocomplete-suggestions"></div>
@@ -292,12 +287,17 @@
               <button id="cardDetailMoveToBtn" type="button" class="btn secondary" data-i18n="move_to">Move to</button>
               <div id="cardDetailMoveToMenu" class="editor-move-menu dropdown-content" role="menu"></div>
             </div>
+            <button id="cardDetailDeleteBtn" type="button" class="btn-link danger-link" data-i18n="delete_card">Delete card</button>
           </section>
         </aside>
       </div>
 
-      <footer id="cardDetailEditActions" class="editor-actions card-detail-edit-actions">
-        <div class="actions-main">
+      <footer class="editor-actions card-detail-actions">
+        <div id="cardDetailReadActions" class="actions-main card-detail-read-actions">
+          <button id="cardDetailEditBtn" type="button" class="btn secondary" data-i18n="edit_details">Edit details</button>
+          <button id="cardDetailCloseBtn" type="button" class="btn secondary" value="cancel" formnovalidate data-i18n="close">Close</button>
+        </div>
+        <div id="cardDetailEditActions" class="actions-main card-detail-edit-actions">
           <button id="cardDetailCancelEditBtn" type="button" class="btn secondary" formnovalidate data-i18n="exit_edit">Exit edit</button>
           <button id="cardDetailSaveBtn" type="submit" class="btn primary" data-i18n="save_changes">Save changes</button>
         </div>
