@@ -18,7 +18,7 @@ function flattenCards(state = {}) {
   const byId = new Map();
   for (const col of state.columns || []) {
     (col.cards || []).forEach((card, index) => {
-      byId.set(card.id, { card, colId: col.id, index });
+      byId.set(card.id, { card, colId: col.id, colTitle: col.title || "", isDone: !!col.isDone, isArchive: !!col.isArchive, index });
     });
   }
   return byId;
@@ -107,6 +107,24 @@ function currentUserMatchesIdentity(identity = {}, currentUser = {}) {
   const identityName = (identity.name || "").trim();
   if (currentEmail && identityEmail) return currentEmail === identityEmail;
   return !!currentName && currentName === identityName;
+}
+
+function stripHtml(value = "") {
+  return String(value || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function truncateText(value = "", max = 120) {
+  const text = String(value || "").trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, max - 1).trim()}…`;
+}
+
+function userLabel(user = {}) {
+  return (user.name || user.email || "").trim();
+}
+
+function cardLabel(card = {}) {
+  return truncateText(card.title || "Untitled card", 90);
 }
 
 function commentsChangeAllowed(oldComments = [], newComments = [], currentUser = {}) {
@@ -344,6 +362,9 @@ async function ensureSchema(env) {
     await env.DB.prepare(
       "CREATE TABLE IF NOT EXISTS board_sessions (token TEXT PRIMARY KEY, board_id TEXT NOT NULL, user_email TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL)"
     ).run();
+    await env.DB.prepare(
+      "CREATE TABLE IF NOT EXISTS board_notifications (id TEXT PRIMARY KEY, board_id TEXT NOT NULL, recipient_email TEXT NOT NULL, actor_email TEXT DEFAULT '', type TEXT NOT NULL, card_id TEXT DEFAULT '', comment_id TEXT DEFAULT '', title TEXT DEFAULT '', body TEXT DEFAULT '', metadata_json TEXT DEFAULT '{}', created_at TEXT NOT NULL, read_at TEXT DEFAULT '')"
+    ).run();
     await ensureColumn(env, "boards", "updated_at", "TEXT");
     await ensureColumn(env, "boards", "name", "TEXT DEFAULT ''");
     await ensureColumn(env, "boards", "created_by", "TEXT DEFAULT ''");
@@ -367,10 +388,23 @@ async function ensureSchema(env) {
     await ensureColumn(env, "board_sessions", "user_email", "TEXT DEFAULT ''");
     await ensureColumn(env, "board_sessions", "created_at", "TEXT");
     await ensureColumn(env, "board_sessions", "expires_at", "TEXT");
+    await ensureColumn(env, "board_notifications", "board_id", "TEXT DEFAULT 'default'");
+    await ensureColumn(env, "board_notifications", "recipient_email", "TEXT DEFAULT ''");
+    await ensureColumn(env, "board_notifications", "actor_email", "TEXT DEFAULT ''");
+    await ensureColumn(env, "board_notifications", "type", "TEXT DEFAULT ''");
+    await ensureColumn(env, "board_notifications", "card_id", "TEXT DEFAULT ''");
+    await ensureColumn(env, "board_notifications", "comment_id", "TEXT DEFAULT ''");
+    await ensureColumn(env, "board_notifications", "title", "TEXT DEFAULT ''");
+    await ensureColumn(env, "board_notifications", "body", "TEXT DEFAULT ''");
+    await ensureColumn(env, "board_notifications", "metadata_json", "TEXT DEFAULT '{}'");
+    await ensureColumn(env, "board_notifications", "created_at", "TEXT");
+    await ensureColumn(env, "board_notifications", "read_at", "TEXT DEFAULT ''");
     await migrateBoardSessionsTable(env);
     await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_board_users_board_id ON board_users(board_id)").run();
     await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_board_user_credentials_board_id ON board_user_credentials(board_id)").run();
     await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_board_sessions_board_id ON board_sessions(board_id)").run();
+    await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_board_notifications_recipient ON board_notifications(board_id, recipient_email, created_at)").run();
+    await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_board_notifications_unread ON board_notifications(board_id, recipient_email, read_at)").run();
   })();
   return schemaReady;
 }
@@ -497,6 +531,7 @@ async function deleteUserRecords(env, boardId, email) {
   await env.DB.prepare("DELETE FROM board_users WHERE board_id = ? AND email = ?").bind(boardId, normalizedEmail).run();
   await env.DB.prepare("DELETE FROM board_user_credentials WHERE board_id = ? AND email = ?").bind(boardId, normalizedEmail).run();
   await env.DB.prepare("DELETE FROM board_sessions WHERE board_id = ? AND user_email = ?").bind(boardId, normalizedEmail).run();
+  await env.DB.prepare("DELETE FROM board_notifications WHERE board_id = ? AND recipient_email = ?").bind(boardId, normalizedEmail).run();
 }
 
 async function createSession(env, boardId, userEmail) {
@@ -559,6 +594,263 @@ async function persistBoardState(env, boardId, state) {
      VALUES (?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`
   ).bind(boardId, data, new Date().toISOString()).run();
+}
+
+async function insertNotification(env, notification = {}, { dedupe = false } = {}) {
+  const recipientEmail = normalizeEmail(notification.recipientEmail || "");
+  const type = String(notification.type || "").trim();
+  const boardId = normalizeBoardId(notification.boardId || "") || "default";
+  if (!recipientEmail || !type) return false;
+
+  const actorEmail = normalizeEmail(notification.actorEmail || "");
+  if (actorEmail && actorEmail === recipientEmail) return false;
+
+  const metadata = notification.metadata && typeof notification.metadata === "object" ? notification.metadata : {};
+  const metadataJson = stableStringify(metadata);
+  const cardId = notification.cardId || "";
+  const commentId = notification.commentId || "";
+
+  if (dedupe) {
+    const existing = await env.DB.prepare(
+      `SELECT id FROM board_notifications
+       WHERE board_id = ? AND recipient_email = ? AND type = ? AND card_id = ? AND comment_id = ? AND metadata_json = ?
+       LIMIT 1`
+    ).bind(boardId, recipientEmail, type, cardId, commentId, metadataJson).first();
+    if (existing) return false;
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO board_notifications
+       (id, board_id, recipient_email, actor_email, type, card_id, comment_id, title, body, metadata_json, created_at, read_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')`
+  ).bind(
+    crypto.randomUUID(),
+    boardId,
+    recipientEmail,
+    actorEmail,
+    type,
+    cardId,
+    commentId,
+    truncateText(notification.title || "", 180),
+    truncateText(notification.body || "", 280),
+    metadataJson,
+    notification.createdAt || new Date().toISOString()
+  ).run();
+  return true;
+}
+
+function normalizeNotificationRow(row = {}) {
+  let metadata = {};
+  try {
+    metadata = row.metadataJson ? JSON.parse(row.metadataJson) : {};
+  } catch {}
+  return {
+    id: row.id || "",
+    boardId: row.boardId || "",
+    recipientEmail: normalizeEmail(row.recipientEmail || ""),
+    actorEmail: normalizeEmail(row.actorEmail || ""),
+    type: row.type || "",
+    cardId: row.cardId || "",
+    commentId: row.commentId || "",
+    title: row.title || "",
+    body: row.body || "",
+    metadata,
+    createdAt: row.createdAt || "",
+    readAt: row.readAt || "",
+  };
+}
+
+async function listNotifications(env, boardId, recipientEmail, limit = 50) {
+  const normalizedLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100);
+  const rows = await env.DB.prepare(
+    `SELECT
+       id,
+       board_id AS boardId,
+       recipient_email AS recipientEmail,
+       actor_email AS actorEmail,
+       type,
+       card_id AS cardId,
+       comment_id AS commentId,
+       title,
+       body,
+       metadata_json AS metadataJson,
+       created_at AS createdAt,
+       read_at AS readAt
+     FROM board_notifications
+     WHERE board_id = ? AND recipient_email = ?
+     ORDER BY created_at DESC
+     LIMIT ?`
+  ).bind(boardId, normalizeEmail(recipientEmail), normalizedLimit).all();
+  const unreadRow = await env.DB.prepare(
+    "SELECT COUNT(*) AS count FROM board_notifications WHERE board_id = ? AND recipient_email = ? AND COALESCE(read_at, '') = ''"
+  ).bind(boardId, normalizeEmail(recipientEmail)).first();
+  return {
+    notifications: (rows.results || []).map(normalizeNotificationRow),
+    unreadCount: Number(unreadRow?.count || 0),
+  };
+}
+
+async function markNotificationsRead(env, boardId, recipientEmail, body = {}) {
+  const now = new Date().toISOString();
+  const normalizedEmail = normalizeEmail(recipientEmail);
+  if (body.all) {
+    await env.DB.prepare(
+      "UPDATE board_notifications SET read_at = ? WHERE board_id = ? AND recipient_email = ? AND COALESCE(read_at, '') = ''"
+    ).bind(now, boardId, normalizedEmail).run();
+    return;
+  }
+  const ids = Array.isArray(body.ids) ? body.ids.filter(Boolean) : (body.id ? [body.id] : []);
+  for (const id of ids) {
+    await env.DB.prepare(
+      "UPDATE board_notifications SET read_at = COALESCE(NULLIF(read_at, ''), ?) WHERE board_id = ? AND recipient_email = ? AND id = ?"
+    ).bind(now, boardId, normalizedEmail, id).run();
+  }
+}
+
+function recipientSet(...items) {
+  const set = new Set();
+  items.forEach((item) => {
+    const email = normalizeEmail(item?.email || "");
+    if (email) set.add(email);
+  });
+  return set;
+}
+
+async function generateDueNotificationsForUser(env, boardId, user) {
+  const currentUser = normalizePublicUserRecord(user);
+  if (!currentUser.email || !currentUser.isApproved) return;
+  const state = await loadSanitizedBoard(env, boardId);
+  const now = Date.now();
+  const soonMs = 48 * 60 * 60 * 1000;
+  for (const entry of flattenCards(state).values()) {
+    const { card } = entry;
+    if (entry.isDone || entry.isArchive || !card?.due) continue;
+    if (!currentUserMatchesIdentity(normalizeAssignedUser(card.assignedUser) || {}, currentUser)) continue;
+    const dueTime = Date.parse(card.due);
+    if (!Number.isFinite(dueTime)) continue;
+    const type = dueTime < now ? "card_overdue" : (dueTime - now <= soonMs ? "due_soon" : "");
+    if (!type) continue;
+    const due = new Date(dueTime).toISOString();
+    await insertNotification(env, {
+      boardId,
+      recipientEmail: currentUser.email,
+      actorEmail: "",
+      type,
+      cardId: card.id || "",
+      title: type === "card_overdue" ? "Card is overdue" : "Card is due soon",
+      body: cardLabel(card),
+      metadata: {
+        cardTitle: cardLabel(card),
+        due,
+        columnTitle: entry.colTitle || "",
+        notificationKey: `${type}:${card.id || ""}:${due}`,
+      },
+    }, { dedupe: true });
+  }
+}
+
+async function generateBoardChangeNotifications(env, boardId, existingState, nextState, actor, approvedUsers = []) {
+  const actorEmail = normalizeEmail(actor?.email || "");
+  const actorName = userLabel(actor);
+  const approvedEmails = new Set((approvedUsers || []).filter((u) => u?.isApproved !== false).map((u) => normalizeEmail(u.email || "")).filter(Boolean));
+  const isApprovedRecipient = (email) => approvedEmails.has(normalizeEmail(email));
+  const oldCards = flattenCards(existingState);
+  const newCards = flattenCards(nextState);
+
+  const notify = async (recipientEmail, type, entry, extra = {}) => {
+    const email = normalizeEmail(recipientEmail || "");
+    if (!email || !isApprovedRecipient(email) || email === actorEmail) return;
+    const card = entry?.card || {};
+    await insertNotification(env, {
+      boardId,
+      recipientEmail: email,
+      actorEmail,
+      type,
+      cardId: card.id || extra.cardId || "",
+      commentId: extra.commentId || "",
+      title: extra.title || "",
+      body: extra.body || cardLabel(card),
+      metadata: {
+        actorName,
+        actorEmail,
+        cardTitle: cardLabel(card),
+        columnTitle: entry?.colTitle || "",
+        fromColumnTitle: extra.fromColumnTitle || "",
+        toColumnTitle: extra.toColumnTitle || entry?.colTitle || "",
+        commentText: extra.commentText || "",
+        due: card.due || "",
+        ...(extra.metadata || {}),
+      },
+    }, extra.dedupe ? { dedupe: true } : {});
+  };
+
+  for (const [cardId, newEntry] of newCards.entries()) {
+    const oldEntry = oldCards.get(cardId);
+    const newAssignee = normalizeAssignedUser(newEntry.card.assignedUser);
+    const oldAssignee = normalizeAssignedUser(oldEntry?.card?.assignedUser);
+    const newAssigneeEmail = normalizeEmail(newAssignee?.email || "");
+    const oldAssigneeEmail = normalizeEmail(oldAssignee?.email || "");
+
+    if (newAssigneeEmail && newAssigneeEmail !== oldAssigneeEmail) {
+      await notify(newAssigneeEmail, "card_assigned", newEntry, {
+        title: "Card assigned to you",
+        body: cardLabel(newEntry.card),
+      });
+    }
+    if (oldAssigneeEmail && oldAssigneeEmail !== newAssigneeEmail) {
+      await notify(oldAssigneeEmail, "card_unassigned", newEntry, {
+        title: "Card unassigned from you",
+        body: cardLabel(newEntry.card),
+      });
+    }
+
+    if (oldEntry && oldEntry.colId !== newEntry.colId) {
+      if (newAssigneeEmail) {
+        await notify(newAssigneeEmail, "card_moved", newEntry, {
+          title: "Assigned card moved",
+          fromColumnTitle: oldEntry.colTitle || "",
+          toColumnTitle: newEntry.colTitle || "",
+        });
+      }
+      if (newEntry.isDone && !oldEntry.isDone) {
+        for (const recipientEmail of recipientSet({ email: newEntry.card.createdByEmail }, newAssignee)) {
+          await notify(recipientEmail, "card_completed", newEntry, {
+            title: "Card completed",
+            fromColumnTitle: oldEntry.colTitle || "",
+            toColumnTitle: newEntry.colTitle || "",
+          });
+        }
+      }
+    }
+
+    const oldComments = oldEntry ? flattenComments(oldEntry.card.comments || []) : [];
+    const newComments = flattenComments(newEntry.card.comments || []);
+    const oldCommentIds = new Set(oldComments.map((comment) => comment.id));
+    const oldCommentsById = new Map(oldComments.map((comment) => [comment.id, comment]));
+    for (const comment of newComments) {
+      if (!comment.id || oldCommentIds.has(comment.id)) continue;
+      const commentAuthorEmail = normalizeEmail(comment.authorEmail || "");
+      if (commentAuthorEmail && commentAuthorEmail !== actorEmail) continue;
+      const commentText = truncateText(comment.text || "", 140);
+      if (comment.parentId) {
+        const parent = oldCommentsById.get(comment.parentId) || newComments.find((item) => item.id === comment.parentId);
+        await notify(parent?.authorEmail, "reply_to_comment", newEntry, {
+          title: "New reply",
+          commentId: comment.id,
+          commentText,
+          body: commentText || cardLabel(newEntry.card),
+        });
+      }
+      for (const recipientEmail of recipientSet({ email: newEntry.card.createdByEmail }, newAssignee)) {
+        await notify(recipientEmail, "comment_on_owned_or_assigned_card", newEntry, {
+          title: "New comment",
+          commentId: comment.id,
+          commentText,
+          body: commentText || cardLabel(newEntry.card),
+        });
+      }
+    }
+  }
 }
 
 async function parseJson(request) {
@@ -729,6 +1021,7 @@ export default {
 
         await env.DB.prepare("DELETE FROM board_sessions WHERE board_id = ?").bind(targetBoardId).run();
         await env.DB.prepare("DELETE FROM board_user_credentials WHERE board_id = ?").bind(targetBoardId).run();
+        await env.DB.prepare("DELETE FROM board_notifications WHERE board_id = ?").bind(targetBoardId).run();
         await env.DB.prepare("DELETE FROM board_users WHERE board_id = ?").bind(targetBoardId).run();
         await env.DB.prepare("DELETE FROM boards WHERE id = ?").bind(targetBoardId).run();
 
@@ -799,6 +1092,33 @@ export default {
         }
         const state = await loadSanitizedBoard(env, boardId);
         return jsonResponse(state, headers);
+      }
+
+      if (path === "/notifications" && method === "GET") {
+        const currentUserEmail = await getSessionUser(env, boardId, getUserToken(request, url));
+        if (!currentUserEmail) {
+          return jsonResponse({ error: "Unauthorized" }, headers, 401);
+        }
+        const currentUser = await getPublicUser(env, boardId, currentUserEmail);
+        if (!currentUser || !currentUser.isApproved) {
+          return jsonResponse({ error: "Unauthorized" }, headers, 401);
+        }
+        await generateDueNotificationsForUser(env, boardId, currentUser);
+        return jsonResponse(await listNotifications(env, boardId, currentUser.email, url.searchParams.get("limit") || 50), headers);
+      }
+
+      if (path === "/notifications/read" && method === "POST") {
+        const currentUserEmail = await getSessionUser(env, boardId, getUserToken(request, url));
+        if (!currentUserEmail) {
+          return jsonResponse({ error: "Unauthorized" }, headers, 401);
+        }
+        const currentUser = await getPublicUser(env, boardId, currentUserEmail);
+        if (!currentUser || !currentUser.isApproved) {
+          return jsonResponse({ error: "Unauthorized" }, headers, 401);
+        }
+        const body = await parseJson(request);
+        await markNotificationsRead(env, boardId, currentUserEmail, body);
+        return jsonResponse({ success: true, ...(await listNotifications(env, boardId, currentUserEmail, body.limit || 50)) }, headers);
       }
 
       if (path === "/auth" && method === "POST") {
@@ -957,6 +1277,22 @@ export default {
               "INSERT OR REPLACE INTO board_user_credentials (board_id, email, pin_hash, pin_salt, updated_at) VALUES (?, ?, ?, ?, ?)"
             ).bind(targetBoardId, email, sourceCredential.pinHash, sourceCredential.pinSalt, new Date().toISOString()).run();
           }
+          if (!existingTargetUser?.isApproved) {
+            const board = await readBoardRow(env, targetBoardId);
+            await insertNotification(env, {
+              boardId: targetBoardId,
+              recipientEmail: email,
+              actorEmail: currentUserEmail,
+              type: "board_access_granted",
+              title: "Board access granted",
+              body: board?.name || targetBoardId,
+              metadata: {
+                actorEmail: currentUserEmail,
+                boardName: board?.name || targetBoardId,
+                boardId: targetBoardId,
+              },
+            }, { dedupe: true });
+          }
         } else {
           if (await isUserAdmin(env, targetBoardId, email)) {
             return jsonResponse({ error: "Admin user cannot be removed from that board." }, headers, 403);
@@ -988,6 +1324,7 @@ export default {
         if (!existingUser && !pinCode) {
           return jsonResponse({ error: "Password is required for a new user." }, headers, 400);
         }
+        const wasApproved = !!existingUser?.isApproved;
 
         await upsertUserRecord(env, boardId, {
           email: nextEmail,
@@ -1000,6 +1337,21 @@ export default {
 
         if (pinCode) {
           await env.DB.prepare("DELETE FROM board_sessions WHERE board_id = ? AND user_email = ?").bind(boardId, nextEmail).run();
+        }
+
+        if (!wasApproved && body.isApproved === true) {
+          await insertNotification(env, {
+            boardId,
+            recipientEmail: nextEmail,
+            actorEmail: currentUserEmail,
+            type: "user_approved",
+            title: "Account approved",
+            body: "You can now access this board.",
+            metadata: {
+              actorEmail: currentUserEmail,
+              boardId,
+            },
+          }, { dedupe: true });
         }
 
         return jsonResponse({ success: true, ...(await adminUsersPayload(env, boardId, currentUserEmail)) }, headers);
@@ -1138,6 +1490,11 @@ export default {
         }
 
         await persistBoardState(env, boardId, body);
+        try {
+          await generateBoardChangeNotifications(env, boardId, existingState, body, currentUser, currentUsers);
+        } catch (notificationError) {
+          console.warn("Failed to generate notifications:", notificationError);
+        }
         return jsonResponse({ success: true }, headers);
       }
 
