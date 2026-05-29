@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.2.5"
+  version: "0.3.0"
 }
 
 /* Live sync echo guard */
@@ -226,6 +226,7 @@ const I18n = {
       this.updateTabs()
       // Re-render board to update dynamic text like "(Overdue)"
       if (typeof UI !== "undefined" && UI.renderBoard) UI.renderBoard()
+      if (typeof Notifications !== "undefined" && Notifications.render) Notifications.render()
     }
   },
 
@@ -688,6 +689,28 @@ const CloudflareBackend = {
     })
     const data = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(data?.error || "Board access update failed")
+    return data
+  },
+  async listNotifications(config, limit = 50) {
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
+    if (!cfWorkerUrl || !config.cfUserToken) return { notifications: [], unreadCount: 0 }
+    const response = await fetch(`${cfWorkerUrl}/notifications?limit=${encodeURIComponent(limit)}`, {
+      headers: this.buildHeaders(config),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "Failed to load notifications")
+    return data
+  },
+  async markNotificationsRead(config, payload = {}) {
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
+    if (!cfWorkerUrl || !config.cfUserToken) return { notifications: [], unreadCount: 0 }
+    const response = await fetch(`${cfWorkerUrl}/notifications/read`, {
+      method: "POST",
+      headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
+      body: JSON.stringify(payload),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "Failed to update notifications")
     return data
   }
 }
@@ -1249,6 +1272,156 @@ DOMPurify.addHook("afterSanitizeAttributes", function (node) {
   }
 })
 
+const Notifications = {
+  items: [],
+  unreadCount: 0,
+  isLoading: false,
+
+  async refresh() {
+    const cfg = DbSettings.get()
+    if (!cfg.cfWorkerUrl || !cfg.cfUserToken) {
+      this.items = []
+      this.unreadCount = 0
+      this.render()
+      return
+    }
+    this.isLoading = true
+    this.render()
+    try {
+      const data = await CloudflareBackend.listNotifications(cfg)
+      this.items = Array.isArray(data.notifications) ? data.notifications : []
+      this.unreadCount = Number(data.unreadCount || 0)
+    } catch (err) {
+      console.warn("Failed to load notifications:", err)
+    } finally {
+      this.isLoading = false
+      this.render()
+    }
+  },
+
+  async markRead(id) {
+    if (!id) return
+    const cfg = DbSettings.get()
+    try {
+      const data = await CloudflareBackend.markNotificationsRead(cfg, { id })
+      this.items = Array.isArray(data.notifications) ? data.notifications : this.items.map((item) => item.id === id ? { ...item, readAt: Utils.nowIso() } : item)
+      this.unreadCount = Number(data.unreadCount ?? this.items.filter((item) => !item.readAt).length)
+      this.render()
+    } catch (err) {
+      console.warn("Failed to mark notification read:", err)
+    }
+  },
+
+  async markAllRead() {
+    const cfg = DbSettings.get()
+    if (!cfg.cfUserToken) return
+    try {
+      const data = await CloudflareBackend.markNotificationsRead(cfg, { all: true })
+      this.items = Array.isArray(data.notifications) ? data.notifications : this.items.map((item) => ({ ...item, readAt: item.readAt || Utils.nowIso() }))
+      this.unreadCount = Number(data.unreadCount || 0)
+      this.render()
+    } catch (err) {
+      console.warn("Failed to mark all notifications read:", err)
+    }
+  },
+
+  format(item) {
+    const meta = item.metadata || {}
+    const params = {
+      actor: meta.actorName || meta.actorEmail || item.actorEmail || I18n.t("someone"),
+      card: meta.cardTitle || item.body || I18n.t("card"),
+      from: meta.fromColumnTitle || "",
+      to: meta.toColumnTitle || meta.columnTitle || "",
+      comment: meta.commentText || item.body || "",
+      board: meta.boardName || meta.boardId || "",
+      due: meta.due ? new Date(meta.due).toLocaleString() : "",
+    }
+    const titleKey = `notification_${item.type}_title`
+    const bodyKey = `notification_${item.type}_body`
+    return {
+      title: I18n.t(titleKey, params) === titleKey ? (item.title || I18n.t("notification")) : I18n.t(titleKey, params),
+      body: I18n.t(bodyKey, params) === bodyKey ? (item.body || "") : I18n.t(bodyKey, params),
+    }
+  },
+
+  render() {
+    const wrap = Utils.qs("#notificationsWrap")
+    const badge = Utils.qs("#notificationsBadge")
+    const list = Utils.qs("#notificationsList")
+    const markAllBtn = Utils.qs("#markAllNotificationsReadBtn")
+    if (!wrap || !badge || !list || !markAllBtn) return
+
+    const hasSession = Store.hasCloudflareSession()
+    wrap.style.display = hasSession ? "" : "none"
+    badge.hidden = !hasSession || this.unreadCount <= 0
+    badge.textContent = this.unreadCount > 0 ? (this.unreadCount > 99 ? "99+" : String(this.unreadCount)) : ""
+    markAllBtn.disabled = this.unreadCount <= 0
+
+    list.innerHTML = ""
+    if (!hasSession) return
+    if (this.isLoading && this.items.length === 0) {
+      const empty = document.createElement("div")
+      empty.className = "notifications-empty"
+      empty.textContent = I18n.t("notifications_loading")
+      list.append(empty)
+      return
+    }
+    if (this.items.length === 0) {
+      const empty = document.createElement("div")
+      empty.className = "notifications-empty"
+      empty.textContent = I18n.t("notifications_empty")
+      list.append(empty)
+      return
+    }
+
+    this.items.forEach((item) => {
+      const button = document.createElement("button")
+      button.type = "button"
+      button.className = `notification-item${item.readAt ? "" : " unread"}`
+      button.dataset.notificationId = item.id || ""
+      button.dataset.cardId = item.cardId || ""
+
+      const text = document.createElement("span")
+      text.className = "notification-item-text"
+      const formatted = this.format(item)
+      const title = document.createElement("strong")
+      title.textContent = formatted.title
+      const body = document.createElement("span")
+      body.textContent = formatted.body
+      text.append(title, body)
+
+      const time = document.createElement("time")
+      time.className = "notification-item-time"
+      if (item.createdAt) {
+        time.dateTime = item.createdAt
+        time.textContent = new Date(item.createdAt).toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      }
+
+      button.append(text, time)
+      list.append(button)
+    })
+  },
+
+  async open(itemId) {
+    const item = this.items.find((entry) => entry.id === itemId)
+    if (!item) return
+    await this.markRead(item.id)
+    Utils.qs("#notificationsPanel")?.classList.remove("show")
+    if (!item.cardId) return
+    const { card, col } = Store.findCard(item.cardId)
+    if (!card || !col) {
+      UI.showAlert(I18n.t("notification_card_missing"))
+      return
+    }
+    UI.showCardEditor(card, col.id)
+  },
+}
+
 /**
  * @module UI
  * Handles all direct DOM manipulation and rendering.
@@ -1271,6 +1444,8 @@ const UI = {
   // Menu
   menuBtn: Utils.qs("#menuBtn"),
   menuContent: Utils.qs("#menuContent"),
+  notificationsBtn: Utils.qs("#notificationsBtn"),
+  notificationsPanel: Utils.qs("#notificationsPanel"),
   toggleArchiveBtn: Utils.qs("#toggleArchiveBtn"),
   logoutBtn: Utils.qs("#logoutBtn"),
   profileBtn: Utils.qs("#profileBtn"),
@@ -1345,6 +1520,8 @@ const UI = {
     const showAuth = !!cfg.cfWorkerUrl
     if (this.logoutBtn) this.logoutBtn.style.display = showAuth && Store.hasCloudflareSession() ? "" : "none"
     if (this.profileBtn) this.profileBtn.style.display = showAuth && Store.hasCloudflareSession() ? "" : "none"
+    const notificationsWrap = Utils.qs("#notificationsWrap")
+    if (notificationsWrap) notificationsWrap.style.display = showAuth && Store.hasCloudflareSession() ? "" : "none"
     this.updateBoardNameLabel()
   },
 
@@ -1386,6 +1563,7 @@ const UI = {
     this.updateAdminPanelVisibility()
     this.updateAuthButtonsVisibility()
     this.updateMenuButtonAvatar()
+    Notifications.refresh()
   },
 
   updateAdminPanelVisibility() {
@@ -1809,6 +1987,7 @@ const UI = {
             await Store.loadState();
             UI.renderBoard();
             UI.renderAdminUsers();
+            await Notifications.refresh();
           } catch (err) {
             UI.showAlert(I18n.serverError(err.message) || I18n.t("user_save_failed"));
           }
@@ -1835,6 +2014,7 @@ const UI = {
               UI.renderBoard();
               UI.renderAdminUsers();
               UI.updateMenuButtonAvatar();
+              await Notifications.refresh();
               if (avatarKey) {
                 CloudflareBackend.deleteImage(avatarKey, cfg).catch(console.error)
               }
@@ -3273,6 +3453,9 @@ const App = {
     const versionEl = Utils.qs("#appVersion")
     if (versionEl) versionEl.textContent = `v${CONFIG.version}`
 
+    UI.updateAuthButtonsVisibility()
+    Notifications.render()
+
     await Store.loadState()
     if (typeof UI !== "undefined") {
       UI.updateAdminPanelVisibility()
@@ -3281,6 +3464,7 @@ const App = {
 
     UI.renderBoard()
     UI.updateMenuButtonAvatar()
+    await Notifications.refresh()
     Store.startRealtime()
   },
 
@@ -3324,6 +3508,7 @@ const App = {
       UI.renderBoard()
       UI.updateMenuButtonAvatar()
       UI.updateAuthButtonsVisibility()
+      await Notifications.refresh()
       form.closest("dialog")?.close()
     } catch (err) {
       UI.showAlert(I18n.serverError(err.message) || I18n.t("incorrect_pin"))
@@ -3592,7 +3777,28 @@ const App = {
     UI.menuBtn.addEventListener("click", (e) => {
       e.stopPropagation() // Prevent the window click listener from firing immediately
       UI.menuContent.classList.toggle("show")
+      UI.notificationsPanel?.classList.remove("show")
     })
+
+    if (UI.notificationsBtn && UI.notificationsPanel) {
+      UI.notificationsBtn.addEventListener("click", async (e) => {
+        e.stopPropagation()
+        UI.menuContent?.classList.remove("show")
+        UI.notificationsPanel.classList.toggle("show")
+        if (UI.notificationsPanel.classList.contains("show")) {
+          await Notifications.refresh()
+        }
+      })
+      Utils.qs("#notificationsList")?.addEventListener("click", (e) => {
+        const item = e.target.closest(".notification-item")
+        if (!item) return
+        Notifications.open(item.dataset.notificationId)
+      })
+      Utils.qs("#markAllNotificationsReadBtn")?.addEventListener("click", (e) => {
+        e.stopPropagation()
+        Notifications.markAllRead()
+      })
+    }
 
     // Close menu if clicking outside of it
     window.addEventListener("click", (e) => {
@@ -3601,6 +3807,15 @@ const App = {
         UI.menuContent.classList.contains("show")
       ) {
         UI.menuContent.classList.remove("show")
+      }
+      if (
+        UI.notificationsPanel &&
+        UI.notificationsBtn &&
+        !UI.notificationsBtn.contains(e.target) &&
+        !UI.notificationsPanel.contains(e.target) &&
+        UI.notificationsPanel.classList.contains("show")
+      ) {
+        UI.notificationsPanel.classList.remove("show")
       }
     })
 
@@ -3775,6 +3990,7 @@ const App = {
         UI.updateMenuButtonAvatar()
         UI.updateAuthButtonsVisibility()
         UI.updateAdminPanelVisibility()
+        await Notifications.refresh()
       }
     }
 
@@ -3863,6 +4079,7 @@ const App = {
       UI.renderBoard()
       UI.updateMenuButtonAvatar()
       UI.updateAuthButtonsVisibility()
+      await Notifications.refresh()
       dbDialog.close()
     })
 
@@ -3889,6 +4106,7 @@ const App = {
           UI.updateMenuButtonAvatar()
           UI.updateAuthButtonsVisibility()
           UI.updateAdminPanelVisibility()
+          await Notifications.refresh()
         } catch (err) {
           UI.showAlert(I18n.serverError(err.message) || I18n.t("board_create_failed"))
         }
@@ -3946,6 +4164,7 @@ const App = {
             UI.updateMenuButtonAvatar()
             UI.updateAuthButtonsVisibility()
             UI.updateAdminPanelVisibility()
+            await Notifications.refresh()
             dbDialog.close()
           } else {
             const currentBoardId = cfg.cfBoardId || "default"
@@ -3970,6 +4189,7 @@ const App = {
               UI.updateMenuButtonAvatar()
               UI.updateAuthButtonsVisibility()
               UI.updateAdminPanelVisibility()
+              await Notifications.refresh()
             }
             UI.renderBoardSelect(cfBoardSelect, cfIdInput, UI.accessibleBoards)
             UI.updateBoardNameLabel()
@@ -4074,6 +4294,7 @@ const App = {
         if (cfg.cfWorkerUrl) {
           await Store.loadState()
           UI.renderBoard()
+          await Notifications.refresh()
         }
       }
     })

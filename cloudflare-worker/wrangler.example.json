@@ -19,7 +19,9 @@
 			"/boards",
 			"/boards-for-login",
 			"/board-session",
-			"/user-board-access"
+			"/user-board-access",
+			"/notifications",
+			"/notifications/read"
 		]
 	},
 	"d1_databases": [
