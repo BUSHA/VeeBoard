@@ -808,8 +808,16 @@ hr {
 
 .tags {
   display: flex;
+  align-items: center;
   gap: 6px;
-  flex-wrap: wrap
+  flex-wrap: wrap;
+}
+
+.tags-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .tag {
@@ -2559,17 +2567,18 @@ html[data-theme="dark"] .board-selector-row select {
 .card-stats-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+  margin-left: auto;
 }
 
 .card-comments-count {
-  margin-left: auto;
   color: var(--muted);
   font-size: 11px;
-  line-height: 1.4;
-  text-align: center;
+  line-height: 1;
   font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .card-creator-label {
@@ -2775,9 +2784,11 @@ html[data-theme="dark"] .board-selector-row select {
 .card-attachments {
   color: var(--muted);
   font-size: 11px;
-  line-height: 1.4;
+  line-height: 1;
   font-weight: 500;
-  text-align: right;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .attachment-item {

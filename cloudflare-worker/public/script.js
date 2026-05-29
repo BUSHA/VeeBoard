@@ -2141,10 +2141,9 @@ const UI = {
       dueEl.style.display = "none"
     }
 
-    const tagsBox = Utils.qs(".tags", node)
+    const tagsBox = Utils.qs(".tags-list", node)
     tagsBox.innerHTML = ""
     ;(card.tags || []).forEach((t) => tagsBox.append(this.createTagBadge(t)))
-    tagsBox.style.display = (card.tags && card.tags.length > 0) ? "" : "none"
 
     const userBox = Utils.qs(".card-user", node)
     if (userBox) {
@@ -2163,7 +2162,8 @@ const UI = {
       const attachmentCount = card.attachments?.length || 0
       if (attachmentCount > 0) {
         attBox.style.display = ""
-        attBox.textContent = I18n.t("attachments_count", { count: attachmentCount })
+        const svg = '<svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>'
+        attBox.innerHTML = svg + ' ' + attachmentCount
       } else {
         attBox.style.display = "none"
       }
@@ -2173,7 +2173,8 @@ const UI = {
     if (commentsCountEl) {
       const count = Store.getCommentCount(card)
       if (count > 0) {
-        commentsCountEl.textContent = I18n.t("comments_count", { count })
+        const svg = '<svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'
+        commentsCountEl.innerHTML = svg + ' ' + count
         commentsCountEl.title = I18n.t("comments")
         commentsCountEl.style.display = ""
       } else {
@@ -2181,6 +2182,9 @@ const UI = {
         commentsCountEl.style.display = "none"
       }
     }
+
+    const tagsRow = Utils.qs(".tags", node)
+    tagsRow.style.display = (tagsBox.children.length > 0 || (commentsCountEl && commentsCountEl.style.display !== "none") || (attBox && attBox.style.display !== "none")) ? "" : "none"
 
     if (deleteBtn) {
       deleteBtn.style.display = Store.canCurrentUserEditCard(card) ? "" : "none"
