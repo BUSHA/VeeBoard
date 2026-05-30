@@ -812,8 +812,16 @@ hr {
 
 .tags {
   display: flex;
+  align-items: center;
   gap: 6px;
-  flex-wrap: wrap
+  flex-wrap: wrap;
+}
+
+.tags-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .tag {
@@ -935,6 +943,267 @@ dialog:focus-visible {
   pointer-events: none;
 }
 
+.card-detail {
+  width: min(1080px, 94vw);
+  max-height: 92dvh;
+  overflow: hidden;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+}
+
+.card-detail-header {
+  display: block;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.card-detail-heading {
+  min-width: 0;
+}
+
+.card-detail-column {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.card-detail-title {
+  margin: 4px 0 0;
+  font-size: 24px;
+  line-height: 1.2;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.card-detail-title-input {
+  display: none;
+  margin-top: 4px;
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 800;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 10px;
+  outline: none;
+}
+
+.card-detail-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.card-detail-main {
+  min-width: 0;
+  overflow-y: auto;
+  padding: 20px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.card-detail-sidebar {
+  min-width: 0;
+  overflow-y: auto;
+  padding: 20px;
+  border-left: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel), var(--bg) 35%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.card-detail-section,
+.card-detail-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card-detail-section-title {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.card-detail-description {
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.card-detail-description.is-empty,
+.card-detail-empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.card-detail-description a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.card-detail-description a:hover {
+  text-decoration: underline;
+}
+
+.card-detail-description-editor {
+  display: none;
+  max-height: none;
+  min-height: 160px;
+}
+
+.card-detail-attachments {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 12px;
+}
+
+.card-detail-attachment {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--panel), var(--bg) 35%);
+}
+
+.card-detail-attachment img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  cursor: zoom-in;
+}
+
+.card-detail-attachment .editor-attachment-delete {
+  display: none;
+}
+
+.card-detail-field {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border), transparent 35%);
+}
+
+.card-detail-field > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.card-detail-field-value {
+  min-height: 24px;
+  font-size: 14px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.card-detail-edit-field {
+  display: none;
+}
+
+.card-detail input {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  outline: none;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.card-detail input:focus,
+.card-detail-title-input:focus,
+.card-detail-description-editor:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent);
+}
+
+.card-detail-actions {
+  margin: 0;
+  padding: 12px 24px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.card-detail-edit-actions {
+  display: none;
+}
+
+.card-detail.is-editing .card-detail-title,
+.card-detail.is-editing .card-detail-description,
+.card-detail.is-editing .card-detail-editable-value {
+  display: none;
+}
+
+.card-detail.is-editing .card-detail-title-input,
+.card-detail.is-editing .card-detail-description-editor,
+.card-detail.is-editing .card-detail-edit-field {
+  display: block;
+}
+
+.card-detail.is-editing .card-detail-attachment .editor-attachment-delete {
+  display: flex;
+}
+
+.card-detail:not(.is-editing) #cardDetailAttachmentAction {
+  display: none;
+}
+
+.card-detail #cardDetailMovePanel .btn {
+  width: 100%;
+}
+
+.btn.danger {
+  color: var(--error);
+}
+
+.btn-link.danger-link {
+  color: var(--error);
+  align-self: center;
+  text-align: center;
+  font-weight: 400;
+}
+
+.card-detail-field .due-badge {
+  display: inline-flex;
+  justify-self: start;
+  width: max-content;
+  max-width: 100%;
+}
+
+.card-detail-person-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.card-detail-meta-date {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .editor-form label {
   display: flex;
   flex-direction: column;
@@ -1050,6 +1319,26 @@ dialog:focus-visible {
 
 .editor-actions .btn {
   flex: 1 1 calc(50% - 6px);
+}
+
+.card-detail-actions .card-detail-edit-actions {
+  display: none;
+}
+
+.card-detail-actions .card-detail-read-actions {
+  display: flex;
+}
+
+.card-detail-actions .btn {
+  width: 100%;
+}
+
+.card-detail.is-editing .card-detail-actions .card-detail-read-actions {
+  display: none;
+}
+
+.card-detail.is-editing .card-detail-actions .card-detail-edit-actions {
+  display: flex;
 }
 
 .editor-form-row {
@@ -1327,7 +1616,8 @@ dialog:focus-visible {
     z-index: 9999 !important;
   }
 
-  dialog[open]:not(#confirmDialog):not(#importChoice):not(#lightbox) .editor-form {
+  dialog[open]:not(#confirmDialog):not(#importChoice):not(#lightbox) .editor-form,
+  dialog[open]:not(#confirmDialog):not(#importChoice):not(#lightbox) .card-detail {
     position: relative !important;
     width: 100% !important;
     height: 100% !important;
@@ -1365,6 +1655,60 @@ dialog:focus-visible {
   /* Compact form elements for mobile */
   .editor-form {
     gap: 10px !important;
+  }
+
+  dialog[open]:not(#confirmDialog):not(#importChoice):not(#lightbox) .card-detail {
+    gap: 0 !important;
+    padding: 0 !important;
+  }
+
+  .card-detail-header {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: max(16px, env(safe-area-inset-top, 16px)) 16px 12px;
+  }
+
+  .card-detail-title,
+  .card-detail-title-input {
+    font-size: 20px;
+  }
+
+  .card-detail-body {
+    display: block;
+    overflow-y: auto;
+  }
+
+  .card-detail-main,
+  .card-detail-sidebar {
+    overflow: visible;
+    padding: 16px;
+  }
+
+  .card-detail-sidebar {
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+
+  .card-detail-attachments {
+    grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  }
+
+  .card-detail-actions {
+    padding: 12px 16px max(16px, env(safe-area-inset-bottom, 16px));
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .card-detail-actions .actions-main {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: nowrap;
+  }
+
+  .card-detail-actions .btn {
+    flex: 1 1 0;
+    min-width: 0;
+    width: 100%;
   }
 
   .editor-form h3 {
@@ -2221,20 +2565,24 @@ html[data-theme="dark"] .board-selector-row select {
 }
 
 .card-creator {
+  display: none;
+}
+
+.card-stats-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: color-mix(in srgb, var(--muted), transparent 22%);
+  gap: 10px;
+  margin-left: auto;
 }
 
 .card-comments-count {
-  align-self: flex-end;
   color: var(--muted);
   font-size: 11px;
-  line-height: 1.4;
-  text-align: center;
+  line-height: 1;
   font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .card-creator-label {
@@ -2438,10 +2786,13 @@ html[data-theme="dark"] .board-selector-row select {
    Card Attachments
    ================================= */
 .card-attachments {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
-  gap: 8px;
-  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .attachment-item {
