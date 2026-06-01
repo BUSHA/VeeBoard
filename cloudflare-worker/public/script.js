@@ -1560,8 +1560,6 @@ const UI = {
   hideMoveToMenu() {
     const menu = Utils.qs("#moveToMenu")
     if (menu) menu.classList.remove("show")
-    const detailMenu = Utils.qs("#cardDetailMoveToMenu")
-    if (detailMenu) detailMenu.classList.remove("show")
   },
 
   renderMoveToMenu(cardId, menuSelector = "#moveToMenu") {
@@ -2587,7 +2585,6 @@ const UI = {
       Utils.qs("#cardDetailDescriptionEditor").innerHTML = ""
     }
 
-    Utils.qs("#cardDetailDeleteBtn").style.display = !isNew && canEdit && !isEditing ? "" : "none"
     Utils.qs("#cardDetailAttachmentAction").style.display = isEditing ? "" : "none"
     Utils.qs("#cardDetailReadActions").style.display = isNew ? "none" : ""
 
@@ -2611,15 +2608,50 @@ const UI = {
       Utils.qs("#cardDetailCommentsSection").style.display = "none"
     }
 
-    const movePanel = Utils.qs("#cardDetailMovePanel")
-    if (movePanel) movePanel.style.display = !isNew && canMove && !isEditing ? "" : "none"
-    if (!isNew) {
-      const markDoneBtn = Utils.qs("#cardDetailMarkDoneBtn")
-      const moveToWrap = Utils.qs("#cardDetailMoveToWrap")
-      const moveTargets = this.renderMoveToMenu(card.id, "#cardDetailMoveToMenu")
-      if (markDoneBtn) markDoneBtn.textContent = col.isDone ? I18n.t("undone") : I18n.t("mark_as_done")
-      if (moveToWrap) moveToWrap.style.display = canMove && !isEditing && moveTargets.length ? "" : "none"
+    const manageDropdown = Utils.qs("#cardDetailManageDropdown")
+    if (manageDropdown) manageDropdown.style.display = !isNew && canMove && !isEditing ? "" : "none"
+    if (!isNew && canMove && !isEditing) {
+      this.renderManageDropdown(card, col)
     }
+  },
+
+  renderManageDropdown(card, col) {
+    const columnLabel = Utils.qs("#cardDetailManageColumn")
+    const menu = Utils.qs("#cardDetailManageMenu")
+    if (!columnLabel || !menu) return
+    columnLabel.textContent = col.title || ""
+    menu.innerHTML = ""
+
+    Store.state.columns.forEach((targetCol) => {
+      if (targetCol.isArchive || targetCol.id === col.id) return
+      const btn = document.createElement("button")
+      btn.type = "button"
+      btn.className = "btn"
+      btn.dataset.moveToColId = targetCol.id
+      btn.textContent = targetCol.title || ""
+      menu.append(btn)
+    })
+
+    const divider = document.createElement("div")
+    divider.className = "card-manage-divider"
+    menu.append(divider)
+
+    const archiveCol = Store.state.columns.find(c => c.isArchive)
+    if (archiveCol && col.id !== archiveCol.id) {
+      const archiveBtn = document.createElement("button")
+      archiveBtn.type = "button"
+      archiveBtn.className = "btn"
+      archiveBtn.dataset.action = "archive"
+      archiveBtn.textContent = I18n.t("archive")
+      menu.append(archiveBtn)
+    }
+
+    const deleteBtn = document.createElement("button")
+    deleteBtn.type = "button"
+    deleteBtn.className = "btn card-manage-danger"
+    deleteBtn.dataset.action = "delete"
+    deleteBtn.textContent = I18n.t("delete_card")
+    menu.append(deleteBtn)
   },
 
   renderCardDetailSidebar(card, col, isEditing) {
@@ -4104,16 +4136,48 @@ const App = {
       UI.cardDetailDialog.close()
     })
 
-    Utils.qs("#cardDetailDeleteBtn").addEventListener("click", () => {
-      const cardId = Utils.qs("#cardDetailForm").dataset.cardId
-      this.promptDeleteOrArchive(cardId)
+    Utils.qs("#cardDetailManageBtn").addEventListener("click", (e) => {
+      e.stopPropagation()
+      const menu = Utils.qs("#cardDetailManageMenu")
+      if (!menu) return
+      const wasOpen = menu.classList.contains("show")
+      menu.classList.remove("show")
+      if (!wasOpen) {
+        const rect = e.currentTarget.getBoundingClientRect()
+        menu.style.left = rect.left + "px"
+        menu.style.top = rect.bottom + 4 + "px"
+        menu.style.right = "auto"
+        menu.style.width = rect.width + "px"
+        menu.style.maxHeight = "min(300px, " + (window.innerHeight - rect.bottom - 16) + "px)"
+        menu.classList.add("show")
+      }
+    })
+
+    Utils.qs("#cardDetailManageMenu").addEventListener("click", (e) => {
+      const form = Utils.qs("#cardDetailForm")
+      const cardId = form?.dataset.cardId
+      if (!cardId) return
+
+      const moveToItem = e.target.closest("[data-move-to-col-id]")
+      if (moveToItem) {
+        this.handleMoveCardTo(form, moveToItem.dataset.moveToColId)
+        return
+      }
+
+      const actionBtn = e.target.closest("[data-action]")
+      if (actionBtn) {
+        const action = actionBtn.dataset.action
+        if (action === "archive") {
+          this.handleArchiveCard(cardId)
+        } else if (action === "delete") {
+          this.promptDeleteOrArchive(cardId)
+        }
+        const menu = Utils.qs("#cardDetailManageMenu")
+        if (menu) menu.classList.remove("show")
+      }
     })
 
     Utils.qs("#markDoneBtn").addEventListener("click", (e) => {
-      this.handleMarkAsDone(e.target.closest("form"))
-    })
-
-    Utils.qs("#cardDetailMarkDoneBtn").addEventListener("click", (e) => {
       this.handleMarkAsDone(e.target.closest("form"))
     })
 
@@ -4130,29 +4194,10 @@ const App = {
       moveToMenu.classList.toggle("show")
     })
 
-    Utils.qs("#cardDetailMoveToBtn").addEventListener("click", (e) => {
-      e.stopPropagation()
-      const form = e.target.closest("form")
-      const cardId = form?.dataset.cardId
-      if (!cardId) return
-      const moveToWrap = Utils.qs("#cardDetailMoveToWrap", form)
-      const moveToMenu = Utils.qs("#cardDetailMoveToMenu", form)
-      const moveTargets = UI.renderMoveToMenu(cardId, "#cardDetailMoveToMenu")
-      if (!moveToWrap || !moveToMenu || !moveTargets.length) return
-      moveToWrap.style.display = ""
-      moveToMenu.classList.toggle("show")
-    })
-
     Utils.qs("#moveToMenu").addEventListener("click", (e) => {
       const moveToItem = e.target.closest("[data-move-to-col-id]")
       if (!moveToItem) return
       this.handleMoveCardTo(Utils.qs("#editorForm"), moveToItem.dataset.moveToColId)
-    })
-
-    Utils.qs("#cardDetailMoveToMenu").addEventListener("click", (e) => {
-      const moveToItem = e.target.closest("[data-move-to-col-id]")
-      if (!moveToItem) return
-      this.handleMoveCardTo(Utils.qs("#cardDetailForm"), moveToItem.dataset.moveToColId)
     })
 
     Utils.qs("#saveCommentBtn").addEventListener("click", () => {
@@ -4380,9 +4425,13 @@ const App = {
         detailUserAutocomplete.classList.remove("show")
       }
       const moveToWrap = Utils.qs("#moveToWrap")
-      const detailMoveToWrap = Utils.qs("#cardDetailMoveToWrap")
-      if (moveToWrap && !moveToWrap.contains(e.target) && (!detailMoveToWrap || !detailMoveToWrap.contains(e.target))) {
+      if (moveToWrap && !moveToWrap.contains(e.target)) {
         UI.hideMoveToMenu()
+      }
+      const manageDropdown = Utils.qs("#cardDetailManageDropdown")
+      const manageMenu = Utils.qs("#cardDetailManageMenu")
+      if (manageDropdown && !manageDropdown.contains(e.target) && manageMenu) {
+        manageMenu.classList.remove("show")
       }
     })
 
@@ -5525,6 +5574,23 @@ const App = {
       Store.deleteCard(cardId)
       UI.deleteCard(cardId)
       if (UI.cardDetailDialog?.open) UI.cardDetailDialog.close()
+    }
+  },
+
+  handleArchiveCard(cardId) {
+    const { card, col } = Store.findCard(cardId)
+    if (!card) return
+    if (!Store.canCurrentUserEditCard(card)) {
+      UI.showAlert(I18n.t("own_card_only_error"))
+      return
+    }
+    const archiveCol = Store.state.columns.find(c => c.isArchive)
+    if (!archiveCol || col.id === archiveCol.id) return
+    Store.moveCard(cardId, col.id, archiveCol.id, -1)
+    UI.renderBoard()
+    if (UI.cardDetailDialog?.open) {
+      const fresh = Store.findCard(cardId)
+      if (fresh.card && fresh.col) UI.renderCardDetail()
     }
   },
 

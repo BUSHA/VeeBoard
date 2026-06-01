@@ -271,8 +271,14 @@
         </main>
 
         <aside class="card-detail-sidebar">
+          <div id="cardDetailManageDropdown" class="card-detail-field" style="display:none;">
+            <span data-i18n="column_label">Column</span>
+            <button id="cardDetailManageBtn" type="button" class="card-manage-trigger">
+              <span id="cardDetailManageColumn"></span>
+            </button>
+            <div id="cardDetailManageMenu" class="card-manage-menu dropdown-content"></div>
+          </div>
           <section class="card-detail-panel">
-            <div class="card-detail-section-title" data-i18n="details">Details</div>
             <div class="card-detail-field">
               <span data-i18n="assigned_user_label">Assigned user</span>
               <div id="cardDetailAssignee" class="card-detail-field-value card-detail-editable-value"></div>
@@ -303,16 +309,6 @@
               <span data-i18n="edited_label">Edited</span>
               <div id="cardDetailEdited" class="card-detail-field-value"></div>
             </div>
-          </section>
-
-          <section id="cardDetailMovePanel" class="card-detail-panel">
-            <div class="card-detail-section-title" data-i18n="manage_card">Manage card</div>
-            <button id="cardDetailMarkDoneBtn" type="button" class="btn secondary" data-i18n="mark_as_done">Mark as done</button>
-            <div id="cardDetailMoveToWrap" class="move-to-menu-wrap" style="display: none;">
-              <button id="cardDetailMoveToBtn" type="button" class="btn secondary" data-i18n="move_to">Move to</button>
-              <div id="cardDetailMoveToMenu" class="editor-move-menu dropdown-content" role="menu"></div>
-            </div>
-            <button id="cardDetailDeleteBtn" type="button" class="btn-link danger-link" data-i18n="delete_card">Delete card</button>
           </section>
         </aside>
       </div>
