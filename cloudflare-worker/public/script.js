@@ -2609,8 +2609,8 @@ const UI = {
     }
 
     const manageDropdown = Utils.qs("#cardDetailManageDropdown")
-    if (manageDropdown) manageDropdown.style.display = !isNew && canMove && !isEditing ? "" : "none"
-    if (!isNew && canMove && !isEditing) {
+    if (manageDropdown) manageDropdown.style.display = !isNew && canMove ? "" : "none"
+    if (!isNew && canMove) {
       this.renderManageDropdown(card, col)
     }
   },
