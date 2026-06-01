@@ -228,7 +228,13 @@
       <div class="card-detail-body">
         <main class="card-detail-main">
           <section class="card-detail-section">
-            <div class="card-detail-section-title" data-i18n="description_label">Description</div>
+            <span class="field-label-row">
+              <span class="card-detail-section-title" data-i18n="description_label">Description</span>
+              <span class="hotkey-hints hotkey-hints--inline">
+                <span><kbd>Cmd/Ctrl</kbd> + <kbd>V</kbd> - <span data-i18n="hotkey_add_link">add link</span>,</span>
+                <span><kbd>Cmd/Ctrl</kbd> + <kbd>K</kbd> - <span data-i18n="hotkey_remove_link">remove link</span></span>
+              </span>
+            </span>
             <div id="cardDetailDescription" class="card-detail-description"></div>
             <div id="cardDetailDescriptionEditor" class="content-editor card-detail-description-editor" contenteditable="true" role="textbox"></div>
           </section>

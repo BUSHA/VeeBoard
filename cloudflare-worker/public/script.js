@@ -2503,9 +2503,15 @@ const UI = {
   },
 
   showCardDetail(card, colId, options = {}) {
-    if (!card) return
     const form = Utils.qs("#cardDetailForm")
-    form.dataset.cardId = card.id
+    if (card) {
+      form.dataset.cardId = card.id
+      form.dataset.isNew = ""
+    } else {
+      form.dataset.cardId = ""
+      form.dataset.isNew = "true"
+      this.pendingCardAttachments = []
+    }
     form.dataset.colId = colId
     form.dataset.editMode = options.editMode ? "true" : "false"
     this.resetCommentComposer("detail")
@@ -2516,47 +2522,94 @@ const UI = {
   renderCardDetail() {
     const form = Utils.qs("#cardDetailForm")
     const cardId = form?.dataset.cardId
+    const isNew = form?.dataset.isNew === "true"
     const { card, col } = cardId ? Store.findCard(cardId) : { card: null, col: null }
-    if (!form || !card || !col) return
+    if (!form) return
+    if (!isNew && (!card || !col)) return
 
-    const canEdit = Store.canCurrentUserEditCard(card)
-    const canMove = Store.canCurrentUserMoveCard(card)
-    const isEditing = canEdit && form.dataset.editMode === "true"
+    const canEdit = isNew || Store.canCurrentUserEditCard(card)
+    const canMove = !isNew && Store.canCurrentUserMoveCard(card)
+    const isEditing = isNew || (canEdit && form.dataset.editMode === "true")
 
     form.classList.toggle("is-editing", isEditing)
-    Utils.qs("#cardDetailColumn").textContent = col.title || ""
-    Utils.qs("#cardDetailTitle").textContent = card.title || I18n.t("card")
-    Utils.qs("#cardDetailTitleInput").value = card.title || ""
+    const hotkeyHints = Utils.qs("#cardDetailDescription")?.previousElementSibling?.querySelector(".hotkey-hints--inline")
+    if (hotkeyHints) {
+      hotkeyHints.style.display = isEditing ? "" : "none"
+    }
+    Utils.qs("#cardDetailColumn").textContent = isNew ? I18n.t("title_label") : (col.title || "")
+    Utils.qs("#cardDetailTitle").textContent = isNew ? "" : (card.title || I18n.t("card"))
+    Utils.qs("#cardDetailTitleInput").value = isNew ? "" : (card.title || "")
+    if (isNew) {
+      Utils.qs("#cardDetailColumn").className = "card-detail-section-title"
+    } else {
+      Utils.qs("#cardDetailColumn").className = "card-detail-column"
+    }
 
-    const sanitizedHtml = DOMPurify.sanitize(card.description || "", { ADD_ATTR: ["target"] })
-    const desc = Utils.qs("#cardDetailDescription")
-    desc.innerHTML = this.hasMeaningfulHtml(sanitizedHtml) ? sanitizedHtml : I18n.t("no_description")
-    desc.classList.toggle("is-empty", !this.hasMeaningfulHtml(sanitizedHtml))
-    Utils.qs("#cardDetailDescriptionEditor").innerHTML = sanitizedHtml
+    if (!isNew) {
+      const sanitizedHtml = DOMPurify.sanitize(card.description || "", { ADD_ATTR: ["target"] })
+      const desc = Utils.qs("#cardDetailDescription")
+      desc.innerHTML = this.hasMeaningfulHtml(sanitizedHtml) ? sanitizedHtml : I18n.t("no_description")
+      desc.classList.toggle("is-empty", !this.hasMeaningfulHtml(sanitizedHtml))
+      Utils.qs("#cardDetailDescriptionEditor").innerHTML = sanitizedHtml
+    } else {
+      Utils.qs("#cardDetailDescription").innerHTML = ""
+      Utils.qs("#cardDetailDescriptionEditor").innerHTML = ""
+    }
 
-    Utils.qs("#cardDetailEditBtn").style.display = canEdit && !isEditing ? "" : "none"
-    Utils.qs("#cardDetailDeleteBtn").style.display = canEdit && !isEditing ? "" : "none"
+    Utils.qs("#cardDetailEditBtn").style.display = !isNew && canEdit && !isEditing ? "" : "none"
+    Utils.qs("#cardDetailDeleteBtn").style.display = !isNew && canEdit && !isEditing ? "" : "none"
     Utils.qs("#cardDetailAttachmentAction").style.display = isEditing ? "" : "none"
+    Utils.qs("#cardDetailReadActions").style.display = isNew ? "none" : ""
 
-    this.renderCardDetailAttachments(card.attachments || [], card.id, isEditing)
-    this.renderCardDetailSidebar(card, col, isEditing)
-    this.renderComments(card, {
-      section: Utils.qs("#cardDetailCommentsSection"),
-      list: Utils.qs("#cardDetailComments"),
-      input: Utils.qs("#cardDetailCommentInput"),
-      saveBtn: Utils.qs("#cardDetailSaveCommentBtn"),
-    })
+    const saveBtn = Utils.qs("#cardDetailSaveBtn")
+    if (saveBtn) {
+      saveBtn.textContent = isNew ? I18n.t("create_card") : I18n.t("save_changes")
+    }
+
+    if (!isNew) {
+      this.renderCardDetailAttachments(card.attachments || [], card.id, isEditing)
+      this.renderCardDetailSidebar(card, col, isEditing)
+      this.renderComments(card, {
+        section: Utils.qs("#cardDetailCommentsSection"),
+        list: Utils.qs("#cardDetailComments"),
+        input: Utils.qs("#cardDetailCommentInput"),
+        saveBtn: Utils.qs("#cardDetailSaveCommentBtn"),
+      })
+    } else {
+      this.renderCardDetailAttachments(this.pendingCardAttachments, "", isEditing)
+      this.renderCardDetailSidebar(null, null, true)
+      Utils.qs("#cardDetailCommentsSection").style.display = "none"
+    }
 
     const movePanel = Utils.qs("#cardDetailMovePanel")
-    const markDoneBtn = Utils.qs("#cardDetailMarkDoneBtn")
-    const moveToWrap = Utils.qs("#cardDetailMoveToWrap")
-    const moveTargets = this.renderMoveToMenu(card.id, "#cardDetailMoveToMenu")
-    if (movePanel) movePanel.style.display = canMove && !isEditing ? "" : "none"
-    if (markDoneBtn) markDoneBtn.textContent = col.isDone ? I18n.t("undone") : I18n.t("mark_as_done")
-    if (moveToWrap) moveToWrap.style.display = canMove && !isEditing && moveTargets.length ? "" : "none"
+    if (movePanel) movePanel.style.display = !isNew && canMove && !isEditing ? "" : "none"
+    if (!isNew) {
+      const markDoneBtn = Utils.qs("#cardDetailMarkDoneBtn")
+      const moveToWrap = Utils.qs("#cardDetailMoveToWrap")
+      const moveTargets = this.renderMoveToMenu(card.id, "#cardDetailMoveToMenu")
+      if (markDoneBtn) markDoneBtn.textContent = col.isDone ? I18n.t("undone") : I18n.t("mark_as_done")
+      if (moveToWrap) moveToWrap.style.display = canMove && !isEditing && moveTargets.length ? "" : "none"
+    }
   },
 
   renderCardDetailSidebar(card, col, isEditing) {
+    if (!card) {
+      Utils.qs("#cardDetailAssignee").textContent = ""
+      Utils.qs("#cardDetailDue").textContent = ""
+      Utils.qs("#cardDetailTags").textContent = ""
+      Utils.qs("#cardDetailAuthor").textContent = ""
+      Utils.qs("#cardDetailEdited").textContent = ""
+      Utils.qs("#cardDetailUserInput").value = Store.getCurrentUserName() || ""
+      Utils.qs("#cardDetailTagsInput").value = ""
+      Utils.qs("#cardDetailDueInput").value = ""
+      Utils.qs("#cardDetailAuthor")?.closest(".card-detail-field")?.classList.add("is-hidden")
+      Utils.qs("#cardDetailEdited")?.closest(".card-detail-field")?.classList.add("is-hidden")
+      Utils.qs("#cardDetailTags")?.closest(".card-detail-field")?.classList.add("is-last")
+      return
+    }
+    Utils.qs("#cardDetailAuthor")?.closest(".card-detail-field")?.classList.remove("is-hidden")
+    Utils.qs("#cardDetailEdited")?.closest(".card-detail-field")?.classList.remove("is-hidden")
+    Utils.qs("#cardDetailTags")?.closest(".card-detail-field")?.classList.remove("is-last")
     const assignee = Utils.qs("#cardDetailAssignee")
     assignee.innerHTML = ""
     if (card.assignedUser) {
@@ -2621,8 +2674,10 @@ const UI = {
     const createdAtTs = card.createdAt ? Date.parse(card.createdAt) : 0
     const editedAtTs = card.contentChangedAt ? Date.parse(card.contentChangedAt) : 0
     const isEdited = !!createdAtTs && !!editedAtTs && editedAtTs > createdAtTs
+    const editedField = edited.closest(".card-detail-field")
     if (isEdited) {
       edited.classList.remove("card-detail-empty")
+      if (editedField) editedField.classList.remove("is-hidden")
       const row = document.createElement("div")
       row.className = "card-detail-person-meta"
       const editorName = (card.contentChangedBy || "").trim() || (card.createdBy || "").trim()
@@ -2643,8 +2698,8 @@ const UI = {
       }
       edited.append(row)
     } else {
-      edited.textContent = I18n.t("not_edited")
-      edited.classList.add("card-detail-empty")
+      if (editedField) editedField.classList.add("is-hidden")
+      edited.textContent = ""
     }
 
     Utils.qs("#cardDetailUserInput").value = card.assignedUser?.name || ""
@@ -2688,7 +2743,13 @@ const UI = {
           title: I18n.t("delete"),
           showArchiveButton: false,
         })
-        if (choice === "delete") this.deleteAttachment(cardId, att.key)
+        if (choice === "delete") {
+          if (cardId) {
+            this.deleteAttachment(cardId, att.key)
+          } else {
+            this.deletePendingAttachment(att.key)
+          }
+        }
       })
       item.append(delBtn)
       container.append(item)
@@ -2852,7 +2913,12 @@ const UI = {
     const cfg = DbSettings.get()
     await CloudflareBackend.deleteImage(key, cfg).catch(console.error)
     this.pendingCardAttachments = this.pendingCardAttachments.filter(a => a.key !== key)
-    this.updateEditorAttachments(this.pendingCardAttachments, "")
+    const inCardDetail = UI.cardDetailDialog?.open && Utils.qs("#cardDetailForm")?.dataset.isNew === "true"
+    if (inCardDetail) {
+      UI.renderCardDetailAttachments(UI.pendingCardAttachments, "", true)
+    } else {
+      this.updateEditorAttachments(this.pendingCardAttachments, "")
+    }
   },
 
   cleanupPendingCardAttachments() {
@@ -3921,7 +3987,7 @@ const App = {
 
       switch (action) {
         case "add-card":
-          UI.showCardEditor(null, colId)
+          UI.showCardDetail(null, colId, { editMode: true })
           break
         case "edit-card":
           if (target.closest("a")) {
@@ -3975,6 +4041,10 @@ const App = {
 
     Utils.qs("#cardDetailCancelEditBtn").addEventListener("click", () => {
       const form = Utils.qs("#cardDetailForm")
+      if (form.dataset.isNew === "true") {
+        UI.cardDetailDialog.close()
+        return
+      }
       form.dataset.editMode = "false"
       UI.renderCardDetail()
     })
@@ -4841,9 +4911,10 @@ const App = {
         detailAddAttBtn.addEventListener("click", () => {
           UI.activeUploadContext = "detail"
           const form = Utils.qs("#cardDetailForm")
+          if (form.dataset.editMode !== "true" && form.dataset.isNew !== "true") return
           const cardId = form.dataset.cardId
           const { card } = cardId ? Store.findCard(cardId) : { card: null }
-          if (!card || !Store.canCurrentUserEditCard(card) || form.dataset.editMode !== "true") return
+          if (card && !Store.canCurrentUserEditCard(card)) return
           attInput.click()
         })
       }
@@ -4867,15 +4938,13 @@ const App = {
       dialog.addEventListener("cancel", (e) => {
         if (dialog === UI.cardDetailDialog) {
           const form = Utils.qs("#cardDetailForm")
+          if (form?.dataset.isNew === "true") return
           if (form?.dataset.editMode === "true") {
             e.preventDefault()
             form.dataset.editMode = "false"
             UI.renderCardDetail()
           }
         }
-      })
-      dialog.addEventListener("click", (e) => {
-        if (e.target === dialog) dialog.close("cancel")
       })
       dialog.addEventListener("close", () => {
         document.body.classList.remove("dialog-open")
@@ -4888,7 +4957,11 @@ const App = {
           UI.toggleDropzone(false)
         }
         if (dialog === UI.cardDetailDialog) {
+          if (Utils.qs("#cardDetailForm").dataset.isNew === "true") {
+            UI.cleanupPendingCardAttachments()
+          }
           Utils.qs("#cardDetailForm").dataset.editMode = "false"
+          Utils.qs("#cardDetailForm").dataset.isNew = ""
           UI.resetCommentComposer("detail")
           UI.hideMoveToMenu()
         }
@@ -4959,7 +5032,8 @@ const App = {
     window.addEventListener("paste", this.handlePaste.bind(this))
     
     window.addEventListener("dragenter", (e) => {
-      const inDetail = UI.cardDetailDialog?.open && Utils.qs("#cardDetailForm")?.dataset.editMode === "true"
+      const detailForm = Utils.qs("#cardDetailForm")
+      const inDetail = UI.cardDetailDialog?.open && (detailForm?.dataset.editMode === "true" || detailForm?.dataset.isNew === "true")
       if (e.dataTransfer.types.includes("Files") && (UI.editor.open || inDetail)) {
         e.preventDefault()
         UI.dragCounter++
@@ -5188,14 +5262,8 @@ const App = {
     e.preventDefault()
     const form = e.target
     const cardId = form.dataset.cardId
-    if (!cardId) return
-
-    const { card: existingCard } = Store.findCard(cardId)
-    if (!existingCard) return
-    if (!Store.canCurrentUserEditCard(existingCard)) {
-      UI.showAlert(I18n.t("own_card_only_error"))
-      return
-    }
+    const colId = form.dataset.colId
+    const isNew = form.dataset.isNew === "true"
 
     const title = Utils.qs("#cardDetailTitleInput").value.trim()
     if (!title) return
@@ -5213,8 +5281,8 @@ const App = {
         ? new Date(Utils.qs("#cardDetailDueInput").value).toISOString()
         : "",
       assignedUser: null,
-      comments: existingCard.comments || [],
-      attachments: existingCard.attachments || [],
+      comments: [],
+      attachments: [],
     }
 
     const userVal = Utils.qs("#cardDetailUserInput").value.trim()
@@ -5228,10 +5296,26 @@ const App = {
       }
     }
 
-    const savedCard = Store.updateCard(cardId, cardData)
-    UI.updateCard(savedCard)
-    form.dataset.editMode = "false"
-    UI.renderCardDetail()
+    if (isNew) {
+      cardData.attachments = UI.pendingCardAttachments || []
+      const savedCard = Store.addCard(colId, cardData)
+      UI.addCard(colId, savedCard)
+      UI.pendingCardAttachments = []
+      form.closest("dialog").close()
+    } else {
+      const { card: existingCard } = Store.findCard(cardId)
+      if (!existingCard) return
+      if (!Store.canCurrentUserEditCard(existingCard)) {
+        UI.showAlert(I18n.t("own_card_only_error"))
+        return
+      }
+      cardData.comments = existingCard.comments || []
+      cardData.attachments = existingCard.attachments || []
+      const savedCard = Store.updateCard(cardId, cardData)
+      UI.updateCard(savedCard)
+      form.dataset.editMode = "false"
+      UI.renderCardDetail()
+    }
   },
 
   handleSaveComment() {
@@ -5444,7 +5528,12 @@ const App = {
           key: result.key,
           name: processedFile.name
         })
-        UI.updateEditorAttachments(UI.pendingCardAttachments, "")
+        const inCardDetail = UI.cardDetailDialog?.open && Utils.qs("#cardDetailForm")?.dataset.isNew === "true"
+        if (inCardDetail) {
+          UI.renderCardDetailAttachments(UI.pendingCardAttachments, "", true)
+        } else {
+          UI.updateEditorAttachments(UI.pendingCardAttachments, "")
+        }
       }
     } catch (err) {
       console.error(err)

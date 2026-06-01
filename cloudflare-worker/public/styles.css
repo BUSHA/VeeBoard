@@ -1083,6 +1083,10 @@ dialog:focus-visible {
   text-transform: uppercase;
 }
 
+.is-hidden {
+  display: none !important;
+}
+
 .card-detail-title {
   margin: 4px 0 0;
   font-size: 24px;
@@ -1208,6 +1212,11 @@ dialog:focus-visible {
   gap: 6px;
   padding-bottom: 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--border), transparent 35%);
+}
+
+.card-detail-field.is-last {
+  border-bottom: none;
+  padding-bottom: 0;
 }
 
 .card-detail-field > span {
