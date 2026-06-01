@@ -1610,6 +1610,31 @@ export default {
         return jsonResponse({ success: true }, headers);
       }
 
+      if (path === "/storage" && method === "GET") {
+        const currentUserEmail = await getSessionUser(env, boardId, getUserToken(request, url));
+        if (!currentUserEmail || !(await isUserAdmin(env, boardId, currentUserEmail))) {
+          return jsonResponse({ error: "Only admin can view storage usage." }, headers, 403);
+        }
+
+        if (!env.BUCKET) {
+          return jsonResponse({ bytes: 0, objects: 0 }, headers);
+        }
+
+        let totalBytes = 0;
+        let totalObjects = 0;
+        let cursor;
+        do {
+          const result = await env.BUCKET.list({ cursor, limit: 1000 });
+          for (const obj of result.objects) {
+            totalBytes += obj.size;
+            totalObjects++;
+          }
+          cursor = result.truncated ? result.cursor : undefined;
+        } while (cursor);
+
+        return jsonResponse({ bytes: totalBytes, objects: totalObjects }, headers);
+      }
+
       return new Response("Not Found", { status: 404, headers });
     } catch (err) {
       return jsonResponse({ error: err.message }, headers, 500);

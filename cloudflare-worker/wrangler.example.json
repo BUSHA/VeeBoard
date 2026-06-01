@@ -21,7 +21,8 @@
 			"/board-session",
 			"/user-board-access",
 			"/notifications",
-			"/notifications/read"
+			"/notifications/read",
+			"/storage"
 		]
 	},
 	"d1_databases": [

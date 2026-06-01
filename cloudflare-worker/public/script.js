@@ -672,6 +672,16 @@ const CloudflareBackend = {
     if (!response.ok) throw new Error(data?.error || "Failed to load users")
     return data
   },
+  async getStorageUsage(config) {
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
+    if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
+    const response = await fetch(`${cfWorkerUrl}/storage`, {
+      headers: this.buildHeaders(config),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "Failed to load storage info")
+    return data
+  },
   async deleteUser(email, config) {
     const cfWorkerUrl = this.resolveWorkerUrl(config)
     const { cfBoardId } = config
@@ -1735,6 +1745,50 @@ const UI = {
       fallbackInput.value = currentBoardId
       fallbackInput.style.display = "none"
     }
+  },
+
+  renderSettingsStorage(storage) {
+    const section = Utils.qs("#settingsStorageSection")
+    const fill = Utils.qs("#storageProgressFill")
+    const label = Utils.qs("#storageProgressLabel")
+    if (!section || !fill || !label) return
+
+    if (!storage || storage.bytes === undefined || !Store.isAdmin) {
+      section.style.display = "none"
+      return
+    }
+
+    section.style.display = ""
+
+    const bytes = storage.bytes
+    const objects = storage.objects || 0
+    const freeLimit = 10 * 1024 * 1024 * 1024
+    const percent = Math.min((bytes / freeLimit) * 100, 100)
+
+    fill.style.width = `${percent}%`
+    if (percent > 90) {
+      fill.style.background = "var(--danger)"
+    } else if (percent > 70) {
+      fill.style.background = "var(--warning)"
+    } else {
+      fill.style.background = "var(--primary)"
+    }
+
+    const used = this.formatBytes(bytes)
+    const total = "10 GB"
+    label.textContent = `${used} ${I18n.t("of")} ${total} ${I18n.t("used")}`
+  },
+
+  formatBytes(bytes) {
+    if (bytes === 0) return "0 B"
+    const units = ["B", "KB", "MB", "GB"]
+    let unitIdx = 0
+    let size = bytes
+    while (size >= 1024 && unitIdx < units.length - 1) {
+      size /= 1024
+      unitIdx++
+    }
+    return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[unitIdx]}`
   },
 
   updateProfileAvatarPreview(avatarUrl = "") {
@@ -4538,6 +4592,19 @@ const App = {
         } catch (err) {
           console.warn("Failed to load boards:", err)
         }
+        if (Store.isAdmin) {
+          try {
+            const storage = await CloudflareBackend.getStorageUsage(cfg)
+            UI.renderSettingsStorage(storage)
+          } catch (err) {
+            console.warn("Failed to load storage:", err)
+            UI.renderSettingsStorage(null)
+          }
+        } else {
+          UI.renderSettingsStorage(null)
+        }
+      } else {
+        UI.renderSettingsStorage(null)
       }
       UI.showDialog(dbDialog)
     })
