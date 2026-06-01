@@ -516,6 +516,22 @@ select {
   color: var(--text);
 }
 
+.notification-item-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.notification-item-board {
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .notification-item-time {
   color: var(--muted);
   font-size: 11px;

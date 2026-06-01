@@ -648,6 +648,7 @@ function normalizeNotificationRow(row = {}) {
   return {
     id: row.id || "",
     boardId: row.boardId || "",
+    boardName: row.boardName || "",
     recipientEmail: normalizeEmail(row.recipientEmail || ""),
     actorEmail: normalizeEmail(row.actorEmail || ""),
     type: row.type || "",
@@ -661,50 +662,52 @@ function normalizeNotificationRow(row = {}) {
   };
 }
 
-async function listNotifications(env, boardId, recipientEmail, limit = 50) {
+async function listNotifications(env, recipientEmail, limit = 50) {
   const normalizedLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100);
   const rows = await env.DB.prepare(
     `SELECT
-       id,
-       board_id AS boardId,
-       recipient_email AS recipientEmail,
-       actor_email AS actorEmail,
-       type,
-       card_id AS cardId,
-       comment_id AS commentId,
-       title,
-       body,
-       metadata_json AS metadataJson,
-       created_at AS createdAt,
-       read_at AS readAt
-     FROM board_notifications
-     WHERE board_id = ? AND recipient_email = ?
-     ORDER BY created_at DESC
+       n.id,
+       n.board_id AS boardId,
+       COALESCE(NULLIF(b.name, ''), n.board_id) AS boardName,
+       n.recipient_email AS recipientEmail,
+       n.actor_email AS actorEmail,
+       n.type,
+       n.card_id AS cardId,
+       n.comment_id AS commentId,
+       n.title,
+       n.body,
+       n.metadata_json AS metadataJson,
+       n.created_at AS createdAt,
+       n.read_at AS readAt
+     FROM board_notifications n
+     LEFT JOIN boards b ON b.id = n.board_id
+     WHERE n.recipient_email = ?
+     ORDER BY n.created_at DESC
      LIMIT ?`
-  ).bind(boardId, normalizeEmail(recipientEmail), normalizedLimit).all();
+  ).bind(normalizeEmail(recipientEmail), normalizedLimit).all();
   const unreadRow = await env.DB.prepare(
-    "SELECT COUNT(*) AS count FROM board_notifications WHERE board_id = ? AND recipient_email = ? AND COALESCE(read_at, '') = ''"
-  ).bind(boardId, normalizeEmail(recipientEmail)).first();
+    "SELECT COUNT(*) AS count FROM board_notifications WHERE recipient_email = ? AND COALESCE(read_at, '') = ''"
+  ).bind(normalizeEmail(recipientEmail)).first();
   return {
     notifications: (rows.results || []).map(normalizeNotificationRow),
     unreadCount: Number(unreadRow?.count || 0),
   };
 }
 
-async function markNotificationsRead(env, boardId, recipientEmail, body = {}) {
+async function markNotificationsRead(env, recipientEmail, body = {}) {
   const now = new Date().toISOString();
   const normalizedEmail = normalizeEmail(recipientEmail);
   if (body.all) {
     await env.DB.prepare(
-      "UPDATE board_notifications SET read_at = ? WHERE board_id = ? AND recipient_email = ? AND COALESCE(read_at, '') = ''"
-    ).bind(now, boardId, normalizedEmail).run();
+      "UPDATE board_notifications SET read_at = ? WHERE recipient_email = ? AND COALESCE(read_at, '') = ''"
+    ).bind(now, normalizedEmail).run();
     return;
   }
   const ids = Array.isArray(body.ids) ? body.ids.filter(Boolean) : (body.id ? [body.id] : []);
   for (const id of ids) {
     await env.DB.prepare(
-      "UPDATE board_notifications SET read_at = COALESCE(NULLIF(read_at, ''), ?) WHERE board_id = ? AND recipient_email = ? AND id = ?"
-    ).bind(now, boardId, normalizedEmail, id).run();
+      "UPDATE board_notifications SET read_at = COALESCE(NULLIF(read_at, ''), ?) WHERE recipient_email = ? AND id = ?"
+    ).bind(now, normalizedEmail, id).run();
   }
 }
 
@@ -1107,8 +1110,11 @@ export default {
         if (!currentUser || !currentUser.isApproved) {
           return jsonResponse({ error: "Unauthorized" }, headers, 401);
         }
-        await generateDueNotificationsForUser(env, boardId, currentUser);
-        return jsonResponse(await listNotifications(env, boardId, currentUser.email, url.searchParams.get("limit") || 50), headers);
+        const userBoardIds = await listUserBoardIds(env, currentUserEmail);
+        for (const bid of userBoardIds) {
+          await generateDueNotificationsForUser(env, bid, currentUser);
+        }
+        return jsonResponse(await listNotifications(env, currentUser.email, url.searchParams.get("limit") || 50), headers);
       }
 
       if (path === "/notifications/read" && method === "POST") {
@@ -1121,8 +1127,8 @@ export default {
           return jsonResponse({ error: "Unauthorized" }, headers, 401);
         }
         const body = await parseJson(request);
-        await markNotificationsRead(env, boardId, currentUserEmail, body);
-        return jsonResponse({ success: true, ...(await listNotifications(env, boardId, currentUserEmail, body.limit || 50)) }, headers);
+        await markNotificationsRead(env, currentUserEmail, body);
+        return jsonResponse({ success: true, ...(await listNotifications(env, currentUserEmail, body.limit || 50)) }, headers);
       }
 
       if (path === "/auth" && method === "POST") {

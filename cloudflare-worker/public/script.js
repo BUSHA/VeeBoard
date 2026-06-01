@@ -1345,7 +1345,7 @@ const Notifications = {
       from: meta.fromColumnTitle || "",
       to: meta.toColumnTitle || meta.columnTitle || "",
       comment: meta.commentText || item.body || "",
-      board: meta.boardName || meta.boardId || "",
+      board: item.boardName || meta.boardName || meta.boardId || "",
       due: meta.due ? new Date(meta.due).toLocaleString() : "",
     }
     const titleKey = `notification_${item.type}_title`
@@ -1402,6 +1402,14 @@ const Notifications = {
       body.textContent = formatted.body
       text.append(title, body)
 
+      const meta = document.createElement("span")
+      meta.className = "notification-item-meta"
+      if (item.boardName) {
+        const badge = document.createElement("span")
+        badge.className = "notification-item-board"
+        badge.textContent = item.boardName
+        meta.append(badge)
+      }
       const time = document.createElement("time")
       time.className = "notification-item-time"
       if (item.createdAt) {
@@ -1413,8 +1421,9 @@ const Notifications = {
           minute: "2-digit",
         })
       }
+      meta.append(time)
 
-      button.append(text, time)
+      button.append(text, meta)
       list.append(button)
     })
   },
@@ -1422,10 +1431,38 @@ const Notifications = {
   async open(itemId) {
     const item = this.items.find((entry) => entry.id === itemId)
     if (!item) return
+    const itemBoardId = item.boardId || ""
+    const cfg = DbSettings.get()
     await this.markRead(item.id)
     Utils.qs("#notificationsPanel")?.classList.remove("show")
     if (!item.cardId) return
-    const { card, col } = Store.findCard(item.cardId)
+    let { card, col } = Store.findCard(item.cardId)
+    if ((!card || !col) && itemBoardId && itemBoardId !== cfg.cfBoardId) {
+      try {
+        const switched = await CloudflareBackend.switchBoard(cfg, itemBoardId)
+        const nextCfg = {
+          ...cfg,
+          cfBoardId: itemBoardId,
+          cfUserEmail: switched.user?.email || cfg.cfUserEmail || "",
+          cfUserName: switched.user?.name || cfg.cfUserName || "",
+          cfUserToken: switched.token || "",
+          isAdmin: !!switched.isAdmin,
+        }
+        DbSettings.set(nextCfg)
+        Store.isAdmin = !!switched.isAdmin
+        await Store.loadState()
+        UI.renderBoard()
+        UI.updateMenuButtonAvatar()
+        UI.updateAuthButtonsVisibility()
+        UI.updateBoardNameLabel()
+        await Notifications.refresh()
+        const found = Store.findCard(item.cardId)
+        card = found.card
+        col = found.col
+      } catch (err) {
+        console.warn("Failed to switch board for notification:", err)
+      }
+    }
     if (!card || !col) {
       UI.showAlert(I18n.t("notification_card_missing"))
       return
