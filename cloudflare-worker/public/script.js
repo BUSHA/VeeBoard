@@ -2556,7 +2556,6 @@ const UI = {
       Utils.qs("#cardDetailDescriptionEditor").innerHTML = ""
     }
 
-    Utils.qs("#cardDetailEditBtn").style.display = !isNew && canEdit && !isEditing ? "" : "none"
     Utils.qs("#cardDetailDeleteBtn").style.display = !isNew && canEdit && !isEditing ? "" : "none"
     Utils.qs("#cardDetailAttachmentAction").style.display = isEditing ? "" : "none"
     Utils.qs("#cardDetailReadActions").style.display = isNew ? "none" : ""
@@ -4032,13 +4031,6 @@ const App = {
       this.handleSaveCardDetail.bind(this)
     )
 
-    Utils.qs("#cardDetailEditBtn").addEventListener("click", () => {
-      const form = Utils.qs("#cardDetailForm")
-      form.dataset.editMode = "true"
-      UI.renderCardDetail()
-      Utils.qs("#cardDetailTitleInput")?.focus()
-    })
-
     Utils.qs("#cardDetailCancelEditBtn").addEventListener("click", () => {
       const form = Utils.qs("#cardDetailForm")
       if (form.dataset.isNew === "true") {
@@ -4964,6 +4956,34 @@ const App = {
           Utils.qs("#cardDetailForm").dataset.isNew = ""
           UI.resetCommentComposer("detail")
           UI.hideMoveToMenu()
+        }
+      })
+    })
+
+    Utils.qsa("#cardDetailDialog .card-detail-editable-value").forEach((el) => {
+      el.addEventListener("click", (e) => {
+        const form = Utils.qs("#cardDetailForm")
+        if (form.dataset.isNew === "true") return
+        const { card } = form.dataset.cardId ? Store.findCard(form.dataset.cardId) : { card: null }
+        if (!card || !Store.canCurrentUserEditCard(card)) return
+        if (form.dataset.editMode !== "true") {
+          form.dataset.editMode = "true"
+          UI.renderCardDetail()
+          const target = e.currentTarget
+          const focusMap = {
+            cardDetailTitle: "#cardDetailTitleInput",
+            cardDetailDescription: "#cardDetailDescriptionEditor",
+            cardDetailAssignee: "#cardDetailUserInput",
+            cardDetailDue: "#cardDetailDueInput",
+            cardDetailTags: "#cardDetailTagsInput",
+          }
+          const selector = focusMap[target.id]
+          if (selector) {
+            Utils.qs(selector)?.focus()
+            if (selector === "#cardDetailUserInput" || selector === "#cardDetailTagsInput") {
+              Utils.qs(selector)?.select()
+            }
+          }
         }
       })
     })

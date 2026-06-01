@@ -220,7 +220,7 @@
       <header class="card-detail-header">
         <div class="card-detail-heading">
           <span id="cardDetailColumn" class="card-detail-column"></span>
-          <h2 id="cardDetailTitle" class="card-detail-title"></h2>
+          <h2 id="cardDetailTitle" class="card-detail-title card-detail-editable-value"></h2>
           <input id="cardDetailTitleInput" name="title" class="card-detail-title-input" required maxlength="160" />
         </div>
       </header>
@@ -235,7 +235,7 @@
                 <span><kbd>Cmd/Ctrl</kbd> + <kbd>K</kbd> - <span data-i18n="hotkey_remove_link">remove link</span></span>
               </span>
             </span>
-            <div id="cardDetailDescription" class="card-detail-description"></div>
+            <div id="cardDetailDescription" class="card-detail-description card-detail-editable-value"></div>
             <div id="cardDetailDescriptionEditor" class="content-editor card-detail-description-editor" contenteditable="true" role="textbox"></div>
           </section>
 
@@ -317,7 +317,6 @@
 
       <footer class="editor-actions card-detail-actions">
         <div id="cardDetailReadActions" class="actions-main card-detail-read-actions">
-          <button id="cardDetailEditBtn" type="button" class="btn secondary" data-i18n="edit_details">Edit details</button>
           <button id="cardDetailCloseBtn" type="button" class="btn secondary" value="cancel" formnovalidate data-i18n="close">Close</button>
         </div>
         <div id="cardDetailEditActions" class="actions-main card-detail-edit-actions">
