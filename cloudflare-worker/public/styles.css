@@ -3217,7 +3217,7 @@ html[data-theme="dark"] .board-selector-row select {
 .dropzone {
   position: absolute;
   inset: 0;
-  z-index: 1000;
+  z-index: 100;
   background: color-mix(in srgb, var(--panel) 95%, transparent);
   backdrop-filter: blur(8px);
   display: none;
@@ -3226,9 +3226,13 @@ html[data-theme="dark"] .board-selector-row select {
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.2s ease;
-  border-radius: var(--radius-sm);
   border: 2px dashed var(--primary);
   box-sizing: border-box;
+}
+
+#editor,
+#cardDetailDialog {
+  position: relative;
 }
 
 .dropzone.active {

@@ -1527,16 +1527,16 @@ const UI = {
   activeUploadContext: "editor",
 
   toggleDropzone(active) {
-    const el = Utils.qs("#dropzone") // Using qs directly in case this.dropzone is stale
+    const dialog = UI.editor?.open ? UI.editor : (UI.cardDetailDialog?.open ? UI.cardDetailDialog : null)
+    if (!dialog) return
+    const el = Utils.qs(".dropzone", dialog)
     if (!el) return
     if (active) {
       el.style.display = "flex"
-      // Force repaint
       el.offsetHeight
       el.classList.add("active")
     } else {
       el.classList.remove("active")
-      // Delay display none after transition
       setTimeout(() => {
         if (!el.classList.contains("active")) {
           el.style.display = "none"
@@ -4959,7 +4959,8 @@ const App = {
     window.addEventListener("paste", this.handlePaste.bind(this))
     
     window.addEventListener("dragenter", (e) => {
-      if (UI.editor.open && e.dataTransfer.types.includes("Files")) {
+      const inDetail = UI.cardDetailDialog?.open && Utils.qs("#cardDetailForm")?.dataset.editMode === "true"
+      if (e.dataTransfer.types.includes("Files") && (UI.editor.open || inDetail)) {
         e.preventDefault()
         UI.dragCounter++
         UI.toggleDropzone(true)
@@ -4967,14 +4968,16 @@ const App = {
     })
 
     window.addEventListener("dragover", (e) => {
-      if (UI.editor.open && e.dataTransfer.types.includes("Files")) {
+      const inDetail = UI.cardDetailDialog?.open && Utils.qs("#cardDetailForm")?.dataset.editMode === "true"
+      if (e.dataTransfer.types.includes("Files") && (UI.editor.open || inDetail)) {
         e.preventDefault()
         e.dataTransfer.dropEffect = "copy"
       }
     })
 
     window.addEventListener("dragleave", (e) => {
-      if (UI.editor.open) {
+      const inDetail = UI.cardDetailDialog?.open && Utils.qs("#cardDetailForm")?.dataset.editMode === "true"
+      if (UI.editor.open || inDetail) {
         e.preventDefault()
         UI.dragCounter--
         if (UI.dragCounter <= 0) {
