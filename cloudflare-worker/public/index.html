@@ -179,7 +179,7 @@
           <span class="attachment-hint" data-i18n="attach_picture_hint">— or drag & drop / paste</span>
         </div>
         <input type="file" id="attachmentInput" accept="image/*" multiple style="display: none;" />
-        <div id="dropzone" class="dropzone" style="display: none;">
+        <div class="dropzone" style="display: none;">
           <div class="dropzone-content">
             <div class="dropzone-icon">
               <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
@@ -219,7 +219,7 @@
       <header class="card-detail-header">
         <div class="card-detail-heading">
           <span id="cardDetailColumn" class="card-detail-column"></span>
-          <h2 id="cardDetailTitle" class="card-detail-title"></h2>
+          <h2 id="cardDetailTitle" class="card-detail-title card-detail-editable-value"></h2>
           <input id="cardDetailTitleInput" name="title" class="card-detail-title-input" required maxlength="160" />
         </div>
       </header>
@@ -227,8 +227,14 @@
       <div class="card-detail-body">
         <main class="card-detail-main">
           <section class="card-detail-section">
-            <div class="card-detail-section-title" data-i18n="description_label">Description</div>
-            <div id="cardDetailDescription" class="card-detail-description"></div>
+            <span class="field-label-row">
+              <span class="card-detail-section-title" data-i18n="description_label">Description</span>
+              <span class="hotkey-hints hotkey-hints--inline">
+                <span><kbd>Cmd/Ctrl</kbd> + <kbd>V</kbd> - <span data-i18n="hotkey_add_link">add link</span>,</span>
+                <span><kbd>Cmd/Ctrl</kbd> + <kbd>K</kbd> - <span data-i18n="hotkey_remove_link">remove link</span></span>
+              </span>
+            </span>
+            <div id="cardDetailDescription" class="card-detail-description card-detail-editable-value"></div>
             <div id="cardDetailDescriptionEditor" class="content-editor card-detail-description-editor" contenteditable="true" role="textbox"></div>
           </section>
 
@@ -238,6 +244,14 @@
             <div id="cardDetailAttachmentAction" class="attachment-action">
               <button type="button" id="cardDetailAddAttachmentBtn" class="btn-link" data-i18n="attach_picture">Attach picture</button>
               <span class="attachment-hint" data-i18n="attach_picture_hint">— or drag & drop / paste</span>
+            </div>
+            <div class="dropzone" style="display: none;">
+              <div class="dropzone-content">
+                <div class="dropzone-icon">
+                  <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                </div>
+                <p data-i18n="drop_to_upload">Drop images to upload</p>
+              </div>
             </div>
           </section>
 
@@ -302,7 +316,6 @@
 
       <footer class="editor-actions card-detail-actions">
         <div id="cardDetailReadActions" class="actions-main card-detail-read-actions">
-          <button id="cardDetailEditBtn" type="button" class="btn secondary" data-i18n="edit_details">Edit details</button>
           <button id="cardDetailCloseBtn" type="button" class="btn secondary" value="cancel" formnovalidate data-i18n="close">Close</button>
         </div>
         <div id="cardDetailEditActions" class="actions-main card-detail-edit-actions">
@@ -409,6 +422,18 @@
             </div>
           </div>
         </label>
+        <label id="maxAttachmentSizeLabel" data-i18n="max_attachment_size" style="display:none;">
+          Max image size (MB)
+          <input id="maxAttachmentSize" type="number" min="1" max="100" value="5" />
+        </label>
+      </div>
+
+      <div id="settingsStorageSection" class="db-settings-section" style="display:none;">
+        <p class="label-text" data-i18n="storage_usage">Storage usage</p>
+        <div class="storage-progress-track">
+          <div class="storage-progress-fill" id="storageProgressFill"></div>
+        </div>
+        <p class="storage-progress-label" id="storageProgressLabel"></p>
       </div>
 
       <div class="editor-actions">

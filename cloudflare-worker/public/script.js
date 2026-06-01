@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.3.1"
+  version: "0.3.2"
 }
 
 /* Live sync echo guard */
@@ -670,6 +670,16 @@ const CloudflareBackend = {
     })
     const data = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(data?.error || "Failed to load users")
+    return data
+  },
+  async getStorageUsage(config) {
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
+    if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
+    const response = await fetch(`${cfWorkerUrl}/storage`, {
+      headers: this.buildHeaders(config),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "Failed to load storage info")
     return data
   },
   async deleteUser(email, config) {
@@ -1345,7 +1355,7 @@ const Notifications = {
       from: meta.fromColumnTitle || "",
       to: meta.toColumnTitle || meta.columnTitle || "",
       comment: meta.commentText || item.body || "",
-      board: meta.boardName || meta.boardId || "",
+      board: item.boardName || meta.boardName || meta.boardId || "",
       due: meta.due ? new Date(meta.due).toLocaleString() : "",
     }
     const titleKey = `notification_${item.type}_title`
@@ -1402,6 +1412,14 @@ const Notifications = {
       body.textContent = formatted.body
       text.append(title, body)
 
+      const meta = document.createElement("span")
+      meta.className = "notification-item-meta"
+      if (item.boardName) {
+        const badge = document.createElement("span")
+        badge.className = "notification-item-board"
+        badge.textContent = item.boardName
+        meta.append(badge)
+      }
       const time = document.createElement("time")
       time.className = "notification-item-time"
       if (item.createdAt) {
@@ -1413,8 +1431,9 @@ const Notifications = {
           minute: "2-digit",
         })
       }
+      meta.append(time)
 
-      button.append(text, time)
+      button.append(text, meta)
       list.append(button)
     })
   },
@@ -1422,10 +1441,38 @@ const Notifications = {
   async open(itemId) {
     const item = this.items.find((entry) => entry.id === itemId)
     if (!item) return
+    const itemBoardId = item.boardId || ""
+    const cfg = DbSettings.get()
     await this.markRead(item.id)
     Utils.qs("#notificationsPanel")?.classList.remove("show")
     if (!item.cardId) return
-    const { card, col } = Store.findCard(item.cardId)
+    let { card, col } = Store.findCard(item.cardId)
+    if ((!card || !col) && itemBoardId && itemBoardId !== cfg.cfBoardId) {
+      try {
+        const switched = await CloudflareBackend.switchBoard(cfg, itemBoardId)
+        const nextCfg = {
+          ...cfg,
+          cfBoardId: itemBoardId,
+          cfUserEmail: switched.user?.email || cfg.cfUserEmail || "",
+          cfUserName: switched.user?.name || cfg.cfUserName || "",
+          cfUserToken: switched.token || "",
+          isAdmin: !!switched.isAdmin,
+        }
+        DbSettings.set(nextCfg)
+        Store.isAdmin = !!switched.isAdmin
+        await Store.loadState()
+        UI.renderBoard()
+        UI.updateMenuButtonAvatar()
+        UI.updateAuthButtonsVisibility()
+        UI.updateBoardNameLabel()
+        await Notifications.refresh()
+        const found = Store.findCard(item.cardId)
+        card = found.card
+        col = found.col
+      } catch (err) {
+        console.warn("Failed to switch board for notification:", err)
+      }
+    }
     if (!card || !col) {
       UI.showAlert(I18n.t("notification_card_missing"))
       return
@@ -1480,16 +1527,16 @@ const UI = {
   activeUploadContext: "editor",
 
   toggleDropzone(active) {
-    const el = Utils.qs("#dropzone") // Using qs directly in case this.dropzone is stale
+    const dialog = UI.editor?.open ? UI.editor : (UI.cardDetailDialog?.open ? UI.cardDetailDialog : null)
+    if (!dialog) return
+    const el = Utils.qs(".dropzone", dialog)
     if (!el) return
     if (active) {
       el.style.display = "flex"
-      // Force repaint
       el.offsetHeight
       el.classList.add("active")
     } else {
       el.classList.remove("active")
-      // Delay display none after transition
       setTimeout(() => {
         if (!el.classList.contains("active")) {
           el.style.display = "none"
@@ -1698,6 +1745,50 @@ const UI = {
       fallbackInput.value = currentBoardId
       fallbackInput.style.display = "none"
     }
+  },
+
+  renderSettingsStorage(storage) {
+    const section = Utils.qs("#settingsStorageSection")
+    const fill = Utils.qs("#storageProgressFill")
+    const label = Utils.qs("#storageProgressLabel")
+    if (!section || !fill || !label) return
+
+    if (!storage || storage.bytes === undefined || !Store.isAdmin) {
+      section.style.display = "none"
+      return
+    }
+
+    section.style.display = ""
+
+    const bytes = storage.bytes
+    const objects = storage.objects || 0
+    const freeLimit = 10 * 1024 * 1024 * 1024
+    const percent = Math.min((bytes / freeLimit) * 100, 100)
+
+    fill.style.width = `${percent}%`
+    if (percent > 90) {
+      fill.style.background = "var(--danger)"
+    } else if (percent > 70) {
+      fill.style.background = "var(--warning)"
+    } else {
+      fill.style.background = "var(--primary)"
+    }
+
+    const used = this.formatBytes(bytes)
+    const total = "10 GB"
+    label.textContent = `${used} ${I18n.t("of")} ${total} ${I18n.t("used")}`
+  },
+
+  formatBytes(bytes) {
+    if (bytes === 0) return "0 B"
+    const units = ["B", "KB", "MB", "GB"]
+    let unitIdx = 0
+    let size = bytes
+    while (size >= 1024 && unitIdx < units.length - 1) {
+      size /= 1024
+      unitIdx++
+    }
+    return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[unitIdx]}`
   },
 
   updateProfileAvatarPreview(avatarUrl = "") {
@@ -2412,9 +2503,15 @@ const UI = {
   },
 
   showCardDetail(card, colId, options = {}) {
-    if (!card) return
     const form = Utils.qs("#cardDetailForm")
-    form.dataset.cardId = card.id
+    if (card) {
+      form.dataset.cardId = card.id
+      form.dataset.isNew = ""
+    } else {
+      form.dataset.cardId = ""
+      form.dataset.isNew = "true"
+      this.pendingCardAttachments = []
+    }
     form.dataset.colId = colId
     form.dataset.editMode = options.editMode ? "true" : "false"
     this.resetCommentComposer("detail")
@@ -2425,47 +2522,93 @@ const UI = {
   renderCardDetail() {
     const form = Utils.qs("#cardDetailForm")
     const cardId = form?.dataset.cardId
+    const isNew = form?.dataset.isNew === "true"
     const { card, col } = cardId ? Store.findCard(cardId) : { card: null, col: null }
-    if (!form || !card || !col) return
+    if (!form) return
+    if (!isNew && (!card || !col)) return
 
-    const canEdit = Store.canCurrentUserEditCard(card)
-    const canMove = Store.canCurrentUserMoveCard(card)
-    const isEditing = canEdit && form.dataset.editMode === "true"
+    const canEdit = isNew || Store.canCurrentUserEditCard(card)
+    const canMove = !isNew && Store.canCurrentUserMoveCard(card)
+    const isEditing = isNew || (canEdit && form.dataset.editMode === "true")
 
     form.classList.toggle("is-editing", isEditing)
-    Utils.qs("#cardDetailColumn").textContent = col.title || ""
-    Utils.qs("#cardDetailTitle").textContent = card.title || I18n.t("card")
-    Utils.qs("#cardDetailTitleInput").value = card.title || ""
+    const hotkeyHints = Utils.qs("#cardDetailDescription")?.previousElementSibling?.querySelector(".hotkey-hints--inline")
+    if (hotkeyHints) {
+      hotkeyHints.style.display = isEditing ? "" : "none"
+    }
+    Utils.qs("#cardDetailColumn").textContent = isNew ? I18n.t("title_label") : (col.title || "")
+    Utils.qs("#cardDetailTitle").textContent = isNew ? "" : (card.title || I18n.t("card"))
+    Utils.qs("#cardDetailTitleInput").value = isNew ? "" : (card.title || "")
+    if (isNew) {
+      Utils.qs("#cardDetailColumn").className = "card-detail-section-title"
+    } else {
+      Utils.qs("#cardDetailColumn").className = "card-detail-column"
+    }
 
-    const sanitizedHtml = DOMPurify.sanitize(card.description || "", { ADD_ATTR: ["target"] })
-    const desc = Utils.qs("#cardDetailDescription")
-    desc.innerHTML = this.hasMeaningfulHtml(sanitizedHtml) ? sanitizedHtml : I18n.t("no_description")
-    desc.classList.toggle("is-empty", !this.hasMeaningfulHtml(sanitizedHtml))
-    Utils.qs("#cardDetailDescriptionEditor").innerHTML = sanitizedHtml
+    if (!isNew) {
+      const sanitizedHtml = DOMPurify.sanitize(card.description || "", { ADD_ATTR: ["target"] })
+      const desc = Utils.qs("#cardDetailDescription")
+      desc.innerHTML = this.hasMeaningfulHtml(sanitizedHtml) ? sanitizedHtml : I18n.t("no_description")
+      desc.classList.toggle("is-empty", !this.hasMeaningfulHtml(sanitizedHtml))
+      Utils.qs("#cardDetailDescriptionEditor").innerHTML = sanitizedHtml
+    } else {
+      Utils.qs("#cardDetailDescription").innerHTML = ""
+      Utils.qs("#cardDetailDescriptionEditor").innerHTML = ""
+    }
 
-    Utils.qs("#cardDetailEditBtn").style.display = canEdit && !isEditing ? "" : "none"
-    Utils.qs("#cardDetailDeleteBtn").style.display = canEdit && !isEditing ? "" : "none"
+    Utils.qs("#cardDetailDeleteBtn").style.display = !isNew && canEdit && !isEditing ? "" : "none"
     Utils.qs("#cardDetailAttachmentAction").style.display = isEditing ? "" : "none"
+    Utils.qs("#cardDetailReadActions").style.display = isNew ? "none" : ""
 
-    this.renderCardDetailAttachments(card.attachments || [], card.id, isEditing)
-    this.renderCardDetailSidebar(card, col, isEditing)
-    this.renderComments(card, {
-      section: Utils.qs("#cardDetailCommentsSection"),
-      list: Utils.qs("#cardDetailComments"),
-      input: Utils.qs("#cardDetailCommentInput"),
-      saveBtn: Utils.qs("#cardDetailSaveCommentBtn"),
-    })
+    const saveBtn = Utils.qs("#cardDetailSaveBtn")
+    if (saveBtn) {
+      saveBtn.textContent = isNew ? I18n.t("create_card") : I18n.t("save_changes")
+    }
+
+    if (!isNew) {
+      this.renderCardDetailAttachments(card.attachments || [], card.id, isEditing)
+      this.renderCardDetailSidebar(card, col, isEditing)
+      this.renderComments(card, {
+        section: Utils.qs("#cardDetailCommentsSection"),
+        list: Utils.qs("#cardDetailComments"),
+        input: Utils.qs("#cardDetailCommentInput"),
+        saveBtn: Utils.qs("#cardDetailSaveCommentBtn"),
+      })
+    } else {
+      this.renderCardDetailAttachments(this.pendingCardAttachments, "", isEditing)
+      this.renderCardDetailSidebar(null, null, true)
+      Utils.qs("#cardDetailCommentsSection").style.display = "none"
+    }
 
     const movePanel = Utils.qs("#cardDetailMovePanel")
-    const markDoneBtn = Utils.qs("#cardDetailMarkDoneBtn")
-    const moveToWrap = Utils.qs("#cardDetailMoveToWrap")
-    const moveTargets = this.renderMoveToMenu(card.id, "#cardDetailMoveToMenu")
-    if (movePanel) movePanel.style.display = canMove && !isEditing ? "" : "none"
-    if (markDoneBtn) markDoneBtn.textContent = col.isDone ? I18n.t("undone") : I18n.t("mark_as_done")
-    if (moveToWrap) moveToWrap.style.display = canMove && !isEditing && moveTargets.length ? "" : "none"
+    if (movePanel) movePanel.style.display = !isNew && canMove && !isEditing ? "" : "none"
+    if (!isNew) {
+      const markDoneBtn = Utils.qs("#cardDetailMarkDoneBtn")
+      const moveToWrap = Utils.qs("#cardDetailMoveToWrap")
+      const moveTargets = this.renderMoveToMenu(card.id, "#cardDetailMoveToMenu")
+      if (markDoneBtn) markDoneBtn.textContent = col.isDone ? I18n.t("undone") : I18n.t("mark_as_done")
+      if (moveToWrap) moveToWrap.style.display = canMove && !isEditing && moveTargets.length ? "" : "none"
+    }
   },
 
   renderCardDetailSidebar(card, col, isEditing) {
+    if (!card) {
+      Utils.qs("#cardDetailAssignee").textContent = ""
+      Utils.qs("#cardDetailDue").textContent = ""
+      Utils.qs("#cardDetailTags").textContent = ""
+      Utils.qs("#cardDetailAuthor").textContent = ""
+      Utils.qs("#cardDetailEdited").textContent = ""
+      Utils.qs("#cardDetailUserInput").value = Store.getCurrentUserName() || ""
+      Utils.qs("#cardDetailTagsInput").value = ""
+      Utils.qs("#cardDetailDueInput").value = ""
+      Utils.qs("#cardDetailAuthor")?.closest(".card-detail-field")?.classList.add("is-hidden")
+      Utils.qs("#cardDetailEdited")?.closest(".card-detail-field")?.classList.add("is-hidden")
+      Utils.qs("#cardDetailTags")?.closest(".card-detail-field")?.classList.add("is-last")
+      return
+    }
+    Utils.qs("#cardDetailAuthor")?.closest(".card-detail-field")?.classList.remove("is-hidden")
+    Utils.qs("#cardDetailEdited")?.closest(".card-detail-field")?.classList.remove("is-hidden")
+    Utils.qs("#cardDetailTags")?.closest(".card-detail-field")?.classList.remove("is-last")
     const assignee = Utils.qs("#cardDetailAssignee")
     assignee.innerHTML = ""
     if (card.assignedUser) {
@@ -2530,8 +2673,10 @@ const UI = {
     const createdAtTs = card.createdAt ? Date.parse(card.createdAt) : 0
     const editedAtTs = card.contentChangedAt ? Date.parse(card.contentChangedAt) : 0
     const isEdited = !!createdAtTs && !!editedAtTs && editedAtTs > createdAtTs
+    const editedField = edited.closest(".card-detail-field")
     if (isEdited) {
       edited.classList.remove("card-detail-empty")
+      if (editedField) editedField.classList.remove("is-hidden")
       const row = document.createElement("div")
       row.className = "card-detail-person-meta"
       const editorName = (card.contentChangedBy || "").trim() || (card.createdBy || "").trim()
@@ -2552,8 +2697,8 @@ const UI = {
       }
       edited.append(row)
     } else {
-      edited.textContent = I18n.t("not_edited")
-      edited.classList.add("card-detail-empty")
+      if (editedField) editedField.classList.add("is-hidden")
+      edited.textContent = ""
     }
 
     Utils.qs("#cardDetailUserInput").value = card.assignedUser?.name || ""
@@ -2597,7 +2742,13 @@ const UI = {
           title: I18n.t("delete"),
           showArchiveButton: false,
         })
-        if (choice === "delete") this.deleteAttachment(cardId, att.key)
+        if (choice === "delete") {
+          if (cardId) {
+            this.deleteAttachment(cardId, att.key)
+          } else {
+            this.deletePendingAttachment(att.key)
+          }
+        }
       })
       item.append(delBtn)
       container.append(item)
@@ -2761,7 +2912,12 @@ const UI = {
     const cfg = DbSettings.get()
     await CloudflareBackend.deleteImage(key, cfg).catch(console.error)
     this.pendingCardAttachments = this.pendingCardAttachments.filter(a => a.key !== key)
-    this.updateEditorAttachments(this.pendingCardAttachments, "")
+    const inCardDetail = UI.cardDetailDialog?.open && Utils.qs("#cardDetailForm")?.dataset.isNew === "true"
+    if (inCardDetail) {
+      UI.renderCardDetailAttachments(UI.pendingCardAttachments, "", true)
+    } else {
+      this.updateEditorAttachments(this.pendingCardAttachments, "")
+    }
   },
 
   cleanupPendingCardAttachments() {
@@ -3830,7 +3986,7 @@ const App = {
 
       switch (action) {
         case "add-card":
-          UI.showCardEditor(null, colId)
+          UI.showCardDetail(null, colId, { editMode: true })
           break
         case "edit-card":
           if (target.closest("a")) {
@@ -3875,15 +4031,12 @@ const App = {
       this.handleSaveCardDetail.bind(this)
     )
 
-    Utils.qs("#cardDetailEditBtn").addEventListener("click", () => {
-      const form = Utils.qs("#cardDetailForm")
-      form.dataset.editMode = "true"
-      UI.renderCardDetail()
-      Utils.qs("#cardDetailTitleInput")?.focus()
-    })
-
     Utils.qs("#cardDetailCancelEditBtn").addEventListener("click", () => {
       const form = Utils.qs("#cardDetailForm")
+      if (form.dataset.isNew === "true") {
+        UI.cardDetailDialog.close()
+        return
+      }
       form.dataset.editMode = "false"
       UI.renderCardDetail()
     })
@@ -4492,7 +4645,14 @@ const App = {
       cfUrlInput.value = cfg.cfWorkerUrl || ""
       cfIdInput.value = cfg.cfBoardId || ""
       UI.renderBoardSelect(cfBoardSelect, cfIdInput, UI.accessibleBoards)
-      if (boardActionBtns) boardActionBtns.style.display = Store.hasCloudflareSession() && Store.isAdmin ? "" : "none"
+      const isAdmin = Store.hasCloudflareSession() && Store.isAdmin
+      if (boardActionBtns) boardActionBtns.style.display = isAdmin ? "" : "none"
+      const maxSizeLabel = Utils.qs("#maxAttachmentSizeLabel")
+      const maxSizeInput = Utils.qs("#maxAttachmentSize")
+      if (maxSizeLabel && maxSizeInput) {
+        maxSizeLabel.style.display = isAdmin ? "" : "none"
+        maxSizeInput.value = String(Store.state?.attachmentMaxSize != null ? Store.state.attachmentMaxSize : 5)
+      }
       if (Store.hasCloudflareSession()) {
         try {
           const result = await CloudflareBackend.listBoards(cfg)
@@ -4501,6 +4661,19 @@ const App = {
         } catch (err) {
           console.warn("Failed to load boards:", err)
         }
+        if (isAdmin) {
+          try {
+            const storage = await CloudflareBackend.getStorageUsage(cfg)
+            UI.renderSettingsStorage(storage)
+          } catch (err) {
+            console.warn("Failed to load storage:", err)
+            UI.renderSettingsStorage(null)
+          }
+        } else {
+          UI.renderSettingsStorage(null)
+        }
+      } else {
+        UI.renderSettingsStorage(null)
       }
       UI.showDialog(dbDialog)
     })
@@ -4565,6 +4738,22 @@ const App = {
         newCfg.cfUserToken = ""
         newCfg.cfBoardSessions = {}
         Store.isAdmin = false
+      }
+
+      if (Store.isAdmin) {
+        const maxSizeInput = Utils.qs("#maxAttachmentSize")
+        if (maxSizeInput) {
+          const newMaxSize = parseInt(maxSizeInput.value, 10)
+          if (!isNaN(newMaxSize) && newMaxSize >= 1 && newMaxSize <= 100) {
+            try {
+              const savePayload = JSON.parse(JSON.stringify(Store.state || { columns: [] }))
+              savePayload.attachmentMaxSize = newMaxSize
+              await CloudflareBackend.save(savePayload, newCfg)
+            } catch (err) {
+              console.warn("Failed to save max attachment size:", err)
+            }
+          }
+        }
       }
 
       DbSettings.set(newCfg)
@@ -4714,9 +4903,10 @@ const App = {
         detailAddAttBtn.addEventListener("click", () => {
           UI.activeUploadContext = "detail"
           const form = Utils.qs("#cardDetailForm")
+          if (form.dataset.editMode !== "true" && form.dataset.isNew !== "true") return
           const cardId = form.dataset.cardId
           const { card } = cardId ? Store.findCard(cardId) : { card: null }
-          if (!card || !Store.canCurrentUserEditCard(card) || form.dataset.editMode !== "true") return
+          if (card && !Store.canCurrentUserEditCard(card)) return
           attInput.click()
         })
       }
@@ -4740,15 +4930,13 @@ const App = {
       dialog.addEventListener("cancel", (e) => {
         if (dialog === UI.cardDetailDialog) {
           const form = Utils.qs("#cardDetailForm")
+          if (form?.dataset.isNew === "true") return
           if (form?.dataset.editMode === "true") {
             e.preventDefault()
             form.dataset.editMode = "false"
             UI.renderCardDetail()
           }
         }
-      })
-      dialog.addEventListener("click", (e) => {
-        if (e.target === dialog) dialog.close("cancel")
       })
       dialog.addEventListener("close", () => {
         document.body.classList.remove("dialog-open")
@@ -4761,9 +4949,41 @@ const App = {
           UI.toggleDropzone(false)
         }
         if (dialog === UI.cardDetailDialog) {
+          if (Utils.qs("#cardDetailForm").dataset.isNew === "true") {
+            UI.cleanupPendingCardAttachments()
+          }
           Utils.qs("#cardDetailForm").dataset.editMode = "false"
+          Utils.qs("#cardDetailForm").dataset.isNew = ""
           UI.resetCommentComposer("detail")
           UI.hideMoveToMenu()
+        }
+      })
+    })
+
+    Utils.qsa("#cardDetailDialog .card-detail-editable-value").forEach((el) => {
+      el.addEventListener("click", (e) => {
+        const form = Utils.qs("#cardDetailForm")
+        if (form.dataset.isNew === "true") return
+        const { card } = form.dataset.cardId ? Store.findCard(form.dataset.cardId) : { card: null }
+        if (!card || !Store.canCurrentUserEditCard(card)) return
+        if (form.dataset.editMode !== "true") {
+          form.dataset.editMode = "true"
+          UI.renderCardDetail()
+          const target = e.currentTarget
+          const focusMap = {
+            cardDetailTitle: "#cardDetailTitleInput",
+            cardDetailDescription: "#cardDetailDescriptionEditor",
+            cardDetailAssignee: "#cardDetailUserInput",
+            cardDetailDue: "#cardDetailDueInput",
+            cardDetailTags: "#cardDetailTagsInput",
+          }
+          const selector = focusMap[target.id]
+          if (selector) {
+            Utils.qs(selector)?.focus()
+            if (selector === "#cardDetailUserInput" || selector === "#cardDetailTagsInput") {
+              Utils.qs(selector)?.select()
+            }
+          }
         }
       })
     })
@@ -4832,7 +5052,9 @@ const App = {
     window.addEventListener("paste", this.handlePaste.bind(this))
     
     window.addEventListener("dragenter", (e) => {
-      if (UI.editor.open && e.dataTransfer.types.includes("Files")) {
+      const detailForm = Utils.qs("#cardDetailForm")
+      const inDetail = UI.cardDetailDialog?.open && (detailForm?.dataset.editMode === "true" || detailForm?.dataset.isNew === "true")
+      if (e.dataTransfer.types.includes("Files") && (UI.editor.open || inDetail)) {
         e.preventDefault()
         UI.dragCounter++
         UI.toggleDropzone(true)
@@ -4840,14 +5062,16 @@ const App = {
     })
 
     window.addEventListener("dragover", (e) => {
-      if (UI.editor.open && e.dataTransfer.types.includes("Files")) {
+      const inDetail = UI.cardDetailDialog?.open && Utils.qs("#cardDetailForm")?.dataset.editMode === "true"
+      if (e.dataTransfer.types.includes("Files") && (UI.editor.open || inDetail)) {
         e.preventDefault()
         e.dataTransfer.dropEffect = "copy"
       }
     })
 
     window.addEventListener("dragleave", (e) => {
-      if (UI.editor.open) {
+      const inDetail = UI.cardDetailDialog?.open && Utils.qs("#cardDetailForm")?.dataset.editMode === "true"
+      if (UI.editor.open || inDetail) {
         e.preventDefault()
         UI.dragCounter--
         if (UI.dragCounter <= 0) {
@@ -5058,14 +5282,8 @@ const App = {
     e.preventDefault()
     const form = e.target
     const cardId = form.dataset.cardId
-    if (!cardId) return
-
-    const { card: existingCard } = Store.findCard(cardId)
-    if (!existingCard) return
-    if (!Store.canCurrentUserEditCard(existingCard)) {
-      UI.showAlert(I18n.t("own_card_only_error"))
-      return
-    }
+    const colId = form.dataset.colId
+    const isNew = form.dataset.isNew === "true"
 
     const title = Utils.qs("#cardDetailTitleInput").value.trim()
     if (!title) return
@@ -5083,8 +5301,8 @@ const App = {
         ? new Date(Utils.qs("#cardDetailDueInput").value).toISOString()
         : "",
       assignedUser: null,
-      comments: existingCard.comments || [],
-      attachments: existingCard.attachments || [],
+      comments: [],
+      attachments: [],
     }
 
     const userVal = Utils.qs("#cardDetailUserInput").value.trim()
@@ -5098,10 +5316,26 @@ const App = {
       }
     }
 
-    const savedCard = Store.updateCard(cardId, cardData)
-    UI.updateCard(savedCard)
-    form.dataset.editMode = "false"
-    UI.renderCardDetail()
+    if (isNew) {
+      cardData.attachments = UI.pendingCardAttachments || []
+      const savedCard = Store.addCard(colId, cardData)
+      UI.addCard(colId, savedCard)
+      UI.pendingCardAttachments = []
+      form.closest("dialog").close()
+    } else {
+      const { card: existingCard } = Store.findCard(cardId)
+      if (!existingCard) return
+      if (!Store.canCurrentUserEditCard(existingCard)) {
+        UI.showAlert(I18n.t("own_card_only_error"))
+        return
+      }
+      cardData.comments = existingCard.comments || []
+      cardData.attachments = existingCard.attachments || []
+      const savedCard = Store.updateCard(cardId, cardData)
+      UI.updateCard(savedCard)
+      form.dataset.editMode = "false"
+      UI.renderCardDetail()
+    }
   },
 
   handleSaveComment() {
@@ -5268,8 +5502,9 @@ const App = {
     // Process image: convert to WebP and resize
     const processedFile = await Utils.processImage(file)
 
-    if (processedFile.size > 5 * 1024 * 1024) {
-      UI.showAlert(I18n.t("image_too_large"))
+    const maxSizeMb = Store.state?.attachmentMaxSize || 5
+    if (processedFile.size > maxSizeMb * 1024 * 1024) {
+      UI.showAlert(I18n.t("image_too_large", { maxSize: maxSizeMb }))
       return
     }
 
@@ -5313,7 +5548,12 @@ const App = {
           key: result.key,
           name: processedFile.name
         })
-        UI.updateEditorAttachments(UI.pendingCardAttachments, "")
+        const inCardDetail = UI.cardDetailDialog?.open && Utils.qs("#cardDetailForm")?.dataset.isNew === "true"
+        if (inCardDetail) {
+          UI.renderCardDetailAttachments(UI.pendingCardAttachments, "", true)
+        } else {
+          UI.updateEditorAttachments(UI.pendingCardAttachments, "")
+        }
       }
     } catch (err) {
       console.error(err)

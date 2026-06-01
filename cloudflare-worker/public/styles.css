@@ -520,6 +520,22 @@ select {
   color: var(--text);
 }
 
+.notification-item-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.notification-item-board {
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .notification-item-time {
   color: var(--muted);
   font-size: 11px;
@@ -1071,6 +1087,10 @@ dialog:focus-visible {
   text-transform: uppercase;
 }
 
+.is-hidden {
+  display: none !important;
+}
+
 .card-detail-title {
   margin: 4px 0 0;
   font-size: 24px;
@@ -1196,6 +1216,11 @@ dialog:focus-visible {
   gap: 6px;
   padding-bottom: 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--border), transparent 35%);
+}
+
+.card-detail-field.is-last {
+  border-bottom: none;
+  padding-bottom: 0;
 }
 
 .card-detail-field > span {
@@ -1915,6 +1940,26 @@ dialog:focus-visible {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+
+.storage-progress-track {
+  width: 100%;
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.storage-progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+.storage-progress-label {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .admin-user-list {
@@ -3185,7 +3230,7 @@ html[data-theme="dark"] .board-selector-row select {
 .dropzone {
   position: absolute;
   inset: 0;
-  z-index: 1000;
+  z-index: 100;
   background: color-mix(in srgb, var(--panel) 95%, transparent);
   backdrop-filter: blur(8px);
   display: none;
@@ -3194,9 +3239,13 @@ html[data-theme="dark"] .board-selector-row select {
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.2s ease;
-  border-radius: var(--radius-sm);
   border: 2px dashed var(--primary);
   box-sizing: border-box;
+}
+
+#editor,
+#cardDetailDialog {
+  position: relative;
 }
 
 .dropzone.active {
