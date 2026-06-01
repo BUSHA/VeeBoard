@@ -1158,6 +1158,74 @@ dialog:focus-visible {
   text-transform: uppercase;
 }
 
+/* Card manage dropdown */
+.card-manage-trigger {
+  -webkit-appearance: none;
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 42px;
+  padding: 0 32px 0 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 400;
+  cursor: pointer;
+  outline: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%23888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px 12px;
+  box-sizing: border-box;
+}
+
+html[data-theme="dark"] .card-manage-trigger {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%239aa3b2' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+}
+
+.card-manage-trigger:hover {
+  border-color: var(--primary);
+}
+
+.card-manage-menu {
+  display: none;
+  position: fixed;
+  background-color: var(--panel);
+  min-width: 180px;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  z-index: 100;
+  padding: 8px;
+  max-height: min(300px, 50vh);
+  overflow-y: auto;
+}
+
+.card-manage-menu.show {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.card-manage-menu .btn {
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+.card-manage-menu .card-manage-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.card-manage-menu .card-manage-danger {
+  color: var(--error);
+}
+
 .card-detail-description {
   line-height: 1.55;
   overflow-wrap: anywhere;
@@ -1213,9 +1281,8 @@ dialog:focus-visible {
 
 .card-detail-field {
   display: grid;
-  gap: 6px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--border), transparent 35%);
+  gap: 4px;
+  padding-bottom: 10px;
 }
 
 .card-detail-field.is-last {
@@ -1287,10 +1354,6 @@ dialog:focus-visible {
 
 .card-detail:not(.is-editing) #cardDetailAttachmentAction {
   display: none;
-}
-
-.card-detail #cardDetailMovePanel .btn {
-  width: 100%;
 }
 
 .btn.danger {
@@ -1402,15 +1465,6 @@ dialog:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-}
-
-.move-to-menu-wrap {
-  position: relative;
-  flex: 1 1 calc(50% - 6px);
-}
-
-.move-to-menu-wrap .btn {
-  width: 100%;
 }
 
 .editor-move-menu {
@@ -3051,13 +3105,17 @@ html[data-theme="dark"] .board-selector-row select {
 .comment-item {
   border: 1px solid var(--comment-border);
   border-radius: 12px;
-  padding: 10px 12px;
+  padding: 8px 10px;
+  font-size: 14px;
   background: color-mix(in srgb, var(--panel), var(--bg) 35%);
 }
 
-.comment-item.comment-reply {
+.comment-replies {
   margin-left: 20px;
-  border-radius: 1px 12px 12px 12px;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .comment-item-header {
@@ -3065,7 +3123,6 @@ html[data-theme="dark"] .board-selector-row select {
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 8px;
 }
 
 .comment-item-meta {
@@ -3245,7 +3302,7 @@ html[data-theme="dark"] .board-selector-row select {
 
 #editor,
 #cardDetailDialog {
-  position: relative;
+  position: fixed;
 }
 
 .dropzone.active {
@@ -3308,4 +3365,128 @@ html[data-theme="dark"] .board-selector-row select {
   .dropzone-content p {
     font-size: 14px;
   }
+}
+
+/* Non-image attachment styles */
+.card-detail-attachment--file {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.card-detail-attachment--file:hover {
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+.card-detail-attachment--file .attachment-file-icon {
+  color: var(--muted);
+}
+
+.card-detail-attachment--file .attachment-file-name {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  padding: 0 4px;
+}
+
+.editor-attachment--file {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--panel), var(--bg) 35%);
+}
+
+.editor-attachment--file .attachment-file-icon {
+  color: var(--muted);
+}
+
+/* Checkbox label in settings */
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+/* Attachment settings row (max size + type tabs inline) */
+.attachment-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 24px;
+}
+
+.attachment-settings-row label {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  flex: 1;
+}
+
+.attachment-type-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  flex: 1;
+}
+
+.attachment-type-tabs {
+  display: flex;
+  width: 100%;
+  min-height: 42px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 40px;
+  padding: 3px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.attachment-type-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 4px 12px;
+  border-radius: 36px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  white-space: nowrap;
+}
+
+.attachment-type-tab:hover {
+  background: var(--primary-light);
+}
+
+.attachment-type-tab.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.attachment-type-tab.active:hover {
+  background: var(--primary);
 }

@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.3.2"
+  version: "0.3.7"
 }
 
 /* Live sync echo guard */
@@ -616,12 +616,16 @@ const CloudflareBackend = {
     // Sync-on-focus (visibilitychange) is used instead in App.setupEventListeners.
     return () => {}
   },
-  async uploadImage(file, config) {
+  async uploadImage(file, config, originalName) {
     const cfWorkerUrl = this.resolveWorkerUrl(config)
     if (!cfWorkerUrl) throw new Error("Cloudflare not configured")
+    const headers = this.buildHeaders(config, { "Content-Type": file.type })
+    if (originalName) {
+      headers["X-Original-Filename"] = originalName
+    }
     const response = await fetch(`${cfWorkerUrl}/upload`, {
       method: "POST",
-      headers: this.buildHeaders(config, { "Content-Type": file.type }),
+      headers,
       body: file,
     })
     if (!response.ok) {
@@ -1556,8 +1560,6 @@ const UI = {
   hideMoveToMenu() {
     const menu = Utils.qs("#moveToMenu")
     if (menu) menu.classList.remove("show")
-    const detailMenu = Utils.qs("#cardDetailMoveToMenu")
-    if (detailMenu) detailMenu.classList.remove("show")
   },
 
   renderMoveToMenu(cardId, menuSelector = "#moveToMenu") {
@@ -2414,7 +2416,34 @@ const UI = {
     this.updateAuthButtonsVisibility()
     this.updateBoardActionsVisibility()
     this.updateAdminPanelVisibility()
+    this.updateAttachmentInputMode()
     if (typeof I18n !== "undefined") I18n.updatePage()
+  },
+
+  updateAttachmentInputMode() {
+    const allowAny = Store.state?.attachmentAllowAnyType === true
+    const attInput = Utils.qs("#attachmentInput")
+    if (attInput) {
+      attInput.accept = allowAny ? "*/*" : "image/*"
+    }
+    Utils.qsa("[data-i18n='drop_to_upload']").forEach(el => {
+      el.style.display = allowAny ? "none" : ""
+    })
+    Utils.qsa("[data-i18n='drop_to_upload_any']").forEach(el => {
+      el.style.display = allowAny ? "" : "none"
+    })
+    const addAttBtn = Utils.qs("#addAttachmentBtn")
+    const detailAddAttBtn = Utils.qs("#cardDetailAddAttachmentBtn")
+    const btnKey = allowAny ? "attach_file" : "attach_picture"
+    if (addAttBtn) addAttBtn.textContent = I18n.t(btnKey)
+    if (detailAddAttBtn) detailAddAttBtn.textContent = I18n.t(btnKey)
+  },
+
+  setAttachmentTypeTab(type) {
+    Utils.qsa("[data-attachment-type]").forEach(btn => {
+      const isActive = btn.dataset.attachmentType === type
+      btn.classList.toggle("active", isActive)
+    })
   },
 
   toggleArchiveVisibility() {
@@ -2556,7 +2585,6 @@ const UI = {
       Utils.qs("#cardDetailDescriptionEditor").innerHTML = ""
     }
 
-    Utils.qs("#cardDetailDeleteBtn").style.display = !isNew && canEdit && !isEditing ? "" : "none"
     Utils.qs("#cardDetailAttachmentAction").style.display = isEditing ? "" : "none"
     Utils.qs("#cardDetailReadActions").style.display = isNew ? "none" : ""
 
@@ -2580,15 +2608,50 @@ const UI = {
       Utils.qs("#cardDetailCommentsSection").style.display = "none"
     }
 
-    const movePanel = Utils.qs("#cardDetailMovePanel")
-    if (movePanel) movePanel.style.display = !isNew && canMove && !isEditing ? "" : "none"
-    if (!isNew) {
-      const markDoneBtn = Utils.qs("#cardDetailMarkDoneBtn")
-      const moveToWrap = Utils.qs("#cardDetailMoveToWrap")
-      const moveTargets = this.renderMoveToMenu(card.id, "#cardDetailMoveToMenu")
-      if (markDoneBtn) markDoneBtn.textContent = col.isDone ? I18n.t("undone") : I18n.t("mark_as_done")
-      if (moveToWrap) moveToWrap.style.display = canMove && !isEditing && moveTargets.length ? "" : "none"
+    const manageDropdown = Utils.qs("#cardDetailManageDropdown")
+    if (manageDropdown) manageDropdown.style.display = !isNew && canMove ? "" : "none"
+    if (!isNew && canMove) {
+      this.renderManageDropdown(card, col)
     }
+  },
+
+  renderManageDropdown(card, col) {
+    const columnLabel = Utils.qs("#cardDetailManageColumn")
+    const menu = Utils.qs("#cardDetailManageMenu")
+    if (!columnLabel || !menu) return
+    columnLabel.textContent = col.title || ""
+    menu.innerHTML = ""
+
+    Store.state.columns.forEach((targetCol) => {
+      if (targetCol.isArchive || targetCol.id === col.id) return
+      const btn = document.createElement("button")
+      btn.type = "button"
+      btn.className = "btn"
+      btn.dataset.moveToColId = targetCol.id
+      btn.textContent = targetCol.title || ""
+      menu.append(btn)
+    })
+
+    const divider = document.createElement("div")
+    divider.className = "card-manage-divider"
+    menu.append(divider)
+
+    const archiveCol = Store.state.columns.find(c => c.isArchive)
+    if (archiveCol && col.id !== archiveCol.id) {
+      const archiveBtn = document.createElement("button")
+      archiveBtn.type = "button"
+      archiveBtn.className = "btn"
+      archiveBtn.dataset.action = "archive"
+      archiveBtn.textContent = I18n.t("archive")
+      menu.append(archiveBtn)
+    }
+
+    const deleteBtn = document.createElement("button")
+    deleteBtn.type = "button"
+    deleteBtn.className = "btn card-manage-danger"
+    deleteBtn.dataset.action = "delete"
+    deleteBtn.textContent = I18n.t("delete_card")
+    menu.append(deleteBtn)
   },
 
   renderCardDetailSidebar(card, col, isEditing) {
@@ -2723,12 +2786,29 @@ const UI = {
     attachments.forEach((att) => {
       const item = document.createElement("div")
       item.className = "card-detail-attachment"
-      const img = document.createElement("img")
-      const authUrl = CloudflareBackend.getAuthenticatedImageUrl(att.url)
-      img.src = authUrl
-      img.alt = att.name || I18n.t("attachment")
-      img.addEventListener("click", () => this.showLightbox(authUrl))
-      item.append(img)
+      const isImage = !att.type || att.type.startsWith("image/")
+      if (isImage) {
+        const img = document.createElement("img")
+        const authUrl = CloudflareBackend.getAuthenticatedImageUrl(att.url)
+        img.src = authUrl
+        img.alt = att.name || I18n.t("attachment")
+        img.addEventListener("click", () => this.showLightbox(authUrl))
+        item.append(img)
+      } else {
+        item.classList.add("card-detail-attachment--file")
+        const icon = document.createElement("div")
+        icon.className = "attachment-file-icon"
+        icon.innerHTML = '<svg viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="1.5" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
+        item.append(icon)
+        const nameLabel = document.createElement("div")
+        nameLabel.className = "attachment-file-name"
+        nameLabel.textContent = att.name || I18n.t("attachment")
+        nameLabel.title = att.name || ""
+        item.append(nameLabel)
+        const authUrl = CloudflareBackend.getAuthenticatedImageUrl(att.url)
+        item.style.cursor = "pointer"
+        item.addEventListener("click", () => window.open(authUrl, "_blank"))
+      }
 
       const delBtn = document.createElement("button")
       delBtn.type = "button"
@@ -2737,6 +2817,7 @@ const UI = {
       delBtn.disabled = !editable
       delBtn.addEventListener("click", async (e) => {
         e.preventDefault()
+        e.stopPropagation()
         if (!editable) return
         const choice = await this.showConfirm(I18n.t("image_delete_confirm"), {
           title: I18n.t("delete"),
@@ -2849,12 +2930,21 @@ const UI = {
     attachments.forEach(att => {
       const item = document.createElement("div")
       item.className = "editor-attachment"
-      const img = document.createElement("img")
-      const authUrl = CloudflareBackend.getAuthenticatedImageUrl(att.url)
-      img.src = authUrl
-      img.style.cursor = "zoom-in"
-      img.addEventListener("click", () => this.showLightbox(authUrl))
-      item.append(img)
+      const isImage = !att.type || att.type.startsWith("image/")
+      if (isImage) {
+        const img = document.createElement("img")
+        const authUrl = CloudflareBackend.getAuthenticatedImageUrl(att.url)
+        img.src = authUrl
+        img.style.cursor = "zoom-in"
+        img.addEventListener("click", () => this.showLightbox(authUrl))
+        item.append(img)
+      } else {
+        item.classList.add("editor-attachment--file")
+        const icon = document.createElement("div")
+        icon.className = "attachment-file-icon"
+        icon.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="1.5" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
+        item.append(icon)
+      }
 
       const delBtn = document.createElement("button")
       delBtn.type = "button"
@@ -2864,6 +2954,7 @@ const UI = {
       delBtn.addEventListener("click", async (e) => {
         if (!canEdit) return
         e.preventDefault()
+        e.stopPropagation()
         const choice = await this.showConfirm(I18n.t("image_delete_confirm"), {
           title: I18n.t("delete"),
           showArchiveButton: false
@@ -2997,9 +3088,12 @@ const UI = {
     list.innerHTML = ""
     const comments = Array.isArray(card.comments) ? card.comments : []
 
-    const renderCommentItem = (comment, isReply = false) => {
+    const renderCommentItem = (comment, depth = 0, parentContainer = null) => {
+      const wrapper = document.createElement("div")
+      wrapper.className = "comment-wrapper"
+
       const item = document.createElement("div")
-      item.className = `comment-item${isReply ? " comment-reply" : ""}`
+      item.className = `comment-item${depth > 0 ? " comment-reply" : ""}`
       item.dataset.commentId = comment.id
 
       const header = document.createElement("div")
@@ -3028,7 +3122,7 @@ const UI = {
       const actions = document.createElement("div")
       actions.className = "comment-item-actions"
 
-      if (!isReply) {
+      if (depth < 2) {
         const replyBtn = document.createElement("button")
         replyBtn.type = "button"
         replyBtn.className = "btn-link"
@@ -3073,9 +3167,16 @@ const UI = {
       text.textContent = comment.text || ""
 
       item.append(header, text)
-      list.append(item)
+      wrapper.append(item)
 
-      ;(comment.replies || []).forEach((reply) => renderCommentItem(reply, true))
+      if (comment.replies && comment.replies.length) {
+        const repliesContainer = document.createElement("div")
+        repliesContainer.className = "comment-replies"
+        comment.replies.forEach((reply) => renderCommentItem(reply, depth + 1, repliesContainer))
+        wrapper.append(repliesContainer)
+      }
+
+      (parentContainer || list).append(wrapper)
     }
 
     if (comments.length === 0) {
@@ -4045,16 +4146,57 @@ const App = {
       UI.cardDetailDialog.close()
     })
 
-    Utils.qs("#cardDetailDeleteBtn").addEventListener("click", () => {
-      const cardId = Utils.qs("#cardDetailForm").dataset.cardId
-      this.promptDeleteOrArchive(cardId)
+    Utils.qs("#cardDetailManageBtn").addEventListener("click", (e) => {
+      e.stopPropagation()
+      const menu = Utils.qs("#cardDetailManageMenu")
+      if (!menu) return
+      const wasOpen = menu.classList.contains("show")
+      menu.classList.remove("show")
+      if (!wasOpen) {
+        const rect = e.currentTarget.getBoundingClientRect()
+        const spaceBelow = window.innerHeight - rect.bottom - 16
+        const spaceAbove = rect.top - 16
+        menu.style.left = rect.left + "px"
+        menu.style.width = rect.width + "px"
+        menu.style.right = "auto"
+        if (spaceBelow >= 150 || spaceBelow >= spaceAbove) {
+          menu.style.top = (rect.bottom + 4) + "px"
+          menu.style.bottom = "auto"
+          menu.style.maxHeight = "min(300px, " + spaceBelow + "px)"
+        } else {
+          menu.style.bottom = (window.innerHeight - rect.top + 4) + "px"
+          menu.style.top = "auto"
+          menu.style.maxHeight = "min(300px, " + spaceAbove + "px)"
+        }
+        menu.classList.add("show")
+      }
+    })
+
+    Utils.qs("#cardDetailManageMenu").addEventListener("click", (e) => {
+      const form = Utils.qs("#cardDetailForm")
+      const cardId = form?.dataset.cardId
+      if (!cardId) return
+
+      const moveToItem = e.target.closest("[data-move-to-col-id]")
+      if (moveToItem) {
+        this.handleMoveCardTo(form, moveToItem.dataset.moveToColId)
+        return
+      }
+
+      const actionBtn = e.target.closest("[data-action]")
+      if (actionBtn) {
+        const action = actionBtn.dataset.action
+        if (action === "archive") {
+          this.handleArchiveCard(cardId)
+        } else if (action === "delete") {
+          this.promptDeleteOrArchive(cardId)
+        }
+        const menu = Utils.qs("#cardDetailManageMenu")
+        if (menu) menu.classList.remove("show")
+      }
     })
 
     Utils.qs("#markDoneBtn").addEventListener("click", (e) => {
-      this.handleMarkAsDone(e.target.closest("form"))
-    })
-
-    Utils.qs("#cardDetailMarkDoneBtn").addEventListener("click", (e) => {
       this.handleMarkAsDone(e.target.closest("form"))
     })
 
@@ -4071,29 +4213,10 @@ const App = {
       moveToMenu.classList.toggle("show")
     })
 
-    Utils.qs("#cardDetailMoveToBtn").addEventListener("click", (e) => {
-      e.stopPropagation()
-      const form = e.target.closest("form")
-      const cardId = form?.dataset.cardId
-      if (!cardId) return
-      const moveToWrap = Utils.qs("#cardDetailMoveToWrap", form)
-      const moveToMenu = Utils.qs("#cardDetailMoveToMenu", form)
-      const moveTargets = UI.renderMoveToMenu(cardId, "#cardDetailMoveToMenu")
-      if (!moveToWrap || !moveToMenu || !moveTargets.length) return
-      moveToWrap.style.display = ""
-      moveToMenu.classList.toggle("show")
-    })
-
     Utils.qs("#moveToMenu").addEventListener("click", (e) => {
       const moveToItem = e.target.closest("[data-move-to-col-id]")
       if (!moveToItem) return
       this.handleMoveCardTo(Utils.qs("#editorForm"), moveToItem.dataset.moveToColId)
-    })
-
-    Utils.qs("#cardDetailMoveToMenu").addEventListener("click", (e) => {
-      const moveToItem = e.target.closest("[data-move-to-col-id]")
-      if (!moveToItem) return
-      this.handleMoveCardTo(Utils.qs("#cardDetailForm"), moveToItem.dataset.moveToColId)
     })
 
     Utils.qs("#saveCommentBtn").addEventListener("click", () => {
@@ -4321,9 +4444,13 @@ const App = {
         detailUserAutocomplete.classList.remove("show")
       }
       const moveToWrap = Utils.qs("#moveToWrap")
-      const detailMoveToWrap = Utils.qs("#cardDetailMoveToWrap")
-      if (moveToWrap && !moveToWrap.contains(e.target) && (!detailMoveToWrap || !detailMoveToWrap.contains(e.target))) {
+      if (moveToWrap && !moveToWrap.contains(e.target)) {
         UI.hideMoveToMenu()
+      }
+      const manageDropdown = Utils.qs("#cardDetailManageDropdown")
+      const manageMenu = Utils.qs("#cardDetailManageMenu")
+      if (manageDropdown && !manageDropdown.contains(e.target) && manageMenu) {
+        manageMenu.classList.remove("show")
       }
     })
 
@@ -4649,10 +4776,14 @@ const App = {
       if (boardActionBtns) boardActionBtns.style.display = isAdmin ? "" : "none"
       const maxSizeLabel = Utils.qs("#maxAttachmentSizeLabel")
       const maxSizeInput = Utils.qs("#maxAttachmentSize")
-      if (maxSizeLabel && maxSizeInput) {
+      if (maxSizeLabel) {
         maxSizeLabel.style.display = isAdmin ? "" : "none"
+      }
+      if (maxSizeInput) {
         maxSizeInput.value = String(Store.state?.attachmentMaxSize != null ? Store.state.attachmentMaxSize : 5)
       }
+      const allowAny = Store.state?.attachmentAllowAnyType === true
+      UI.setAttachmentTypeTab(allowAny ? "any" : "image")
       if (Store.hasCloudflareSession()) {
         try {
           const result = await CloudflareBackend.listBoards(cfg)
@@ -4742,16 +4873,27 @@ const App = {
 
       if (Store.isAdmin) {
         const maxSizeInput = Utils.qs("#maxAttachmentSize")
-        if (maxSizeInput) {
-          const newMaxSize = parseInt(maxSizeInput.value, 10)
-          if (!isNaN(newMaxSize) && newMaxSize >= 1 && newMaxSize <= 100) {
-            try {
-              const savePayload = JSON.parse(JSON.stringify(Store.state || { columns: [] }))
-              savePayload.attachmentMaxSize = newMaxSize
-              await CloudflareBackend.save(savePayload, newCfg)
-            } catch (err) {
-              console.warn("Failed to save max attachment size:", err)
+        const activeTab = Utils.qs(".attachment-type-tab.active")
+        if (maxSizeInput || activeTab) {
+          try {
+            const savePayload = JSON.parse(JSON.stringify(Store.state || { columns: [] }))
+            let changed = false
+            if (maxSizeInput) {
+              const newMaxSize = parseInt(maxSizeInput.value, 10)
+              if (!isNaN(newMaxSize) && newMaxSize >= 1 && newMaxSize <= 200) {
+                savePayload.attachmentMaxSize = newMaxSize
+                changed = true
+              }
             }
+            if (activeTab) {
+              savePayload.attachmentAllowAnyType = activeTab.dataset.attachmentType === "any"
+              changed = true
+            }
+            if (changed) {
+              await CloudflareBackend.save(savePayload, newCfg)
+            }
+          } catch (err) {
+            console.warn("Failed to save attachment settings:", err)
           }
         }
       }
@@ -4887,6 +5029,11 @@ const App = {
       btn.addEventListener("click", () => UI.applyTheme(btn.dataset.themeOption))
     })
 
+    // --- Attachment type tabs ---
+    Utils.qsa("[data-attachment-type]").forEach(btn => {
+      btn.addEventListener("click", () => UI.setAttachmentTypeTab(btn.dataset.attachmentType))
+    })
+
     // --- Image Upload UI ---
     const addAttBtn = Utils.qs("#addAttachmentBtn")
     const detailAddAttBtn = Utils.qs("#cardDetailAddAttachmentBtn")
@@ -4914,9 +5061,10 @@ const App = {
         const cardId = UI.activeUploadContext === "detail"
           ? Utils.qs("#cardDetailForm").dataset.cardId
           : Utils.qs("#editorForm").dataset.cardId
+        const allowAny = Store.state?.attachmentAllowAnyType === true
         if (e.target.files && e.target.files.length > 0) {
           Array.from(e.target.files).forEach(file => {
-            if (file.type.startsWith("image/")) {
+            if (allowAny || file.type.startsWith("image/")) {
               this.handleImageUpload(file, cardId)
             }
           })
@@ -5448,6 +5596,23 @@ const App = {
     }
   },
 
+  handleArchiveCard(cardId) {
+    const { card, col } = Store.findCard(cardId)
+    if (!card) return
+    if (!Store.canCurrentUserEditCard(card)) {
+      UI.showAlert(I18n.t("own_card_only_error"))
+      return
+    }
+    const archiveCol = Store.state.columns.find(c => c.isArchive)
+    if (!archiveCol || col.id === archiveCol.id) return
+    Store.moveCard(cardId, col.id, archiveCol.id, -1)
+    UI.renderBoard()
+    if (UI.cardDetailDialog?.open) {
+      const fresh = Store.findCard(cardId)
+      if (fresh.card && fresh.col) UI.renderCardDetail()
+    }
+  },
+
   handlePaste(e) {
     const inEditor = UI.editor.open && e.target.closest("#editor")
     const inDetail = UI.cardDetailDialog?.open && e.target.closest("#cardDetailDialog")
@@ -5480,9 +5645,10 @@ const App = {
     const { card } = cardId ? Store.findCard(cardId) : { card: null }
     if (card && !Store.canCurrentUserEditCard(card)) return
 
+    const allowAny = Store.state?.attachmentAllowAnyType === true
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       Array.from(e.dataTransfer.files).forEach(file => {
-        if (file.type.startsWith("image/")) {
+        if (allowAny || file.type.startsWith("image/")) {
           this.handleImageUpload(file, cardId)
         }
       })
@@ -5499,37 +5665,36 @@ const App = {
       return
     }
 
-    // Process image: convert to WebP and resize
-    const processedFile = await Utils.processImage(file)
+    const isImage = file.type.startsWith("image/")
+    const processedFile = isImage ? await Utils.processImage(file) : file
 
     const maxSizeMb = Store.state?.attachmentMaxSize || 5
     if (processedFile.size > maxSizeMb * 1024 * 1024) {
-      UI.showAlert(I18n.t("image_too_large", { maxSize: maxSizeMb }))
+      UI.showAlert(I18n.t("file_too_large", { maxSize: maxSizeMb }))
       return
     }
 
     const cfg = DbSettings.get()
     if (!cfg.cfWorkerUrl) {
-      UI.showAlert(I18n.t("image_upload_failed"))
+      UI.showAlert(I18n.t("file_upload_failed"))
       return
     }
 
     try {
-      const result = await CloudflareBackend.uploadImage(processedFile, cfg)
+      const result = await CloudflareBackend.uploadImage(processedFile, cfg, file.name)
       if (cardId) {
-        // Re-fetch card in case it changed
         const { card: freshCard } = Store.findCard(cardId)
         if (!freshCard) return
         freshCard.attachments = freshCard.attachments || []
         freshCard.attachments.push({
           url: result.url,
           key: result.key,
-          name: processedFile.name
+          name: processedFile.name,
+          type: processedFile.type
         })
         Store.saveState()
         UI.updateCard(freshCard)
         
-        // If editor is open for this card, update it too
         const form = Utils.qs("#editorForm")
         if (form.dataset.cardId === cardId) {
           UI.updateEditorAttachments(freshCard.attachments, cardId)
@@ -5546,7 +5711,8 @@ const App = {
         UI.pendingCardAttachments.push({
           url: result.url,
           key: result.key,
-          name: processedFile.name
+          name: processedFile.name,
+          type: processedFile.type
         })
         const inCardDetail = UI.cardDetailDialog?.open && Utils.qs("#cardDetailForm")?.dataset.isNew === "true"
         if (inCardDetail) {
@@ -5557,7 +5723,7 @@ const App = {
       }
     } catch (err) {
       console.error(err)
-      UI.showAlert(I18n.t("image_upload_failed"))
+      UI.showAlert(I18n.t("file_upload_failed"))
     }
   },
 }

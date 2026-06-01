@@ -176,7 +176,7 @@
         <div id="editorAttachments" class="editor-attachments-list"></div>
         <div class="attachment-action">
           <button type="button" id="addAttachmentBtn" class="btn-link" data-i18n="attach_picture">Attach picture</button>
-          <span class="attachment-hint" data-i18n="attach_picture_hint">— or drag & drop / paste</span>
+          <span class="attachment-hint" data-i18n="attach_hint">— or drag & drop / paste</span>
         </div>
         <input type="file" id="attachmentInput" accept="image/*" multiple style="display: none;" />
         <div class="dropzone" style="display: none;">
@@ -185,6 +185,7 @@
               <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
             </div>
             <p data-i18n="drop_to_upload">Drop images to upload</p>
+            <p data-i18n="drop_to_upload_any" style="display:none;">Drop files to upload</p>
           </div>
         </div>
       </div>
@@ -250,7 +251,8 @@
                 <div class="dropzone-icon">
                   <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                 </div>
-                <p data-i18n="drop_to_upload">Drop images to upload</p>
+            <p data-i18n="drop_to_upload">Drop images to upload</p>
+            <p data-i18n="drop_to_upload_any" style="display:none;">Drop files to upload</p>
               </div>
             </div>
           </section>
@@ -268,8 +270,14 @@
         </main>
 
         <aside class="card-detail-sidebar">
+          <div id="cardDetailManageDropdown" class="card-detail-field" style="display:none;">
+            <span data-i18n="column_label">Column</span>
+            <button id="cardDetailManageBtn" type="button" class="card-manage-trigger">
+              <span id="cardDetailManageColumn"></span>
+            </button>
+            <div id="cardDetailManageMenu" class="card-manage-menu dropdown-content"></div>
+          </div>
           <section class="card-detail-panel">
-            <div class="card-detail-section-title" data-i18n="details">Details</div>
             <div class="card-detail-field">
               <span data-i18n="assigned_user_label">Assigned user</span>
               <div id="cardDetailAssignee" class="card-detail-field-value card-detail-editable-value"></div>
@@ -300,16 +308,6 @@
               <span data-i18n="edited_label">Edited</span>
               <div id="cardDetailEdited" class="card-detail-field-value"></div>
             </div>
-          </section>
-
-          <section id="cardDetailMovePanel" class="card-detail-panel">
-            <div class="card-detail-section-title" data-i18n="manage_card">Manage card</div>
-            <button id="cardDetailMarkDoneBtn" type="button" class="btn secondary" data-i18n="mark_as_done">Mark as done</button>
-            <div id="cardDetailMoveToWrap" class="move-to-menu-wrap" style="display: none;">
-              <button id="cardDetailMoveToBtn" type="button" class="btn secondary" data-i18n="move_to">Move to</button>
-              <div id="cardDetailMoveToMenu" class="editor-move-menu dropdown-content" role="menu"></div>
-            </div>
-            <button id="cardDetailDeleteBtn" type="button" class="btn-link danger-link" data-i18n="delete_card">Delete card</button>
           </section>
         </aside>
       </div>
@@ -422,13 +420,23 @@
             </div>
           </div>
         </label>
-        <label id="maxAttachmentSizeLabel" data-i18n="max_attachment_size" style="display:none;">
-          Max image size (MB)
-          <input id="maxAttachmentSize" type="number" min="1" max="100" value="5" />
-        </label>
       </div>
 
       <div id="settingsStorageSection" class="db-settings-section" style="display:none;">
+        <p class="label-text" data-i18n="storage_settings">Storage settings</p>
+        <div id="maxAttachmentSizeLabel" class="attachment-settings-row" style="display:none;">
+          <label data-i18n="max_attachment_size">
+            Max attachment size (MB)
+            <input id="maxAttachmentSize" type="number" min="1" max="200" value="5" />
+          </label>
+          <label class="attachment-type-label" data-i18n="attachment_type">
+            Attachment type
+            <div class="attachment-type-tabs" role="group">
+              <button type="button" class="attachment-type-tab" data-attachment-type="image" data-i18n="attach_type_images">Pictures only</button>
+              <button type="button" class="attachment-type-tab" data-attachment-type="any" data-i18n="attach_type_any">Any file type</button>
+            </div>
+          </label>
+        </div>
         <p class="label-text" data-i18n="storage_usage">Storage usage</p>
         <div class="storage-progress-track">
           <div class="storage-progress-fill" id="storageProgressFill"></div>
