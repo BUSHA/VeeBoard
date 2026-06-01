@@ -3088,9 +3088,12 @@ const UI = {
     list.innerHTML = ""
     const comments = Array.isArray(card.comments) ? card.comments : []
 
-    const renderCommentItem = (comment, isReply = false) => {
+    const renderCommentItem = (comment, depth = 0, parentContainer = null) => {
+      const wrapper = document.createElement("div")
+      wrapper.className = "comment-wrapper"
+
       const item = document.createElement("div")
-      item.className = `comment-item${isReply ? " comment-reply" : ""}`
+      item.className = `comment-item${depth > 0 ? " comment-reply" : ""}`
       item.dataset.commentId = comment.id
 
       const header = document.createElement("div")
@@ -3119,7 +3122,7 @@ const UI = {
       const actions = document.createElement("div")
       actions.className = "comment-item-actions"
 
-      if (!isReply) {
+      if (depth < 2) {
         const replyBtn = document.createElement("button")
         replyBtn.type = "button"
         replyBtn.className = "btn-link"
@@ -3164,9 +3167,16 @@ const UI = {
       text.textContent = comment.text || ""
 
       item.append(header, text)
-      list.append(item)
+      wrapper.append(item)
 
-      ;(comment.replies || []).forEach((reply) => renderCommentItem(reply, true))
+      if (comment.replies && comment.replies.length) {
+        const repliesContainer = document.createElement("div")
+        repliesContainer.className = "comment-replies"
+        comment.replies.forEach((reply) => renderCommentItem(reply, depth + 1, repliesContainer))
+        wrapper.append(repliesContainer)
+      }
+
+      (parentContainer || list).append(wrapper)
     }
 
     if (comments.length === 0) {
