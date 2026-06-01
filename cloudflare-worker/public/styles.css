@@ -3101,7 +3101,8 @@ html[data-theme="dark"] .board-selector-row select {
 .comment-item {
   border: 1px solid var(--comment-border);
   border-radius: 12px;
-  padding: 10px 12px;
+  padding: 8px 10px;
+  font-size: 14px;
   background: color-mix(in srgb, var(--panel), var(--bg) 35%);
 }
 
@@ -3115,7 +3116,6 @@ html[data-theme="dark"] .board-selector-row select {
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 8px;
 }
 
 .comment-item-meta {
@@ -3295,7 +3295,7 @@ html[data-theme="dark"] .board-selector-row select {
 
 #editor,
 #cardDetailDialog {
-  position: relative;
+  position: fixed;
 }
 
 .dropzone.active {
