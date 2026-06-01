@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.3.0"
+  version: "0.3.1"
 }
 
 /* Live sync echo guard */
@@ -1199,6 +1199,7 @@ const Store = {
   createEmptyState(users = []) {
     const now = Utils.nowIso()
     const currentEmail = (DbSettings.get().cfUserEmail || "").trim().toLowerCase()
+    const currentUserName = (DbSettings.get().cfUserName || currentEmail || "").trim()
     const starterAssignee =
       users.find((user) => (user.email || "").trim().toLowerCase() === currentEmail) ||
       users[0] ||
@@ -1217,8 +1218,8 @@ const Store = {
         : null,
       attachments: [],
       comments: [],
-      createdBy: "",
-      createdByEmail: "",
+      createdBy: currentUserName,
+      createdByEmail: currentEmail,
       createdAt: now,
       lastChanged: now,
       lastChangedBy: "system",

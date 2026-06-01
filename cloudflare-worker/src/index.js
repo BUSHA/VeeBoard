@@ -1428,7 +1428,7 @@ export default {
         }
 
         if (!isAdmin) {
-          if (normalizeColumnShells(existingState.columns) !== normalizeColumnShells(body.columns)) {
+          if (existingState.columns.length > 0 && normalizeColumnShells(existingState.columns) !== normalizeColumnShells(body.columns)) {
             return jsonResponse({ error: "Only admin can modify board structure." }, headers, 403);
           }
 
