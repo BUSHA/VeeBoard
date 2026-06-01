@@ -3391,16 +3391,9 @@ html[data-theme="dark"] .board-selector-row select {
   flex: 1;
 }
 
-.attachment-settings-row input[type="number"] {
-  padding: 4px 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font-size: 13px;
-}
-
 .attachment-type-tabs {
   display: flex;
+  width: 100%;
   min-height: 42px;
   background: var(--panel);
   border: 1px solid var(--border);
@@ -3411,6 +3404,7 @@ html[data-theme="dark"] .board-selector-row select {
 }
 
 .attachment-type-tab {
+  flex: 1;
   background: transparent;
   border: none;
   padding: 4px 12px;
