@@ -4144,11 +4144,20 @@ const App = {
       menu.classList.remove("show")
       if (!wasOpen) {
         const rect = e.currentTarget.getBoundingClientRect()
+        const spaceBelow = window.innerHeight - rect.bottom - 16
+        const spaceAbove = rect.top - 16
         menu.style.left = rect.left + "px"
-        menu.style.top = rect.bottom + 4 + "px"
-        menu.style.right = "auto"
         menu.style.width = rect.width + "px"
-        menu.style.maxHeight = "min(300px, " + (window.innerHeight - rect.bottom - 16) + "px)"
+        menu.style.right = "auto"
+        if (spaceBelow >= 150 || spaceBelow >= spaceAbove) {
+          menu.style.top = (rect.bottom + 4) + "px"
+          menu.style.bottom = "auto"
+          menu.style.maxHeight = "min(300px, " + spaceBelow + "px)"
+        } else {
+          menu.style.bottom = (window.innerHeight - rect.top + 4) + "px"
+          menu.style.top = "auto"
+          menu.style.maxHeight = "min(300px, " + spaceAbove + "px)"
+        }
         menu.classList.add("show")
       }
     })
