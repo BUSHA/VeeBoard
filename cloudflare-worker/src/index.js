@@ -573,9 +573,14 @@ function sanitizedState(state = {}, publicUsers = []) {
 }
 
 function boardStatePayload(state = {}) {
-  return {
+  const payload = {
     columns: Array.isArray(state.columns) ? state.columns : [],
   };
+  const maxSize = parseInt(state.attachmentMaxSize, 10);
+  if (!isNaN(maxSize) && maxSize >= 1 && maxSize <= 100) {
+    payload.attachmentMaxSize = maxSize;
+  }
+  return payload;
 }
 
 async function loadSanitizedBoard(env, boardId) {
@@ -1531,9 +1536,14 @@ export default {
           return new Response("Only images are allowed", { status: 400, headers });
         }
 
+        const row = await readBoardRow(env, boardId);
+        const state = row?.data ? JSON.parse(row.data) : {};
+        const maxSizeMb = parseInt(state.attachmentMaxSize, 10) || 5;
+        const maxSizeBytes = maxSizeMb * 1024 * 1024;
+
         const contentLength = parseInt(request.headers.get("content-length") || "0", 10);
-        if (contentLength > 5 * 1024 * 1024) {
-          return new Response("Image too large (max 5MB)", { status: 413, headers });
+        if (contentLength > maxSizeBytes) {
+          return new Response(`Image too large (max ${maxSizeMb}MB)`, { status: 413, headers });
         }
 
         const extension = contentType.split("/")[1] || "png";

@@ -4583,7 +4583,14 @@ const App = {
       cfUrlInput.value = cfg.cfWorkerUrl || ""
       cfIdInput.value = cfg.cfBoardId || ""
       UI.renderBoardSelect(cfBoardSelect, cfIdInput, UI.accessibleBoards)
-      if (boardActionBtns) boardActionBtns.style.display = Store.hasCloudflareSession() && Store.isAdmin ? "" : "none"
+      const isAdmin = Store.hasCloudflareSession() && Store.isAdmin
+      if (boardActionBtns) boardActionBtns.style.display = isAdmin ? "" : "none"
+      const maxSizeLabel = Utils.qs("#maxAttachmentSizeLabel")
+      const maxSizeInput = Utils.qs("#maxAttachmentSize")
+      if (maxSizeLabel && maxSizeInput) {
+        maxSizeLabel.style.display = isAdmin ? "" : "none"
+        maxSizeInput.value = String(Store.state?.attachmentMaxSize != null ? Store.state.attachmentMaxSize : 5)
+      }
       if (Store.hasCloudflareSession()) {
         try {
           const result = await CloudflareBackend.listBoards(cfg)
@@ -4592,7 +4599,7 @@ const App = {
         } catch (err) {
           console.warn("Failed to load boards:", err)
         }
-        if (Store.isAdmin) {
+        if (isAdmin) {
           try {
             const storage = await CloudflareBackend.getStorageUsage(cfg)
             UI.renderSettingsStorage(storage)
@@ -4669,6 +4676,22 @@ const App = {
         newCfg.cfUserToken = ""
         newCfg.cfBoardSessions = {}
         Store.isAdmin = false
+      }
+
+      if (Store.isAdmin) {
+        const maxSizeInput = Utils.qs("#maxAttachmentSize")
+        if (maxSizeInput) {
+          const newMaxSize = parseInt(maxSizeInput.value, 10)
+          if (!isNaN(newMaxSize) && newMaxSize >= 1 && newMaxSize <= 100) {
+            try {
+              const savePayload = JSON.parse(JSON.stringify(Store.state || { columns: [] }))
+              savePayload.attachmentMaxSize = newMaxSize
+              await CloudflareBackend.save(savePayload, newCfg)
+            } catch (err) {
+              console.warn("Failed to save max attachment size:", err)
+            }
+          }
+        }
       }
 
       DbSettings.set(newCfg)
@@ -5372,8 +5395,9 @@ const App = {
     // Process image: convert to WebP and resize
     const processedFile = await Utils.processImage(file)
 
-    if (processedFile.size > 5 * 1024 * 1024) {
-      UI.showAlert(I18n.t("image_too_large"))
+    const maxSizeMb = Store.state?.attachmentMaxSize || 5
+    if (processedFile.size > maxSizeMb * 1024 * 1024) {
+      UI.showAlert(I18n.t("image_too_large", { maxSize: maxSizeMb }))
       return
     }
 
