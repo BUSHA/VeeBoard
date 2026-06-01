@@ -187,6 +187,11 @@ const Utils = {
     if (score >= 4) return { tone: "good", labelKey: "password_strength_good" }
     return { tone: "ok", labelKey: "password_strength_ok" }
   },
+  escapeHtml: (str) => {
+    const div = document.createElement("div")
+    div.textContent = str
+    return div.innerHTML
+  },
 }
 
 /**
@@ -1565,16 +1570,40 @@ const UI = {
 
   updateBoardNameLabel() {
     const label = Utils.qs("#boardNameLabel")
-    if (!label) return
+    const switcher = Utils.qs("#boardSwitcher")
+    if (!label || !switcher) return
     const cfg = DbSettings.get()
     const isLoggedIn = !!cfg.cfWorkerUrl && Store.hasCloudflareSession()
     if (!isLoggedIn) {
-      label.style.display = "none"
+      switcher.style.display = "none"
       return
     }
-    const board = (this.accessibleBoards || []).find((b) => b.id === cfg.cfBoardId)
+    const boards = this.accessibleBoards || []
+    const board = boards.find((b) => b.id === cfg.cfBoardId)
     label.textContent = board?.name || cfg.cfBoardId || ""
-    label.style.display = ""
+    if (boards.length > 1) {
+      switcher.style.display = ""
+      this.renderBoardSwitcher(boards, cfg.cfBoardId)
+    } else {
+      switcher.style.display = "none"
+    }
+  },
+
+  renderBoardSwitcher(boards, currentBoardId) {
+    const dropdown = Utils.qs("#boardSwitcherDropdown")
+    if (!dropdown) return
+    dropdown.innerHTML = ""
+    boards.forEach((board) => {
+      const btn = document.createElement("button")
+      btn.className = "board-switcher-item" + (board.id === currentBoardId ? " active" : "")
+      btn.type = "button"
+      btn.role = "menuitem"
+      btn.dataset.boardId = board.id
+      btn.innerHTML =
+        '<svg class="check-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.5 3.5 6.5-7"/></svg>' +
+        '<span>' + Utils.escapeHtml(board.name) + '</span>'
+      dropdown.appendChild(btn)
+    })
   },
 
   updateBoardActionsVisibility() {
@@ -3685,6 +3714,17 @@ const App = {
       UI.updateAuthButtonsVisibility()
     }
 
+    const cfg = DbSettings.get()
+    if (cfg.cfWorkerUrl && Store.hasCloudflareSession()) {
+      try {
+        const boards = await CloudflareBackend.listBoards(cfg)
+        UI.accessibleBoards = boards.boards || []
+      } catch (err) {
+        console.warn("Failed to load boards:", err)
+      }
+      UI.updateBoardNameLabel()
+    }
+
     UI.renderBoard()
     UI.updateMenuButtonAvatar()
     await Notifications.refresh()
@@ -4169,6 +4209,57 @@ const App = {
       UI.notificationsPanel?.classList.remove("show")
     })
 
+    // --- Board Switcher ---
+    const boardSwitcherBtn = Utils.qs("#boardSwitcherBtn")
+    const boardSwitcherDropdown = Utils.qs("#boardSwitcherDropdown")
+    if (boardSwitcherBtn && boardSwitcherDropdown) {
+      boardSwitcherBtn.addEventListener("click", (e) => {
+        e.stopPropagation()
+        const isOpen = boardSwitcherDropdown.classList.toggle("show")
+        boardSwitcherBtn.setAttribute("aria-expanded", isOpen)
+        UI.menuContent?.classList.remove("show")
+        UI.notificationsPanel?.classList.remove("show")
+      })
+
+      boardSwitcherDropdown.addEventListener("click", async (e) => {
+        const item = e.target.closest(".board-switcher-item")
+        if (!item) return
+        const targetBoardId = item.dataset.boardId
+        const cfg = DbSettings.get()
+        if (targetBoardId === cfg.cfBoardId) {
+          boardSwitcherDropdown.classList.remove("show")
+          boardSwitcherBtn.setAttribute("aria-expanded", "false")
+          return
+        }
+
+        item.disabled = true
+        try {
+          const switched = await CloudflareBackend.switchBoard(cfg, targetBoardId)
+          const nextCfg = {
+            ...cfg,
+            cfBoardId: targetBoardId,
+            cfUserEmail: switched.user?.email || cfg.cfUserEmail || "",
+            cfUserName: switched.user?.name || cfg.cfUserName || "",
+            cfUserToken: switched.token || "",
+            isAdmin: !!switched.isAdmin,
+          }
+          DbSettings.set(nextCfg)
+          Store.isAdmin = !!switched.isAdmin
+          await Store.loadState()
+          UI.renderBoard()
+          UI.updateMenuButtonAvatar()
+          UI.updateAuthButtonsVisibility()
+          UI.updateBoardNameLabel()
+          await Notifications.refresh()
+        } catch (err) {
+          UI.showAlert(I18n.serverError(err.message) || I18n.t("board_switch_failed"))
+        } finally {
+          boardSwitcherDropdown.classList.remove("show")
+          boardSwitcherBtn.setAttribute("aria-expanded", "false")
+        }
+      })
+    }
+
     if (UI.notificationsBtn && UI.notificationsPanel) {
       UI.notificationsBtn.addEventListener("click", async (e) => {
         e.stopPropagation()
@@ -4205,6 +4296,18 @@ const App = {
         UI.notificationsPanel.classList.contains("show")
       ) {
         UI.notificationsPanel.classList.remove("show")
+      }
+      const bSwitcherBtn = Utils.qs("#boardSwitcherBtn")
+      const bSwitcherDropdown = Utils.qs("#boardSwitcherDropdown")
+      if (
+        bSwitcherBtn &&
+        bSwitcherDropdown &&
+        !bSwitcherBtn.contains(e.target) &&
+        !bSwitcherDropdown.contains(e.target) &&
+        bSwitcherDropdown.classList.contains("show")
+      ) {
+        bSwitcherDropdown.classList.remove("show")
+        bSwitcherBtn.setAttribute("aria-expanded", "false")
       }
     })
 

@@ -125,7 +125,7 @@ const TRANSLATIONS = {
     weak_password_error: "Choose a password with at least 6 characters and avoid simple ones like 1234 or password.",
     user_not_found: "User not found. New users must be approved by an admin first.",
     own_card_only_error: "You can edit or delete only your own cards.",
-    admin_panel: "⭐️ Board admin panel",
+    admin_panel: "⭐️ Board admin",
     board_access: "Boards",
     close: "Close",
     delete_user: "Remove user",
