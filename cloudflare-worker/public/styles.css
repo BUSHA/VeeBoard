@@ -3305,3 +3305,133 @@ html[data-theme="dark"] .board-selector-row select {
     font-size: 14px;
   }
 }
+
+/* Non-image attachment styles */
+.card-detail-attachment--file {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.card-detail-attachment--file:hover {
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+.card-detail-attachment--file .attachment-file-icon {
+  color: var(--muted);
+}
+
+.card-detail-attachment--file .attachment-file-name {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  padding: 0 4px;
+}
+
+.editor-attachment--file {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--panel), var(--bg) 35%);
+}
+
+.editor-attachment--file .attachment-file-icon {
+  color: var(--muted);
+}
+
+/* Checkbox label in settings */
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+/* Attachment settings row (max size + type tabs inline) */
+.attachment-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 24px;
+}
+
+.attachment-settings-row label {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  flex: 1;
+}
+
+.attachment-type-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  flex: 1;
+}
+
+.attachment-settings-row input[type="number"] {
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.attachment-type-tabs {
+  display: flex;
+  min-height: 42px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 40px;
+  padding: 3px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.attachment-type-tab {
+  background: transparent;
+  border: none;
+  padding: 4px 12px;
+  border-radius: 36px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  white-space: nowrap;
+}
+
+.attachment-type-tab:hover {
+  background: var(--primary-light);
+}
+
+.attachment-type-tab.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.attachment-type-tab.active:hover {
+  background: var(--primary);
+}

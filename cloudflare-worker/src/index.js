@@ -577,8 +577,11 @@ function boardStatePayload(state = {}) {
     columns: Array.isArray(state.columns) ? state.columns : [],
   };
   const maxSize = parseInt(state.attachmentMaxSize, 10);
-  if (!isNaN(maxSize) && maxSize >= 1 && maxSize <= 100) {
+  if (!isNaN(maxSize) && maxSize >= 1 && maxSize <= 200) {
     payload.attachmentMaxSize = maxSize;
+  }
+  if (state.attachmentAllowAnyType === true || state.attachmentAllowAnyType === false) {
+    payload.attachmentAllowAnyType = state.attachmentAllowAnyType;
   }
   return payload;
 }
@@ -1532,26 +1535,30 @@ export default {
         if (!currentUser) return jsonResponse({ error: "Unauthorized" }, headers, 401);
 
         const contentType = request.headers.get("content-type") || "";
-        if (!contentType.startsWith("image/")) {
+        const row = await readBoardRow(env, boardId);
+        const state = row?.data ? JSON.parse(row.data) : {};
+        const allowAnyType = state.attachmentAllowAnyType === true;
+
+        if (!allowAnyType && !contentType.startsWith("image/")) {
           return new Response("Only images are allowed", { status: 400, headers });
         }
 
-        const row = await readBoardRow(env, boardId);
-        const state = row?.data ? JSON.parse(row.data) : {};
         const maxSizeMb = parseInt(state.attachmentMaxSize, 10) || 5;
         const maxSizeBytes = maxSizeMb * 1024 * 1024;
 
         const contentLength = parseInt(request.headers.get("content-length") || "0", 10);
         if (contentLength > maxSizeBytes) {
-          return new Response(`Image too large (max ${maxSizeMb}MB)`, { status: 413, headers });
+          return new Response(`File too large (max ${maxSizeMb}MB)`, { status: 413, headers });
         }
 
-        const extension = contentType.split("/")[1] || "png";
+        const extension = contentType.split("/")[1] || "bin";
         const filename = `${boardId}/${crypto.randomUUID()}.${extension}`;
         const blob = await request.blob();
+        const originalName = request.headers.get("x-original-filename") || "";
 
         await env.BUCKET.put(filename, blob, {
           httpMetadata: { contentType },
+          customMetadata: originalName ? { originalName } : undefined,
         });
 
         const fileUrl = `${url.origin}/image?key=${encodeURIComponent(filename)}&boardId=${encodeURIComponent(boardId)}`;
@@ -1599,6 +1606,10 @@ export default {
         object.writeHttpMetadata(imageHeaders);
         imageHeaders.set("etag", object.httpEtag);
         imageHeaders.set("Cache-Control", "private, max-age=31536000");
+        const originalName = object.customMetadata?.originalName;
+        if (originalName) {
+          imageHeaders.set("Content-Disposition", `attachment; filename="${originalName}"`);
+        }
         return new Response(object.body, { headers: imageHeaders });
       }
 
