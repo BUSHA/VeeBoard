@@ -1242,6 +1242,29 @@ html[data-theme="dark"] .card-manage-trigger {
   text-decoration: underline;
 }
 
+.card-detail:not(.is-editing).is-editable .card-detail-editable-value {
+  border-radius: 2px;
+  cursor: pointer;
+  position: relative;
+}
+
+.card-detail:not(.is-editing).is-editable .card-detail-editable-value:hover {
+  background-color: color-mix(in srgb, var(--primary) 7%, transparent);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 7%, transparent);
+}
+
+.card-detail:not(.is-editing).is-editable .card-detail-title.card-detail-editable-value {
+  border-radius: 2px;
+}
+
+.card-detail:not(.is-editing).is-editable .card-detail-editable-value.due-badge {
+  border-radius: 999px;
+}
+
+.card-detail:not(.is-editing).is-editable .card-detail-editable-value.card-detail-empty:hover {
+  color: var(--text);
+}
+
 .card-detail-description-editor {
   display: none;
   max-height: none;
@@ -1547,7 +1570,7 @@ html[data-theme="dark"] .card-manage-trigger {
 /* Base style for any colored due date badge */
 .due-badge {
   padding: 4px 10px;
-  border-radius: 12px;
+  border-radius: 999px;
 }
 
 /* Style for badges indicating a task is due soon (e.g., < 48 hours) */
@@ -1555,7 +1578,6 @@ html[data-theme="dark"] .card-manage-trigger {
   border: 1px solid var(--alert);
   color: var(--alert);
   padding: 2px 8px;
-  border-radius: 16px;
 }
 
 /* Style for badges indicating a task is overdue */
@@ -1563,6 +1585,7 @@ html[data-theme="dark"] .card-manage-trigger {
   background-color: var(--error);
   font-weight: 600;
   color: white;
+  padding: 2px 8px;
 }
 
 /* =================================

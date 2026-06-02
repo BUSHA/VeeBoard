@@ -2607,6 +2607,7 @@ const UI = {
     const isEditing = isNew || (canEdit && form.dataset.editMode === "true")
 
     form.classList.toggle("is-editing", isEditing)
+    form.classList.toggle("is-editable", !isNew && canEdit)
     const hotkeyHints = Utils.qs("#cardDetailDescription")?.previousElementSibling?.querySelector(".hotkey-hints--inline")
     if (hotkeyHints) {
       hotkeyHints.style.display = isEditing ? "" : "none"
