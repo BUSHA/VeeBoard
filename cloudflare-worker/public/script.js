@@ -3605,6 +3605,41 @@ const UI = {
     return true
   },
 
+  focusWithoutScroll(el, options = {}) {
+    if (!el) return
+    try {
+      el.focus({ preventScroll: true })
+    } catch (_) {
+      el.focus()
+    }
+    if (options.select && typeof el.setSelectionRange === "function") {
+      const length = el.value?.length || 0
+      try {
+        el.setSelectionRange(0, length)
+      } catch (_) {}
+    }
+  },
+
+  captureCardDetailScrollState() {
+    const elements = [
+      document.scrollingElement,
+      Utils.qs("#cardDetailDialog .card-detail-main"),
+      Utils.qs("#cardDetailDialog .card-detail-sidebar"),
+    ].filter(Boolean)
+    return elements.map((el) => ({
+      el,
+      left: el.scrollLeft,
+      top: el.scrollTop,
+    }))
+  },
+
+  restoreScrollState(state) {
+    ;(state || []).forEach(({ el, left, top }) => {
+      el.scrollLeft = left
+      el.scrollTop = top
+    })
+  },
+
   updateTagAutocomplete(input, container, options = {}) {
     const value = input.value
     const lastCommaIndex = value.lastIndexOf(",")
@@ -5337,6 +5372,7 @@ const App = {
         const { card } = form.dataset.cardId ? Store.findCard(form.dataset.cardId) : { card: null }
         if (!card || !Store.canCurrentUserEditCard(card)) return
         if (form.dataset.editMode !== "true") {
+          const scrollState = UI.captureCardDetailScrollState()
           form.dataset.editMode = "true"
           UI.renderCardDetail()
           const target = e.currentTarget
@@ -5350,17 +5386,28 @@ const App = {
           const selector = focusMap[target.id]
           if (selector) {
             const input = Utils.qs(selector)
-            input?.focus()
             if (selector === "#cardDetailUserInput" || selector === "#cardDetailTagsInput") {
               e.stopPropagation()
-              input?.select()
+              UI.focusWithoutScroll(input, { select: true })
+              UI.restoreScrollState(scrollState)
               requestAnimationFrame(() => {
+                UI.restoreScrollState(scrollState)
                 if (selector === "#cardDetailUserInput") {
                   UI.updateUserAutocomplete(input, Utils.qs("#cardDetailUserAutocomplete"), { ignoreQuery: true })
                 } else {
                   UI.updateTagAutocomplete(input, Utils.qs("#cardDetailTagAutocomplete"), { ignoreQuery: true })
                 }
+                requestAnimationFrame(() => {
+                  UI.restoreScrollState(scrollState)
+                  const autocomplete = selector === "#cardDetailUserInput"
+                    ? Utils.qs("#cardDetailUserAutocomplete")
+                    : Utils.qs("#cardDetailTagAutocomplete")
+                  if (autocomplete?.classList.contains("show")) UI.positionAutocomplete(input, autocomplete)
+                })
               })
+            } else {
+              UI.focusWithoutScroll(input)
+              UI.restoreScrollState(scrollState)
             }
           }
         }
