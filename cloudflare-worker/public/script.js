@@ -3588,6 +3588,23 @@ const UI = {
     container.style.maxHeight = ""
   },
 
+  hideAutocomplete(container) {
+    if (!container) return
+    container.classList.remove("show")
+    this.resetAutocompletePosition(container)
+  },
+
+  exitCardDetailEditMode() {
+    const form = Utils.qs("#cardDetailForm")
+    if (!form || form.dataset.isNew === "true") return false
+    if (form.dataset.editMode !== "true") return false
+    form.dataset.editMode = "false"
+    this.hideAutocomplete(Utils.qs("#cardDetailUserAutocomplete"))
+    this.hideAutocomplete(Utils.qs("#cardDetailTagAutocomplete"))
+    this.renderCardDetail()
+    return true
+  },
+
   updateTagAutocomplete(input, container, options = {}) {
     const value = input.value
     const lastCommaIndex = value.lastIndexOf(",")
@@ -4301,13 +4318,20 @@ const App = {
         UI.cardDetailDialog.close()
         return
       }
-      form.dataset.editMode = "false"
-      UI.renderCardDetail()
+      UI.exitCardDetailEditMode()
     })
 
     Utils.qs("#cardDetailCloseBtn").addEventListener("click", () => {
       UI.cardDetailDialog.close()
     })
+
+    UI.cardDetailDialog.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return
+      if (UI.exitCardDetailEditMode()) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+    }, true)
 
     Utils.qs("#cardDetailManageBtn").addEventListener("click", (e) => {
       e.stopPropagation()
@@ -5279,10 +5303,8 @@ const App = {
         if (dialog === UI.cardDetailDialog) {
           const form = Utils.qs("#cardDetailForm")
           if (form?.dataset.isNew === "true") return
-          if (form?.dataset.editMode === "true") {
+          if (UI.exitCardDetailEditMode()) {
             e.preventDefault()
-            form.dataset.editMode = "false"
-            UI.renderCardDetail()
           }
         }
       })
