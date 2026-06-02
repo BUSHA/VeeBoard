@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.3.7"
+  version: "0.3.8"
 }
 
 /* Live sync echo guard */
@@ -949,6 +949,52 @@ const Store = {
 
   findUserByEmail(email) {
     return (this.state.users || []).find((user) => (user.email || "").trim().toLowerCase() === (email || "").trim().toLowerCase()) || null
+  },
+
+  findUserByAvatar(user) {
+    const avatarKey = (user?.avatarKey || "").trim()
+    const avatarUrl = (user?.avatarUrl || "").trim()
+    if (!avatarKey && !avatarUrl) return null
+    return (this.state.users || []).find((candidate) =>
+      (avatarKey && (candidate.avatarKey || "").trim() === avatarKey) ||
+      (avatarUrl && (candidate.avatarUrl || "").trim() === avatarUrl)
+    ) || null
+  },
+
+  resolveUser(user) {
+    if (!user) return null
+    return (
+      (user.email && this.findUserByEmail(user.email)) ||
+      this.findUserByName(user.name || "") ||
+      this.findUserByAvatar(user) ||
+      user
+    )
+  },
+
+  findUserByInput(value, fallbackUser = null) {
+    const query = (value || "").trim()
+    if (!query) return null
+    const exact = (this.state.users || []).find((user) =>
+      (user.name || "").trim() === query ||
+      (user.email || "").trim().toLowerCase() === query.toLowerCase()
+    )
+    if (exact) return exact
+
+    const resolvedFallback = fallbackUser ? (
+      (fallbackUser.email && this.findUserByEmail(fallbackUser.email)) ||
+      this.findUserByName(fallbackUser.name || "") ||
+      this.findUserByAvatar(fallbackUser)
+    ) : null
+    if (!resolvedFallback) return null
+
+    const fallbackNames = [
+      resolvedFallback?.name,
+      resolvedFallback?.email,
+    ].map((item) => (item || "").trim()).filter(Boolean)
+
+    return fallbackNames.some((item) => item.toLowerCase() === query.toLowerCase())
+      ? resolvedFallback
+      : null
   },
 
   getCommentCount(card) {
@@ -1943,7 +1989,7 @@ const UI = {
 
   createAvatarNode(user, options = {}) {
     const { subtle = false } = options
-    const resolvedUser = (user?.email && Store.findUserByEmail(user.email)) || Store.findUserByName(user?.name || "") || user || {}
+    const resolvedUser = Store.resolveUser(user) || {}
     if (resolvedUser.avatarUrl) {
       const img = document.createElement("img")
       img.src = CloudflareBackend.getAuthenticatedImageUrl(resolvedUser.avatarUrl)
@@ -2337,7 +2383,7 @@ const UI = {
 
   createUserBadge(user, options = {}) {
     const { subtle = false } = options
-    const resolvedUser = (user?.email && Store.findUserByEmail(user.email)) || Store.findUserByName(user?.name || "") || user || {}
+    const resolvedUser = Store.resolveUser(user) || {}
     const avatar = this.createAvatarNode(resolvedUser, { subtle })
     const label = resolvedUser.name || resolvedUser.email || user?.name || user?.email || ""
     const nameText = document.createTextNode(label)
@@ -2561,6 +2607,7 @@ const UI = {
     const isEditing = isNew || (canEdit && form.dataset.editMode === "true")
 
     form.classList.toggle("is-editing", isEditing)
+    form.classList.toggle("is-editable", !isNew && canEdit)
     const hotkeyHints = Utils.qs("#cardDetailDescription")?.previousElementSibling?.querySelector(".hotkey-hints--inline")
     if (hotkeyHints) {
       hotkeyHints.style.display = isEditing ? "" : "none"
@@ -2661,8 +2708,11 @@ const UI = {
       Utils.qs("#cardDetailTags").textContent = ""
       Utils.qs("#cardDetailAuthor").textContent = ""
       Utils.qs("#cardDetailEdited").textContent = ""
-      Utils.qs("#cardDetailUserInput").value = Store.getCurrentUserName() || ""
+      const detailUserInput = Utils.qs("#cardDetailUserInput")
+      detailUserInput.value = Store.getCurrentUserName() || ""
+      delete detailUserInput.dataset.userAutocompleteDirty
       Utils.qs("#cardDetailTagsInput").value = ""
+      delete Utils.qs("#cardDetailTagsInput").dataset.tagAutocompleteDirty
       Utils.qs("#cardDetailDueInput").value = ""
       Utils.qs("#cardDetailAuthor")?.closest(".card-detail-field")?.classList.add("is-hidden")
       Utils.qs("#cardDetailEdited")?.closest(".card-detail-field")?.classList.add("is-hidden")
@@ -2764,8 +2814,13 @@ const UI = {
       edited.textContent = ""
     }
 
-    Utils.qs("#cardDetailUserInput").value = card.assignedUser?.name || ""
-    Utils.qs("#cardDetailTagsInput").value = (card.tags || []).join(", ")
+    const resolvedAssignee = Store.resolveUser(card.assignedUser)
+    const detailUserInput = Utils.qs("#cardDetailUserInput")
+    detailUserInput.value = resolvedAssignee?.name || resolvedAssignee?.email || ""
+    delete detailUserInput.dataset.userAutocompleteDirty
+    const detailTagsInput = Utils.qs("#cardDetailTagsInput")
+    detailTagsInput.value = (card.tags || []).join(", ")
+    delete detailTagsInput.dataset.tagAutocompleteDirty
     Utils.qs("#cardDetailDueInput").value = this.toLocalDateTimeInput(card.due)
     const clearBtn = Utils.qs("#cardDetailClearUserBtn")
     if (clearBtn) clearBtn.style.display = Utils.qs("#cardDetailUserInput").value && isEditing ? "block" : "none"
@@ -2848,9 +2903,12 @@ const UI = {
     const rawDesc = card ? card.description || "" : ""
     Utils.qs("#descriptionEditor", form).innerHTML = DOMPurify.sanitize(rawDesc, { ADD_ATTR: ["target"] })
     form.elements.tags.value = card ? (card.tags || []).join(", ") : ""
+    delete form.elements.tags.dataset.tagAutocompleteDirty
     
     const currentUser = Store.getCurrentUserName()
-    form.elements.user.value = card ? (card.assignedUser?.name || "") : (currentUser || "")
+    const resolvedAssignee = Store.resolveUser(card?.assignedUser)
+    form.elements.user.value = card ? (resolvedAssignee?.name || resolvedAssignee?.email || "") : (currentUser || "")
+    delete form.elements.user.dataset.userAutocompleteDirty
 
     const clearUserBtn = Utils.qs('#clearUserBtn', form)
     if (clearUserBtn) {
@@ -3323,18 +3381,29 @@ const UI = {
   },
 
   // --- Filtering & Searching ---
+  getUserFilterKey(user) {
+    const resolvedUser = Store.resolveUser(user) || user || {}
+    return (
+      (resolvedUser.email || "").trim().toLowerCase() ||
+      (resolvedUser.avatarKey || "").trim() ||
+      (resolvedUser.avatarUrl || "").trim() ||
+      (resolvedUser.name || "").trim().toLowerCase()
+    )
+  },
+
   getAvailableFilters() {
     const allTags = new Set()
-    const allUsers = new Map() // name -> user object
+    const allUsers = new Map()
 
     Store.state.columns
       .filter((c) => !c.isArchive)
       .forEach((c) =>
         c.cards.forEach((k) => {
           (k.tags || []).forEach((t) => allTags.add(t))
-          if (k.assignedUser && k.assignedUser.name) {
-            const key = k.assignedUser.name
-            allUsers.set(key, k.assignedUser)
+          if (k.assignedUser && (k.assignedUser.name || k.assignedUser.email)) {
+            const resolvedUser = Store.resolveUser(k.assignedUser)
+            const key = this.getUserFilterKey(resolvedUser)
+            if (key) allUsers.set(key, resolvedUser)
           }
         })
       )
@@ -3384,12 +3453,12 @@ const UI = {
     // Populate User Filters
     if (allUsers.size > 0) {
       userBox.style.display = "flex"
-      ;[...allUsers.values()].sort((a,b) => (a.name||"").localeCompare(b.name||"")).forEach((user) => {
+      ;[...allUsers.values()].sort((a,b) => (a.name || a.email || "").localeCompare(b.name || b.email || "")).forEach((user) => {
         const chip = document.createElement("button")
         chip.className = "tag-chip user-chip"
-        const userKey = user.name || ""
+        const userKey = this.getUserFilterKey(user)
         chip.dataset.userKey = userKey
-        chip.append(this.createAvatarNode(user), document.createTextNode(` ${user.name || ""}`))
+        chip.append(this.createAvatarNode(user), document.createTextNode(` ${user.name || user.email || ""}`))
         
         chip.setAttribute(
           "aria-pressed",
@@ -3472,7 +3541,7 @@ const UI = {
       card.title.toLowerCase().includes(this.searchQuery) ||
       card.description.toLowerCase().includes(this.searchQuery) ||
       card.tags.join(" ").toLowerCase().includes(this.searchQuery) ||
-      (card.assignedUser && (card.assignedUser.name || "").toLowerCase().includes(this.searchQuery))
+      (card.assignedUser && ((Store.resolveUser(card.assignedUser)?.name || card.assignedUser.name || "").toLowerCase().includes(this.searchQuery)))
 
     const tagsMatch =
       this.activeTagFilters.size === 0 ||
@@ -3482,16 +3551,101 @@ const UI = {
 
     const userMatch =
       this.activeUserFilters.size === 0 ||
-      (card.assignedUser && this.activeUserFilters.has(card.assignedUser.name))
+      (card.assignedUser && this.activeUserFilters.has(this.getUserFilterKey(card.assignedUser)))
 
     cardEl.style.display = searchMatch && tagsMatch && userMatch ? "" : "none"
   },
 
 
-  updateTagAutocomplete(input, container) {
+  positionAutocomplete(input, container) {
+    if (!input || !container) return
+    const rect = input.getBoundingClientRect()
+    const minHeight = 120
+    const preferredHeight = 260
+    const gutter = 12
+    const spaceBelow = Math.max(0, window.innerHeight - rect.bottom - gutter)
+    const spaceAbove = Math.max(0, rect.top - gutter)
+    const openUp = spaceBelow < minHeight && spaceAbove > spaceBelow
+    const available = openUp ? spaceAbove : spaceBelow
+
+    container.classList.toggle("autocomplete-suggestions--up", openUp)
+    container.style.left = `${rect.left}px`
+    container.style.right = "auto"
+    container.style.width = `${rect.width}px`
+    container.style.top = openUp ? "auto" : `${rect.bottom + 4}px`
+    container.style.bottom = openUp ? `${window.innerHeight - rect.top + 4}px` : "auto"
+    container.style.maxHeight = `${Math.max(48, Math.min(preferredHeight, available))}px`
+  },
+
+  resetAutocompletePosition(container) {
+    if (!container) return
+    container.classList.remove("autocomplete-suggestions--up")
+    container.style.left = ""
+    container.style.right = ""
+    container.style.width = ""
+    container.style.top = ""
+    container.style.bottom = ""
+    container.style.maxHeight = ""
+  },
+
+  hideAutocomplete(container) {
+    if (!container) return
+    container.classList.remove("show")
+    this.resetAutocompletePosition(container)
+  },
+
+  exitCardDetailEditMode() {
+    const form = Utils.qs("#cardDetailForm")
+    if (!form || form.dataset.isNew === "true") return false
+    if (form.dataset.editMode !== "true") return false
+    form.dataset.editMode = "false"
+    this.hideAutocomplete(Utils.qs("#cardDetailUserAutocomplete"))
+    this.hideAutocomplete(Utils.qs("#cardDetailTagAutocomplete"))
+    this.renderCardDetail()
+    return true
+  },
+
+  focusWithoutScroll(el, options = {}) {
+    if (!el) return
+    try {
+      el.focus({ preventScroll: true })
+    } catch (_) {
+      el.focus()
+    }
+    if (options.select && typeof el.setSelectionRange === "function") {
+      const length = el.value?.length || 0
+      try {
+        el.setSelectionRange(0, length)
+      } catch (_) {}
+    }
+  },
+
+  captureCardDetailScrollState() {
+    const elements = [
+      document.scrollingElement,
+      Utils.qs("#cardDetailDialog .card-detail-main"),
+      Utils.qs("#cardDetailDialog .card-detail-sidebar"),
+    ].filter(Boolean)
+    return elements.map((el) => ({
+      el,
+      left: el.scrollLeft,
+      top: el.scrollTop,
+    }))
+  },
+
+  restoreScrollState(state) {
+    ;(state || []).forEach(({ el, left, top }) => {
+      el.scrollLeft = left
+      el.scrollTop = top
+    })
+  },
+
+  updateTagAutocomplete(input, container, options = {}) {
     const value = input.value
     const lastCommaIndex = value.lastIndexOf(",")
-    const currentPrefix = value.slice(lastCommaIndex + 1).trim().toLowerCase()
+    const currentToken = value.slice(lastCommaIndex + 1).trim()
+    const currentPrefix = options.ignoreQuery ? "" : currentToken.toLowerCase()
+    const selectedPrefix = currentToken.toLowerCase()
 
     // Collect all existing tags
     const allTags = new Set()
@@ -3501,20 +3655,36 @@ const UI = {
 
     const existingTags = value.split(",").map(t => t.trim().toLowerCase()).filter(Boolean)
 
-    const matches = [...allTags]
-      .filter((t) => t.toLowerCase().startsWith(currentPrefix) && !existingTags.includes(t.toLowerCase()))
-      .sort()
+    const tags = [...allTags]
+      .filter((tag) => !currentPrefix || tag.toLowerCase().startsWith(currentPrefix))
+      .sort((a, b) => a.localeCompare(b))
 
-    if (matches.length === 0) {
+    if (tags.length === 0) {
       container.classList.remove("show")
+      this.resetAutocompletePosition(container)
       return
     }
 
     container.innerHTML = ""
-    matches.forEach((tag) => {
+    tags.forEach((tag) => {
+      const normalizedTag = tag.toLowerCase()
+      const isCurrent = selectedPrefix && normalizedTag === selectedPrefix
+      const isIncluded = existingTags.includes(normalizedTag)
+      const isMatch = currentPrefix && normalizedTag.startsWith(currentPrefix)
       const item = document.createElement("div")
-      item.className = "suggestion-item"
-      item.textContent = tag
+      item.className = "suggestion-item suggestion-item--tag"
+      if (isCurrent || isIncluded) item.classList.add("selected")
+      if (isMatch && !isCurrent) item.classList.add("suggestion-item--match")
+
+      const dot = document.createElement("span")
+      dot.className = "suggestion-tag-dot"
+      dot.style.background = Utils.colorFromString(tag)
+
+      const label = document.createElement("span")
+      label.className = "suggestion-label"
+      label.textContent = tag
+
+      item.append(dot, label)
       item.addEventListener("click", (e) => {
         e.stopPropagation()
         this.selectTagSuggestion(tag, input, container)
@@ -3522,7 +3692,10 @@ const UI = {
       container.appendChild(item)
     })
 
+    this.positionAutocomplete(input, container)
     container.classList.add("show")
+    const selectedItem = container.querySelector(".suggestion-item.selected")
+    if (selectedItem) selectedItem.scrollIntoView({ block: "nearest" })
   },
 
   selectTagSuggestion(tag, input, container) {
@@ -3534,60 +3707,102 @@ const UI = {
     const existingTags = prefix.split(",").map(t => t.trim().toLowerCase())
     if (existingTags.includes(tag.toLowerCase())) {
         container.classList.remove("show")
+        this.resetAutocompletePosition(container)
         return
     }
 
     input.value = prefix + (prefix.length > 0 && !prefix.endsWith(" ") ? " " : "") + tag + ", "
+    delete input.dataset.tagAutocompleteDirty
     input.focus()
     container.classList.remove("show")
+    this.resetAutocompletePosition(container)
   },
 
-  updateUserAutocomplete(input, container) {
-    const query = input.value.trim().toLowerCase()
+  updateUserAutocomplete(input, container, options = {}) {
+    const selectedQuery = input.value.trim().toLowerCase()
+    const query = options.ignoreQuery ? "" : selectedQuery
     const allUsersMap = new Map()
-
-    if (Store.state.users) {
-      Store.state.users.forEach((u) => {
-        if (u && (u.name || u.email) && u.isApproved !== false) {
-          allUsersMap.set(u.email || u.name, u)
-        }
-      })
+    const userKey = (user) => {
+      const resolved = user || {}
+      return (
+        (resolved.email || "").trim().toLowerCase() ||
+        (resolved.avatarKey || "").trim() ||
+        (resolved.avatarUrl || "").trim() ||
+        (resolved.name || "").trim().toLowerCase()
+      )
+    }
+    const addUser = (user) => {
+      const key = userKey(user)
+      if (!key) return
+      allUsersMap.set(key, user)
     }
 
-    Store.state.columns.forEach((c) =>
-      c.cards.forEach((k) => {
-        if (k.assignedUser && k.assignedUser.name) {
-          allUsersMap.set(k.assignedUser.email || k.assignedUser.name, k.assignedUser)
-        }
+    ;(Store.state.users || []).forEach((u) => {
+      if (u && (u.name || u.email) && u.isApproved !== false) addUser(u)
+    })
+
+    const users = [...allUsersMap.values()]
+      .filter((user) => {
+        if (!query) return true
+        return (user.name || "").toLowerCase().includes(query) ||
+          (user.email || "").toLowerCase().includes(query)
       })
-    )
+      .sort((a, b) => {
+        const labelA = (a.name || a.email || "").toLowerCase()
+        const labelB = (b.name || b.email || "").toLowerCase()
+        return labelA.localeCompare(labelB)
+      })
 
-    const matches = [...allUsersMap.values()]
-      .filter(u => ((u.name || "").toLowerCase().includes(query) || (u.email || "").toLowerCase().includes(query)))
-      .slice(0, 5)
-
-    if (matches.length === 0) {
+    if (users.length === 0) {
       container.classList.remove("show")
+      this.resetAutocompletePosition(container)
       return
     }
 
     container.innerHTML = ""
-    matches.forEach(user => {
+    users.forEach(user => {
+      const label = user.name || user.email || ""
+      const email = user.email || ""
+      const isSelected = selectedQuery && (label.toLowerCase() === selectedQuery || email.toLowerCase() === selectedQuery)
+      const isMatch = query && (label.toLowerCase().includes(query) || email.toLowerCase().includes(query))
       const item = document.createElement("div")
-      item.className = "suggestion-item"
-      item.textContent = user.name || user.email
+      item.className = "suggestion-item suggestion-item--user"
+      if (isSelected) item.classList.add("selected")
+      if (isMatch && !isSelected) item.classList.add("suggestion-item--match")
+
+      const text = document.createElement("span")
+      text.className = "suggestion-user-text"
+
+      const name = document.createElement("span")
+      name.className = "suggestion-label"
+      name.textContent = label
+      text.appendChild(name)
+
+      if (email && email !== label) {
+        const emailHint = document.createElement("span")
+        emailHint.className = "suggestion-hint"
+        emailHint.textContent = email
+        text.appendChild(emailHint)
+      }
+
+      item.append(this.createAvatarNode(user), text)
       item.addEventListener("click", (e) => {
         e.stopPropagation()
         this.selectUserSuggestion(user, input, container)
       })
       container.appendChild(item)
     })
+    this.positionAutocomplete(input, container)
     container.classList.add("show")
+    const selectedItem = container.querySelector(".suggestion-item.selected")
+    if (selectedItem) selectedItem.scrollIntoView({ block: "nearest" })
   },
 
   selectUserSuggestion(user, input, container) {
     input.value = user.name || user.email || ""
+    delete input.dataset.userAutocompleteDirty
     container.classList.remove("show")
+    this.resetAutocompletePosition(container)
   },
 
   sortCardsByUser() {
@@ -4138,13 +4353,20 @@ const App = {
         UI.cardDetailDialog.close()
         return
       }
-      form.dataset.editMode = "false"
-      UI.renderCardDetail()
+      UI.exitCardDetailEditMode()
     })
 
     Utils.qs("#cardDetailCloseBtn").addEventListener("click", () => {
       UI.cardDetailDialog.close()
     })
+
+    UI.cardDetailDialog.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return
+      if (UI.exitCardDetailEditMode()) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+    }, true)
 
     Utils.qs("#cardDetailManageBtn").addEventListener("click", (e) => {
       e.stopPropagation()
@@ -4363,19 +4585,27 @@ const App = {
     const tagAutocomplete = Utils.qs("#tagAutocomplete")
 
     tagsInput.addEventListener("input", () => {
+      tagsInput.dataset.tagAutocompleteDirty = "true"
       UI.updateTagAutocomplete(tagsInput, tagAutocomplete)
     })
     tagsInput.addEventListener("focus", () => {
-      UI.updateTagAutocomplete(tagsInput, tagAutocomplete)
+      UI.updateTagAutocomplete(tagsInput, tagAutocomplete, { ignoreQuery: tagsInput.dataset.tagAutocompleteDirty !== "true" })
+    })
+    tagsInput.addEventListener("click", () => {
+      UI.updateTagAutocomplete(tagsInput, tagAutocomplete, { ignoreQuery: tagsInput.dataset.tagAutocompleteDirty !== "true" })
     })
 
     const detailTagsInput = Utils.qs("#cardDetailTagsInput")
     const detailTagAutocomplete = Utils.qs("#cardDetailTagAutocomplete")
     detailTagsInput.addEventListener("input", () => {
+      detailTagsInput.dataset.tagAutocompleteDirty = "true"
       UI.updateTagAutocomplete(detailTagsInput, detailTagAutocomplete)
     })
     detailTagsInput.addEventListener("focus", () => {
-      UI.updateTagAutocomplete(detailTagsInput, detailTagAutocomplete)
+      UI.updateTagAutocomplete(detailTagsInput, detailTagAutocomplete, { ignoreQuery: detailTagsInput.dataset.tagAutocompleteDirty !== "true" })
+    })
+    detailTagsInput.addEventListener("click", () => {
+      UI.updateTagAutocomplete(detailTagsInput, detailTagAutocomplete, { ignoreQuery: detailTagsInput.dataset.tagAutocompleteDirty !== "true" })
     })
 
     const userInput = Utils.qs('input[name="user"]', Utils.qs("#editorForm"))
@@ -4387,17 +4617,23 @@ const App = {
     }
 
     userInput.addEventListener("input", () => {
+      userInput.dataset.userAutocompleteDirty = "true"
       UI.updateUserAutocomplete(userInput, userAutocomplete)
       toggleClearBtn()
     })
     userInput.addEventListener("focus", () => {
-      UI.updateUserAutocomplete(userInput, userAutocomplete)
+      UI.updateUserAutocomplete(userInput, userAutocomplete, { ignoreQuery: userInput.dataset.userAutocompleteDirty !== "true" })
+      toggleClearBtn()
+    })
+    userInput.addEventListener("click", () => {
+      UI.updateUserAutocomplete(userInput, userAutocomplete, { ignoreQuery: userInput.dataset.userAutocompleteDirty !== "true" })
       toggleClearBtn()
     })
 
     if (clearUserBtn) {
       clearUserBtn.addEventListener("click", () => {
         userInput.value = ""
+        delete userInput.dataset.userAutocompleteDirty
         userAutocomplete.classList.remove("show")
         toggleClearBtn()
         userInput.focus()
@@ -4412,36 +4648,59 @@ const App = {
     }
 
     detailUserInput.addEventListener("input", () => {
+      detailUserInput.dataset.userAutocompleteDirty = "true"
       UI.updateUserAutocomplete(detailUserInput, detailUserAutocomplete)
       toggleDetailClearBtn()
     })
     detailUserInput.addEventListener("focus", () => {
-      UI.updateUserAutocomplete(detailUserInput, detailUserAutocomplete)
+      UI.updateUserAutocomplete(detailUserInput, detailUserAutocomplete, { ignoreQuery: detailUserInput.dataset.userAutocompleteDirty !== "true" })
+      toggleDetailClearBtn()
+    })
+    detailUserInput.addEventListener("click", () => {
+      UI.updateUserAutocomplete(detailUserInput, detailUserAutocomplete, { ignoreQuery: detailUserInput.dataset.userAutocompleteDirty !== "true" })
       toggleDetailClearBtn()
     })
 
     if (detailClearUserBtn) {
       detailClearUserBtn.addEventListener("click", () => {
         detailUserInput.value = ""
+        delete detailUserInput.dataset.userAutocompleteDirty
         detailUserAutocomplete.classList.remove("show")
         toggleDetailClearBtn()
         detailUserInput.focus()
       })
     }
 
+    const refreshOpenAutocompletes = () => {
+      [
+        [tagsInput, tagAutocomplete],
+        [detailTagsInput, detailTagAutocomplete],
+        [userInput, userAutocomplete],
+        [detailUserInput, detailUserAutocomplete],
+      ].forEach(([input, autocomplete]) => {
+        if (autocomplete?.classList.contains("show")) UI.positionAutocomplete(input, autocomplete)
+      })
+    }
+    window.addEventListener("resize", refreshOpenAutocompletes)
+    window.addEventListener("scroll", refreshOpenAutocompletes, true)
+
     // Close autocomplete when clicking outside
     window.addEventListener("click", (e) => {
       if (e.target !== tagsInput && !tagAutocomplete.contains(e.target)) {
         tagAutocomplete.classList.remove("show")
+        UI.resetAutocompletePosition(tagAutocomplete)
       }
       if (e.target !== detailTagsInput && !detailTagAutocomplete.contains(e.target)) {
         detailTagAutocomplete.classList.remove("show")
+        UI.resetAutocompletePosition(detailTagAutocomplete)
       }
       if (e.target !== userInput && !userAutocomplete.contains(e.target)) {
         userAutocomplete.classList.remove("show")
+        UI.resetAutocompletePosition(userAutocomplete)
       }
       if (e.target !== detailUserInput && !detailUserAutocomplete.contains(e.target)) {
         detailUserAutocomplete.classList.remove("show")
+        UI.resetAutocompletePosition(detailUserAutocomplete)
       }
       const moveToWrap = Utils.qs("#moveToWrap")
       if (moveToWrap && !moveToWrap.contains(e.target)) {
@@ -5079,10 +5338,8 @@ const App = {
         if (dialog === UI.cardDetailDialog) {
           const form = Utils.qs("#cardDetailForm")
           if (form?.dataset.isNew === "true") return
-          if (form?.dataset.editMode === "true") {
+          if (UI.exitCardDetailEditMode()) {
             e.preventDefault()
-            form.dataset.editMode = "false"
-            UI.renderCardDetail()
           }
         }
       })
@@ -5115,6 +5372,7 @@ const App = {
         const { card } = form.dataset.cardId ? Store.findCard(form.dataset.cardId) : { card: null }
         if (!card || !Store.canCurrentUserEditCard(card)) return
         if (form.dataset.editMode !== "true") {
+          const scrollState = UI.captureCardDetailScrollState()
           form.dataset.editMode = "true"
           UI.renderCardDetail()
           const target = e.currentTarget
@@ -5127,9 +5385,29 @@ const App = {
           }
           const selector = focusMap[target.id]
           if (selector) {
-            Utils.qs(selector)?.focus()
+            const input = Utils.qs(selector)
             if (selector === "#cardDetailUserInput" || selector === "#cardDetailTagsInput") {
-              Utils.qs(selector)?.select()
+              e.stopPropagation()
+              UI.focusWithoutScroll(input, { select: true })
+              UI.restoreScrollState(scrollState)
+              requestAnimationFrame(() => {
+                UI.restoreScrollState(scrollState)
+                if (selector === "#cardDetailUserInput") {
+                  UI.updateUserAutocomplete(input, Utils.qs("#cardDetailUserAutocomplete"), { ignoreQuery: true })
+                } else {
+                  UI.updateTagAutocomplete(input, Utils.qs("#cardDetailTagAutocomplete"), { ignoreQuery: true })
+                }
+                requestAnimationFrame(() => {
+                  UI.restoreScrollState(scrollState)
+                  const autocomplete = selector === "#cardDetailUserInput"
+                    ? Utils.qs("#cardDetailUserAutocomplete")
+                    : Utils.qs("#cardDetailTagAutocomplete")
+                  if (autocomplete?.classList.contains("show")) UI.positionAutocomplete(input, autocomplete)
+                })
+              })
+            } else {
+              UI.focusWithoutScroll(input)
+              UI.restoreScrollState(scrollState)
             }
           }
         }
@@ -5403,7 +5681,7 @@ const App = {
 
     const userVal = form.elements.user.value.trim()
     if (userVal) {
-      const existingUser = (Store.state.users || []).find(u => (u.name || "") === userVal || (u.email || "") === userVal)
+      const existingUser = Store.findUserByInput(userVal, existingCard?.assignedUser)
       if (existingUser) {
         cardData.assignedUser = existingUser
       } else {
@@ -5455,7 +5733,8 @@ const App = {
 
     const userVal = Utils.qs("#cardDetailUserInput").value.trim()
     if (userVal) {
-      const existingUser = (Store.state.users || []).find((u) => (u.name || "") === userVal || (u.email || "") === userVal)
+      const existingCardForUser = !isNew && cardId ? Store.findCard(cardId).card : null
+      const existingUser = Store.findUserByInput(userVal, existingCardForUser?.assignedUser)
       if (existingUser) {
         cardData.assignedUser = existingUser
       } else {
