@@ -2890,44 +2890,106 @@ html[data-theme="dark"] .board-selector-row select {
 }
 
 .autocomplete-suggestions {
-  position: absolute;
-  top: 100%;
+  position: fixed;
+  top: 0;
+  bottom: auto;
   left: 0;
-  right: 0;
+  right: auto;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 8px;
   box-shadow: var(--shadow);
   z-index: 1000;
-  max-height: 200px;
+  max-height: min(260px, 42vh);
   overflow-y: auto;
   display: none;
+  padding: 4px;
+  margin-top: 4px;
+  margin-bottom: 0;
 }
 
 .autocomplete-suggestions.show {
   display: block;
 }
 
-.suggestion-item {
-  padding: 8px 12px;
-  cursor: pointer;
-  transition: background 0.1s;
-  font-weight: 400;
-  color: var(--text);
+.autocomplete-suggestions--up {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 4px;
 }
 
-.suggestion-item:hover {
+.suggestion-item {
+  min-height: 36px;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  font-weight: 400;
+  color: var(--text);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  scroll-margin: 6px;
+}
+
+.suggestion-item:hover,
+.suggestion-item--match {
   background: var(--primary-light);
 }
 
-.suggestion-item:first-child {
-  border-top-left-radius: 12px;
-  border-top-right-radius: 12px;
+.suggestion-item.selected {
+  background: color-mix(in srgb, var(--primary), transparent 84%);
+  color: var(--text);
+  font-weight: 600;
 }
 
-.suggestion-item:last-child {
-  border-bottom-left-radius: 12px;
-  border-bottom-right-radius: 12px;
+.suggestion-item.selected::after {
+  content: "✓";
+  margin-left: auto;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.suggestion-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestion-tag-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.suggestion-item--user .avatar-dot,
+.suggestion-item--user .avatar-image {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+}
+
+.suggestion-user-text {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.suggestion-hint {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .lang-tabs {
