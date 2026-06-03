@@ -3560,6 +3560,7 @@ const UI = {
   hideAutocomplete(container) {
     if (!container) return
     container.classList.remove("show")
+    container.classList.remove("autocomplete-suggestions--above")
     container.style.maxHeight = ""
   },
 
@@ -3606,11 +3607,16 @@ const UI = {
       ? Math.min(visualHeight, actionsRect.top)
       : visualHeight
     const availableBelow = Math.max(minHeight, lowerBoundary - rect.bottom - gutter)
-    container.style.maxHeight = `${Math.min(preferredHeight, availableBelow)}px`
+    const availableAbove = Math.max(minHeight, rect.top - gutter)
+    const openAbove = !isMobile && lowerBoundary - rect.bottom - gutter < minHeight && availableAbove > availableBelow
+    container.classList.toggle("autocomplete-suggestions--above", openAbove)
+    const available = openAbove ? availableAbove : availableBelow
+    container.style.maxHeight = `${Math.min(preferredHeight, available)}px`
   },
 
   revealAutocomplete(input, container) {
     if (!input || !container) return
+    if (!this.isMobileSelectorViewport()) return
     const target = input.closest(".user-input-wrapper, .tags-input-wrapper") || container
     requestAnimationFrame(() => {
       this.setAutocompleteHeight(input, container)

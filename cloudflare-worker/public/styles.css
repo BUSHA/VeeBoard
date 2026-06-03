@@ -2909,25 +2909,34 @@ html[data-theme="dark"] .board-selector-row select {
 }
 
 .autocomplete-suggestions {
-  position: static;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
   width: 100%;
   box-sizing: border-box;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 6px 16px rgba(0, 0, 0, .08);
+  z-index: 30;
   max-height: 220px;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   display: none;
   padding: 4px;
-  margin-top: 6px;
+  margin-top: 0;
   margin-bottom: 0;
 }
 
 .autocomplete-suggestions.show {
   display: block;
+}
+
+.autocomplete-suggestions--above {
+  top: auto;
+  bottom: calc(100% + 6px);
 }
 
 .suggestion-item {
@@ -3004,9 +3013,17 @@ html[data-theme="dark"] .board-selector-row select {
 
 @media (max-width: 640px) {
   .autocomplete-suggestions {
+    position: static;
+    width: 100%;
     max-height: min(280px, 34dvh);
     border-radius: 10px;
     box-shadow: none;
+    margin-top: 6px;
+    z-index: auto;
+  }
+
+  .autocomplete-suggestions--above {
+    bottom: auto;
   }
 
   .suggestion-item {
