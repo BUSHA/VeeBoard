@@ -5609,11 +5609,12 @@ const App = {
       UI.showAlert(I18n.t("own_card_only_error"))
       return
     }
-    if (toCol.isDone || toCol.isArchive || toCol.id === fromCol.id) return
+    if (toCol.isArchive || toCol.id === fromCol.id) return
 
-    Store.moveCard(cardId, fromCol.id, toCol.id, -1)
+    Store.moveCard(cardId, fromCol.id, toCol.id, 0)
     UI.renderBoard()
     UI.hideMoveToMenu()
+    Utils.qs("#cardDetailManageMenu")?.classList.remove("show")
     const dialog = form.closest("dialog")
     if (dialog === UI.cardDetailDialog) {
       const fresh = Store.findCard(cardId)
