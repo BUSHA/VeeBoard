@@ -3564,13 +3564,21 @@ const UI = {
     container.style.maxHeight = ""
   },
 
+  hideAllAutocompletes() {
+    ;[
+      "#tagAutocomplete",
+      "#cardDetailTagAutocomplete",
+      "#userAutocomplete",
+      "#cardDetailUserAutocomplete",
+    ].forEach((selector) => this.hideAutocomplete(Utils.qs(selector)))
+  },
+
   exitCardDetailEditMode() {
     const form = Utils.qs("#cardDetailForm")
     if (!form || form.dataset.isNew === "true") return false
     if (form.dataset.editMode !== "true") return false
     form.dataset.editMode = "false"
-    this.hideAutocomplete(Utils.qs("#cardDetailUserAutocomplete"))
-    this.hideAutocomplete(Utils.qs("#cardDetailTagAutocomplete"))
+    this.hideAllAutocompletes()
     this.renderCardDetail()
     return true
   },
@@ -3647,6 +3655,7 @@ const UI = {
   },
 
   updateTagAutocomplete(input, container, options = {}) {
+    Utils.qs("#cardDetailManageMenu")?.classList.remove("show")
     const value = input.value
     const lastCommaIndex = value.lastIndexOf(",")
     const currentToken = value.slice(lastCommaIndex + 1).trim()
@@ -3721,6 +3730,7 @@ const UI = {
   },
 
   updateUserAutocomplete(input, container, options = {}) {
+    Utils.qs("#cardDetailManageMenu")?.classList.remove("show")
     const selectedQuery = input.value.trim().toLowerCase()
     const query = options.ignoreQuery ? "" : selectedQuery
     const allUsersMap = new Map()
@@ -4372,6 +4382,7 @@ const App = {
 
     Utils.qs("#cardDetailManageBtn").addEventListener("click", (e) => {
       e.stopPropagation()
+      UI.hideAllAutocompletes()
       const menu = Utils.qs("#cardDetailManageMenu")
       if (!menu) return
       const wasOpen = menu.classList.contains("show")
