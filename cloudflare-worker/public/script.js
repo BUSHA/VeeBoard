@@ -3557,41 +3557,10 @@ const UI = {
   },
 
 
-  positionAutocomplete(input, container) {
-    if (!input || !container) return
-    const rect = input.getBoundingClientRect()
-    const minHeight = 120
-    const preferredHeight = 260
-    const gutter = 12
-    const spaceBelow = Math.max(0, window.innerHeight - rect.bottom - gutter)
-    const spaceAbove = Math.max(0, rect.top - gutter)
-    const openUp = spaceBelow < minHeight && spaceAbove > spaceBelow
-    const available = openUp ? spaceAbove : spaceBelow
-
-    container.classList.toggle("autocomplete-suggestions--up", openUp)
-    container.style.left = `${rect.left}px`
-    container.style.right = "auto"
-    container.style.width = `${rect.width}px`
-    container.style.top = openUp ? "auto" : `${rect.bottom + 4}px`
-    container.style.bottom = openUp ? `${window.innerHeight - rect.top + 4}px` : "auto"
-    container.style.maxHeight = `${Math.max(48, Math.min(preferredHeight, available))}px`
-  },
-
-  resetAutocompletePosition(container) {
-    if (!container) return
-    container.classList.remove("autocomplete-suggestions--up")
-    container.style.left = ""
-    container.style.right = ""
-    container.style.width = ""
-    container.style.top = ""
-    container.style.bottom = ""
-    container.style.maxHeight = ""
-  },
-
   hideAutocomplete(container) {
     if (!container) return
     container.classList.remove("show")
-    this.resetAutocompletePosition(container)
+    container.style.maxHeight = ""
   },
 
   exitCardDetailEditMode() {
@@ -3603,6 +3572,57 @@ const UI = {
     this.hideAutocomplete(Utils.qs("#cardDetailTagAutocomplete"))
     this.renderCardDetail()
     return true
+  },
+
+  scrollSelectedSuggestion(container) {
+    if (!container) return
+    const selectedItem = container.querySelector(".suggestion-item.selected")
+    if (!selectedItem) {
+      container.scrollTop = 0
+      return
+    }
+    const itemTop = selectedItem.offsetTop
+    const itemBottom = itemTop + selectedItem.offsetHeight
+    const viewTop = container.scrollTop
+    const viewBottom = viewTop + container.clientHeight
+    if (itemTop < viewTop) {
+      container.scrollTop = itemTop
+    } else if (itemBottom > viewBottom) {
+      container.scrollTop = itemBottom - container.clientHeight
+    }
+  },
+
+  setAutocompleteHeight(input, container) {
+    if (!input || !container) return
+    const isMobile = this.isMobileSelectorViewport()
+    const preferredHeight = isMobile ? 280 : 220
+    const minHeight = isMobile ? 132 : 96
+    const gutter = isMobile ? 18 : 12
+    const rect = input.getBoundingClientRect()
+    const detailActions = input.closest("#cardDetailDialog")?.querySelector(".card-detail-actions")
+    const actionsRect = detailActions?.getBoundingClientRect()
+    const visualHeight = window.visualViewport?.height || window.innerHeight
+    const lowerBoundary = actionsRect && actionsRect.top > rect.bottom
+      ? Math.min(visualHeight, actionsRect.top)
+      : visualHeight
+    const availableBelow = Math.max(minHeight, lowerBoundary - rect.bottom - gutter)
+    container.style.maxHeight = `${Math.min(preferredHeight, availableBelow)}px`
+  },
+
+  revealAutocomplete(input, container) {
+    if (!input || !container) return
+    const target = input.closest(".user-input-wrapper, .tags-input-wrapper") || container
+    requestAnimationFrame(() => {
+      this.setAutocompleteHeight(input, container)
+      target.scrollIntoView({ block: "nearest", inline: "nearest" })
+      requestAnimationFrame(() => {
+        this.setAutocompleteHeight(input, container)
+      })
+    })
+  },
+
+  isMobileSelectorViewport() {
+    return window.matchMedia?.("(max-width: 640px)").matches
   },
 
   focusWithoutScroll(el, options = {}) {
@@ -3618,26 +3638,6 @@ const UI = {
         el.setSelectionRange(0, length)
       } catch (_) {}
     }
-  },
-
-  captureCardDetailScrollState() {
-    const elements = [
-      document.scrollingElement,
-      Utils.qs("#cardDetailDialog .card-detail-main"),
-      Utils.qs("#cardDetailDialog .card-detail-sidebar"),
-    ].filter(Boolean)
-    return elements.map((el) => ({
-      el,
-      left: el.scrollLeft,
-      top: el.scrollTop,
-    }))
-  },
-
-  restoreScrollState(state) {
-    ;(state || []).forEach(({ el, left, top }) => {
-      el.scrollLeft = left
-      el.scrollTop = top
-    })
   },
 
   updateTagAutocomplete(input, container, options = {}) {
@@ -3660,8 +3660,7 @@ const UI = {
       .sort((a, b) => a.localeCompare(b))
 
     if (tags.length === 0) {
-      container.classList.remove("show")
-      this.resetAutocompletePosition(container)
+      this.hideAutocomplete(container)
       return
     }
 
@@ -3692,10 +3691,10 @@ const UI = {
       container.appendChild(item)
     })
 
-    this.positionAutocomplete(input, container)
     container.classList.add("show")
-    const selectedItem = container.querySelector(".suggestion-item.selected")
-    if (selectedItem) selectedItem.scrollIntoView({ block: "nearest" })
+    this.setAutocompleteHeight(input, container)
+    this.scrollSelectedSuggestion(container)
+    this.revealAutocomplete(input, container)
   },
 
   selectTagSuggestion(tag, input, container) {
@@ -3706,16 +3705,13 @@ const UI = {
     // Check if tag already exists in the list to avoid duplicates
     const existingTags = prefix.split(",").map(t => t.trim().toLowerCase())
     if (existingTags.includes(tag.toLowerCase())) {
-        container.classList.remove("show")
-        this.resetAutocompletePosition(container)
+        this.hideAutocomplete(container)
         return
     }
 
     input.value = prefix + (prefix.length > 0 && !prefix.endsWith(" ") ? " " : "") + tag + ", "
     delete input.dataset.tagAutocompleteDirty
-    input.focus()
-    container.classList.remove("show")
-    this.resetAutocompletePosition(container)
+    this.hideAutocomplete(container)
   },
 
   updateUserAutocomplete(input, container, options = {}) {
@@ -3754,8 +3750,7 @@ const UI = {
       })
 
     if (users.length === 0) {
-      container.classList.remove("show")
-      this.resetAutocompletePosition(container)
+      this.hideAutocomplete(container)
       return
     }
 
@@ -3792,17 +3787,18 @@ const UI = {
       })
       container.appendChild(item)
     })
-    this.positionAutocomplete(input, container)
     container.classList.add("show")
-    const selectedItem = container.querySelector(".suggestion-item.selected")
-    if (selectedItem) selectedItem.scrollIntoView({ block: "nearest" })
+    this.setAutocompleteHeight(input, container)
+    this.scrollSelectedSuggestion(container)
+    this.revealAutocomplete(input, container)
   },
 
   selectUserSuggestion(user, input, container) {
     input.value = user.name || user.email || ""
     delete input.dataset.userAutocompleteDirty
-    container.classList.remove("show")
-    this.resetAutocompletePosition(container)
+    const clearBtn = input.closest(".user-input-wrapper")?.querySelector(".clear-input-btn")
+    if (clearBtn) clearBtn.style.display = input.value ? "block" : "none"
+    this.hideAutocomplete(container)
   },
 
   sortCardsByUser() {
@@ -4631,12 +4627,13 @@ const App = {
     })
 
     if (clearUserBtn) {
-      clearUserBtn.addEventListener("click", () => {
+      clearUserBtn.addEventListener("click", (e) => {
+        e.stopPropagation()
         userInput.value = ""
         delete userInput.dataset.userAutocompleteDirty
-        userAutocomplete.classList.remove("show")
         toggleClearBtn()
-        userInput.focus()
+        if (!UI.isMobileSelectorViewport()) UI.focusWithoutScroll(userInput)
+        UI.updateUserAutocomplete(userInput, userAutocomplete, { ignoreQuery: true })
       })
     }
 
@@ -4662,45 +4659,29 @@ const App = {
     })
 
     if (detailClearUserBtn) {
-      detailClearUserBtn.addEventListener("click", () => {
+      detailClearUserBtn.addEventListener("click", (e) => {
+        e.stopPropagation()
         detailUserInput.value = ""
         delete detailUserInput.dataset.userAutocompleteDirty
-        detailUserAutocomplete.classList.remove("show")
         toggleDetailClearBtn()
-        detailUserInput.focus()
+        if (!UI.isMobileSelectorViewport()) UI.focusWithoutScroll(detailUserInput)
+        UI.updateUserAutocomplete(detailUserInput, detailUserAutocomplete, { ignoreQuery: true })
       })
     }
-
-    const refreshOpenAutocompletes = () => {
-      [
-        [tagsInput, tagAutocomplete],
-        [detailTagsInput, detailTagAutocomplete],
-        [userInput, userAutocomplete],
-        [detailUserInput, detailUserAutocomplete],
-      ].forEach(([input, autocomplete]) => {
-        if (autocomplete?.classList.contains("show")) UI.positionAutocomplete(input, autocomplete)
-      })
-    }
-    window.addEventListener("resize", refreshOpenAutocompletes)
-    window.addEventListener("scroll", refreshOpenAutocompletes, true)
 
     // Close autocomplete when clicking outside
     window.addEventListener("click", (e) => {
       if (e.target !== tagsInput && !tagAutocomplete.contains(e.target)) {
-        tagAutocomplete.classList.remove("show")
-        UI.resetAutocompletePosition(tagAutocomplete)
+        UI.hideAutocomplete(tagAutocomplete)
       }
       if (e.target !== detailTagsInput && !detailTagAutocomplete.contains(e.target)) {
-        detailTagAutocomplete.classList.remove("show")
-        UI.resetAutocompletePosition(detailTagAutocomplete)
+        UI.hideAutocomplete(detailTagAutocomplete)
       }
       if (e.target !== userInput && !userAutocomplete.contains(e.target)) {
-        userAutocomplete.classList.remove("show")
-        UI.resetAutocompletePosition(userAutocomplete)
+        UI.hideAutocomplete(userAutocomplete)
       }
       if (e.target !== detailUserInput && !detailUserAutocomplete.contains(e.target)) {
-        detailUserAutocomplete.classList.remove("show")
-        UI.resetAutocompletePosition(detailUserAutocomplete)
+        UI.hideAutocomplete(detailUserAutocomplete)
       }
       const moveToWrap = Utils.qs("#moveToWrap")
       if (moveToWrap && !moveToWrap.contains(e.target)) {
@@ -5372,7 +5353,6 @@ const App = {
         const { card } = form.dataset.cardId ? Store.findCard(form.dataset.cardId) : { card: null }
         if (!card || !Store.canCurrentUserEditCard(card)) return
         if (form.dataset.editMode !== "true") {
-          const scrollState = UI.captureCardDetailScrollState()
           form.dataset.editMode = "true"
           UI.renderCardDetail()
           const target = e.currentTarget
@@ -5388,26 +5368,18 @@ const App = {
             const input = Utils.qs(selector)
             if (selector === "#cardDetailUserInput" || selector === "#cardDetailTagsInput") {
               e.stopPropagation()
-              UI.focusWithoutScroll(input, { select: true })
-              UI.restoreScrollState(scrollState)
+              if (!UI.isMobileSelectorViewport()) {
+                UI.focusWithoutScroll(input, { select: true })
+              }
               requestAnimationFrame(() => {
-                UI.restoreScrollState(scrollState)
                 if (selector === "#cardDetailUserInput") {
                   UI.updateUserAutocomplete(input, Utils.qs("#cardDetailUserAutocomplete"), { ignoreQuery: true })
                 } else {
                   UI.updateTagAutocomplete(input, Utils.qs("#cardDetailTagAutocomplete"), { ignoreQuery: true })
                 }
-                requestAnimationFrame(() => {
-                  UI.restoreScrollState(scrollState)
-                  const autocomplete = selector === "#cardDetailUserInput"
-                    ? Utils.qs("#cardDetailUserAutocomplete")
-                    : Utils.qs("#cardDetailTagAutocomplete")
-                  if (autocomplete?.classList.contains("show")) UI.positionAutocomplete(input, autocomplete)
-                })
               })
             } else {
               UI.focusWithoutScroll(input)
-              UI.restoreScrollState(scrollState)
             }
           }
         }

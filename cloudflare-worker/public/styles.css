@@ -1132,7 +1132,7 @@ dialog:focus-visible {
 .card-detail-sidebar {
   min-width: 0;
   overflow-y: auto;
-  padding: 20px;
+  padding: 20px 20px 44px;
   border-left: 1px solid var(--border);
   background: color-mix(in srgb, var(--panel), var(--bg) 35%);
   display: flex;
@@ -1869,6 +1869,7 @@ html[data-theme="dark"] .card-manage-trigger {
   .card-detail-body {
     display: block;
     overflow-y: auto;
+    padding-bottom: 96px;
   }
 
   .card-detail-main,
@@ -2877,7 +2878,7 @@ html[data-theme="dark"] .board-selector-row select {
 .clear-input-btn {
   position: absolute;
   right: 14px;
-  top: 50%;
+  top: 21px;
   transform: translateY(-50%);
   background: none;
   border: none;
@@ -2895,13 +2896,8 @@ html[data-theme="dark"] .board-selector-row select {
   color: var(--text);
 }
 
-/* Reusing autocomplete styles from tags */
-.user-input-wrapper .autocomplete-suggestions {
-  display: none;
-}
-
-.user-input-wrapper .autocomplete-suggestions.show {
-  display: block;
+.user-input-wrapper > input {
+  padding-right: 34px;
 }
 
 /* =================================
@@ -2913,21 +2909,20 @@ html[data-theme="dark"] .board-selector-row select {
 }
 
 .autocomplete-suggestions {
-  position: fixed;
-  top: 0;
-  bottom: auto;
-  left: 0;
-  right: auto;
+  position: static;
+  width: 100%;
+  box-sizing: border-box;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: var(--shadow);
-  z-index: 1000;
-  max-height: min(260px, 42vh);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .08);
+  max-height: 220px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   display: none;
   padding: 4px;
-  margin-top: 4px;
+  margin-top: 6px;
   margin-bottom: 0;
 }
 
@@ -2935,16 +2930,9 @@ html[data-theme="dark"] .board-selector-row select {
   display: block;
 }
 
-.autocomplete-suggestions--up {
-  top: auto;
-  bottom: 100%;
-  margin-top: 0;
-  margin-bottom: 4px;
-}
-
 .suggestion-item {
-  min-height: 36px;
-  padding: 6px 8px;
+  min-height: 38px;
+  padding: 7px 8px;
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
   font-weight: 400;
@@ -2953,7 +2941,6 @@ html[data-theme="dark"] .board-selector-row select {
   display: flex;
   align-items: center;
   gap: 8px;
-  scroll-margin: 6px;
 }
 
 .suggestion-item:hover,
@@ -3013,6 +3000,25 @@ html[data-theme="dark"] .board-selector-row select {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .autocomplete-suggestions {
+    max-height: min(280px, 34dvh);
+    border-radius: 10px;
+    box-shadow: none;
+  }
+
+  .suggestion-item {
+    min-height: 44px;
+    padding: 9px 10px;
+  }
+
+  .suggestion-item--user .avatar-dot,
+  .suggestion-item--user .avatar-image {
+    width: 26px;
+    height: 26px;
+  }
 }
 
 .lang-tabs {
