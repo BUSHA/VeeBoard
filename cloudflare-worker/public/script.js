@@ -3,7 +3,7 @@
 // ============================================================================
 
 const CONFIG = {
-  version: "0.3.9"
+  version: "0.4.0"
 }
 
 /* Live sync echo guard */
@@ -1533,18 +1533,19 @@ const Notifications = {
   async open(itemId) {
     const item = this.items.find((entry) => entry.id === itemId)
     if (!item) return
-    const itemBoardId = item.boardId || ""
-    const cfg = DbSettings.get()
     await this.markRead(item.id)
     Utils.qs("#notificationsPanel")?.classList.remove("show")
-    if (!item.cardId) return
-    let { card, col } = Store.findCard(item.cardId)
-    if ((!card || !col) && itemBoardId && itemBoardId !== cfg.cfBoardId) {
+    await this.openTarget(item.boardId || "", item.cardId || "")
+  },
+
+  async openTarget(targetBoardId = "", cardId = "") {
+    const cfg = DbSettings.get()
+    if (targetBoardId && targetBoardId !== cfg.cfBoardId) {
       try {
-        const switched = await CloudflareBackend.switchBoard(cfg, itemBoardId)
+        const switched = await CloudflareBackend.switchBoard(cfg, targetBoardId)
         const nextCfg = {
           ...cfg,
-          cfBoardId: itemBoardId,
+          cfBoardId: targetBoardId,
           cfUserEmail: switched.user?.email || cfg.cfUserEmail || "",
           cfUserName: switched.user?.name || cfg.cfUserName || "",
           cfUserToken: switched.token || "",
@@ -1558,18 +1559,19 @@ const Notifications = {
         UI.updateAuthButtonsVisibility()
         UI.updateBoardNameLabel()
         await Notifications.refresh()
-        const found = Store.findCard(item.cardId)
-        card = found.card
-        col = found.col
       } catch (err) {
         console.warn("Failed to switch board for notification:", err)
+        return false
       }
     }
+    if (!cardId) return true
+    const { card, col } = Store.findCard(cardId)
     if (!card || !col) {
       UI.showAlert(I18n.t("notification_card_missing"))
-      return
+      return false
     }
     UI.showCardDetail(card, col.id)
+    return true
   },
 }
 
@@ -4226,6 +4228,7 @@ const App = {
   init: async function () {
     this.setupEventListeners()
     I18n.init()
+    this.prepareDeepLinkBoard()
     UI.loadTheme()
     
     // Set current version from CONFIG
@@ -4255,7 +4258,39 @@ const App = {
     UI.renderBoard()
     UI.updateMenuButtonAvatar()
     await Notifications.refresh()
+    await this.openDeepLink()
     Store.startRealtime()
+  },
+
+  prepareDeepLinkBoard() {
+    if (Store.hasCloudflareSession()) return
+    const params = new URLSearchParams(window.location.search)
+    const boardId = (params.get("board") || "").replace(/[^a-z0-9_-]/gi, "")
+    if (!boardId) return
+    const cfg = DbSettings.get()
+    const cachedSession = DbSettings.getBoardSession(boardId, cfg)
+    DbSettings.set({
+      ...cfg,
+      cfBoardId: boardId,
+      cfUserEmail: cachedSession?.cfUserEmail || "",
+      cfUserName: cachedSession?.cfUserName || "",
+      cfUserToken: cachedSession?.cfUserToken || "",
+      isAdmin: !!cachedSession?.isAdmin,
+    })
+    Store.isAdmin = !!cachedSession?.isAdmin
+  },
+
+  async openDeepLink() {
+    if (!Store.hasCloudflareSession()) return
+    const params = new URLSearchParams(window.location.search)
+    const boardId = (params.get("board") || "").replace(/[^a-z0-9_-]/gi, "")
+    const cardId = params.get("card") || ""
+    if (!boardId && !cardId) return
+    await Notifications.openTarget(boardId, cardId)
+    params.delete("board")
+    params.delete("card")
+    const nextSearch = params.toString()
+    window.history.replaceState({}, "", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`)
   },
 
 
@@ -4300,6 +4335,7 @@ const App = {
       UI.updateAuthButtonsVisibility()
       await Notifications.refresh()
       form.closest("dialog")?.close()
+      await this.openDeepLink()
     } catch (err) {
       UI.showAlert(I18n.serverError(err.message) || I18n.t("incorrect_pin"))
     }

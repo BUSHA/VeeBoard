@@ -111,6 +111,7 @@ curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" \
 
 Telegram delivery is limited to notifications caused by another user's action, such as assignments, comments, card movement, approvals, and board-access changes. Queued due and overdue bell notifications are not sent to Telegram.
 Messages use the language currently selected by each user in VeeBoard.
+Each Telegram message includes an `Open card` or `Open board` button that switches to the relevant board and opens the referenced card after login.
 
 ## 8. Migrating From Pages + Worker
 

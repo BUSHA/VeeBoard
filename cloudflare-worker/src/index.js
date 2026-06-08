@@ -772,11 +772,24 @@ async function sendTelegramNotification(env, notification = {}) {
     const boardLine = board?.name || notification.boardId
       ? `\n\n${language === "uk" ? "Дошка" : "Board"}: ${board?.name || notification.boardId}`
       : "";
+    const appUrl = notification.appUrl ? new URL(notification.appUrl) : null;
+    if (appUrl) {
+      appUrl.searchParams.set("board", notification.boardId || "default");
+      if (notification.cardId) appUrl.searchParams.set("card", notification.cardId);
+    }
     await telegramApi(env, "sendMessage", {
       chat_id: settings.chatId,
       text: `<b>${escapeTelegramHtml(title)}</b>\n${escapeTelegramHtml(body)}${escapeTelegramHtml(boardLine)}`,
       parse_mode: "HTML",
       disable_web_page_preview: true,
+      ...(appUrl ? {
+        reply_markup: {
+          inline_keyboard: [[{
+            text: language === "uk" ? (notification.cardId ? "Відкрити картку" : "Відкрити дошку") : (notification.cardId ? "Open card" : "Open board"),
+            url: appUrl.toString(),
+          }]],
+        },
+      } : {}),
     });
   } catch (error) {
     console.warn("Failed to send Telegram notification:", error.message);
@@ -1006,7 +1019,7 @@ async function generateDueNotificationsForUser(env, boardId, user) {
   }
 }
 
-async function generateBoardChangeNotifications(env, boardId, existingState, nextState, actor, approvedUsers = []) {
+async function generateBoardChangeNotifications(env, boardId, existingState, nextState, actor, approvedUsers = [], appUrl = "") {
   const actorEmail = normalizeEmail(actor?.email || "");
   const actorName = userLabel(actor);
   const approvedEmails = new Set((approvedUsers || []).filter((u) => u?.isApproved !== false).map((u) => normalizeEmail(u.email || "")).filter(Boolean));
@@ -1025,6 +1038,7 @@ async function generateBoardChangeNotifications(env, boardId, existingState, nex
       type,
       cardId: card.id || extra.cardId || "",
       commentId: extra.commentId || "",
+      appUrl,
       title: extra.title || "",
       body: extra.body || cardLabel(card),
       metadata: {
@@ -1579,6 +1593,7 @@ export default {
                 boardName: board?.name || targetBoardId,
                 boardId: targetBoardId,
               },
+              appUrl: url.origin,
             }, { dedupe: true });
           }
         } else {
@@ -1639,6 +1654,7 @@ export default {
               actorEmail: currentUserEmail,
               boardId,
             },
+            appUrl: url.origin,
           }, { dedupe: true });
         }
 
@@ -1792,7 +1808,7 @@ export default {
 
         await persistBoardState(env, boardId, body);
         try {
-          await generateBoardChangeNotifications(env, boardId, existingState, body, currentUser, currentUsers);
+          await generateBoardChangeNotifications(env, boardId, existingState, body, currentUser, currentUsers, url.origin);
         } catch (notificationError) {
           console.warn("Failed to generate notifications:", notificationError);
         }
