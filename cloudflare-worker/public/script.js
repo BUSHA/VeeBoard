@@ -232,6 +232,14 @@ const I18n = {
       // Re-render board to update dynamic text like "(Overdue)"
       if (typeof UI !== "undefined" && UI.renderBoard) UI.renderBoard()
       if (typeof Notifications !== "undefined" && Notifications.render) Notifications.render()
+      if (typeof CloudflareBackend !== "undefined" && typeof DbSettings !== "undefined") {
+        const config = DbSettings.get()
+        if (config.cfUserToken) {
+          CloudflareBackend.updateTelegramSettings(config, { language: lang }).catch((err) => {
+            console.warn("Failed to sync Telegram language:", err)
+          })
+        }
+      }
     }
   },
 
@@ -730,6 +738,40 @@ const CloudflareBackend = {
     })
     const data = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(data?.error || "Failed to update notifications")
+    return data
+  },
+  async getTelegramSettings(config) {
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
+    if (!cfWorkerUrl || !config.cfUserToken) return { available: false, enabled: false, linked: false }
+    const response = await fetch(`${cfWorkerUrl}/telegram/settings`, {
+      headers: this.buildHeaders(config),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "Failed to load Telegram settings")
+    return data
+  },
+  async updateTelegramSettings(config, settings = {}) {
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
+    if (!cfWorkerUrl || !config.cfUserToken) throw new Error("Cloudflare not configured")
+    const response = await fetch(`${cfWorkerUrl}/telegram/settings`, {
+      method: "POST",
+      headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
+      body: JSON.stringify(settings),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "Failed to update Telegram settings")
+    return data
+  },
+  async createTelegramLink(config) {
+    const cfWorkerUrl = this.resolveWorkerUrl(config)
+    if (!cfWorkerUrl || !config.cfUserToken) throw new Error("Cloudflare not configured")
+    const response = await fetch(`${cfWorkerUrl}/telegram/link`, {
+      method: "POST",
+      headers: this.buildHeaders(config, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ language: I18n.current }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || "Failed to create Telegram link")
     return data
   }
 }
@@ -4889,9 +4931,47 @@ const App = {
     const profileAvatarInput = Utils.qs("#profileAvatarInput", profileDialog)
     const changeAvatarBtn = Utils.qs("#changeAvatarBtn", profileDialog)
     const removeAvatarBtn = Utils.qs("#removeAvatarBtn", profileDialog)
+    const telegramEnabledInput = Utils.qs("#telegramNotificationsEnabled", profileDialog)
+    const connectTelegramBtn = Utils.qs("#connectTelegramBtn", profileDialog)
+    const telegramStatus = Utils.qs("#telegramStatus", profileDialog)
+
+    const renderTelegramSettings = (settings = {}) => {
+      if (!telegramEnabledInput || !connectTelegramBtn || !telegramStatus) return
+      telegramEnabledInput.checked = !!settings.enabled
+      telegramEnabledInput.disabled = !settings.available
+      connectTelegramBtn.disabled = !settings.available
+      connectTelegramBtn.style.display = settings.available ? "" : "none"
+      connectTelegramBtn.textContent = I18n.t(settings.linked ? "telegram_reconnect" : "telegram_connect")
+      if (!settings.available) {
+        telegramStatus.textContent = I18n.t("telegram_status_unavailable")
+      } else if (settings.linked) {
+        telegramStatus.textContent = I18n.t("telegram_status_linked", {
+          username: settings.telegramUsername ? `@${settings.telegramUsername}` : I18n.t("telegram_account"),
+        })
+      } else {
+        telegramStatus.textContent = I18n.t("telegram_status_not_linked")
+      }
+    }
+
+    const refreshTelegramSettings = async () => {
+      if (!telegramStatus) return
+      telegramStatus.textContent = I18n.t("telegram_status_loading")
+      try {
+        const config = DbSettings.get()
+        const settings = await CloudflareBackend.getTelegramSettings(config)
+        if (settings.language !== I18n.current) {
+          renderTelegramSettings(await CloudflareBackend.updateTelegramSettings(config, { language: I18n.current }))
+        } else {
+          renderTelegramSettings(settings)
+        }
+      } catch (err) {
+        telegramStatus.textContent = I18n.t("telegram_status_error")
+        console.warn("Failed to load Telegram settings:", err)
+      }
+    }
 
     if (profileBtn && profileDialog && profileForm) {
-      profileBtn.addEventListener("click", () => {
+      profileBtn.addEventListener("click", async () => {
         const currentUser = Store.getCurrentUserProfile()
         if (!currentUser) return
         UI.pendingProfileAvatarFile = null
@@ -4903,6 +4983,7 @@ const App = {
         UI.updateProfileAvatarPreview(currentUser.avatarUrl || "")
         UI.showDialog(profileDialog)
         profileBtn.closest(".dropdown-content")?.classList.remove("show")
+        await refreshTelegramSettings()
       })
 
       profileForm.addEventListener("submit", async (e) => {
@@ -4955,6 +5036,39 @@ const App = {
           profileDialog.close()
         } catch (err) {
           UI.showAlert(I18n.serverError(err.message) || I18n.t("profile_save_failed"))
+        }
+      })
+    }
+
+    if (telegramEnabledInput) {
+      telegramEnabledInput.addEventListener("change", async () => {
+        telegramEnabledInput.disabled = true
+        try {
+          renderTelegramSettings(await CloudflareBackend.updateTelegramSettings(DbSettings.get(), {
+            enabled: telegramEnabledInput.checked,
+            language: I18n.current,
+          }))
+        } catch (err) {
+          telegramEnabledInput.checked = !telegramEnabledInput.checked
+          UI.showAlert(I18n.serverError(err.message) || I18n.t("telegram_settings_failed"))
+          await refreshTelegramSettings()
+        }
+      })
+    }
+
+    if (connectTelegramBtn) {
+      connectTelegramBtn.addEventListener("click", async () => {
+        connectTelegramBtn.disabled = true
+        try {
+          const result = await CloudflareBackend.createTelegramLink(DbSettings.get())
+          if (result.linkUrl) {
+            window.location.href = result.linkUrl
+          }
+        } catch (err) {
+          UI.showAlert(I18n.serverError(err.message) || I18n.t("telegram_link_failed"))
+          await refreshTelegramSettings()
+        } finally {
+          connectTelegramBtn.disabled = false
         }
       })
     }
