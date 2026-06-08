@@ -494,6 +494,18 @@
       <label data-i18n="new_password">New password
         <input id="profilePassword" type="password" data-i18n-placeholder="new_password_placeholder" placeholder="Leave blank to keep current password" />
       </label>
+      <section class="profile-telegram-section">
+        <div>
+          <strong data-i18n="telegram_notifications">Telegram notifications</strong>
+          <p id="telegramStatus" class="profile-telegram-status" data-i18n="telegram_status_loading">Checking Telegram connection...</p>
+        </div>
+        <label class="toggle-switch profile-telegram-toggle">
+          <input id="telegramNotificationsEnabled" type="checkbox" />
+          <span class="slider"></span>
+          <span class="label-text" data-i18n="telegram_notifications_enable">Send my notifications to Telegram</span>
+        </label>
+        <button id="connectTelegramBtn" type="button" class="btn secondary" data-i18n="telegram_connect">Connect Telegram</button>
+      </section>
       <div class="editor-actions">
         <div class="actions-main">
           <button type="button" value="cancel" class="btn secondary" formnovalidate data-i18n="cancel">Cancel</button>

@@ -22,6 +22,9 @@
 			"/user-board-access",
 			"/notifications",
 			"/notifications/read",
+			"/telegram/settings",
+			"/telegram/link",
+			"/telegram/webhook",
 			"/storage"
 		]
 	},

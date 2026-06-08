@@ -20,6 +20,7 @@ The static frontend is deployed as Cloudflare Workers assets alongside a Worker 
 - Admin panel for user approval, role management, and password resets.
 - Password quality feedback when setting or changing passwords.
 - English and Ukrainian UI.
+- Optional personal Telegram delivery through one shared bot.
 - Responsive layout for desktop and mobile.
 
 ## Authentication And Permissions

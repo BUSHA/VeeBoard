@@ -1,5 +1,6 @@
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 const LEGACY_PBKDF2_ITERATIONS = 20000;
+const TELEGRAM_LINK_TTL_MS = 1000 * 60 * 15;
 
 function normalizeEmail(value = "") {
   return String(value || "").trim().toLowerCase();
@@ -125,6 +126,68 @@ function userLabel(user = {}) {
 
 function cardLabel(card = {}) {
   return truncateText(card.title || "Untitled card", 90);
+}
+
+function escapeTelegramHtml(value = "") {
+  return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function normalizeLanguage(value = "") {
+  return value === "uk" ? "uk" : "en";
+}
+
+function telegramNotificationBody(notification = {}, boardName = "", language = "en") {
+  const metadata = notification.metadata && typeof notification.metadata === "object" ? notification.metadata : {};
+  const lang = normalizeLanguage(language);
+  const actor = metadata.actorName || metadata.actorEmail || notification.actorEmail || (lang === "uk" ? "Хтось" : "Someone");
+  const card = metadata.cardTitle || notification.body || (lang === "uk" ? "Картка" : "Card");
+  const comment = metadata.commentText || notification.body || "";
+  const from = metadata.fromColumnTitle || "";
+  const to = metadata.toColumnTitle || metadata.columnTitle || "";
+  const board = boardName || metadata.boardName || metadata.boardId || notification.boardId || "";
+  const bodies = lang === "uk" ? {
+    card_assigned: `${actor} призначив(ла) вам «${card}».`,
+    card_unassigned: `${actor} прибрав(ла) вас із «${card}».`,
+    comment_on_owned_or_assigned_card: `${actor} прокоментував(ла) «${card}»: ${comment}`,
+    reply_to_comment: `${actor} відповів(ла) у «${card}»: ${comment}`,
+    card_moved: `${actor} перемістив(ла) «${card}» з ${from} до ${to}.`,
+    card_completed: `${actor} виконав(ла) «${card}».`,
+    user_approved: "Тепер ви маєте доступ до цієї дошки.",
+    board_access_granted: `Тепер ви маєте доступ до «${board}».`,
+  } : {
+    card_assigned: `${actor} assigned "${card}" to you.`,
+    card_unassigned: `${actor} removed you from "${card}".`,
+    comment_on_owned_or_assigned_card: `${actor} commented on "${card}": ${comment}`,
+    reply_to_comment: `${actor} replied on "${card}": ${comment}`,
+    card_moved: `${actor} moved "${card}" from ${from} to ${to}.`,
+    card_completed: `${actor} completed "${card}".`,
+    user_approved: "You can now access this board.",
+    board_access_granted: `You can now access "${board}".`,
+  };
+  return truncateText(bodies[notification.type] || notification.body || "", 1000);
+}
+
+function telegramNotificationTitle(notification = {}, language = "en") {
+  const titles = normalizeLanguage(language) === "uk" ? {
+    card_assigned: "Вас призначено",
+    card_unassigned: "Вас знято з картки",
+    comment_on_owned_or_assigned_card: "Новий коментар",
+    reply_to_comment: "Нова відповідь",
+    card_moved: "Призначену картку переміщено",
+    card_completed: "Картку виконано",
+    user_approved: "Акаунт підтверджено",
+    board_access_granted: "Надано доступ до дошки",
+  } : {
+    card_assigned: "Assigned to you",
+    card_unassigned: "Unassigned from you",
+    comment_on_owned_or_assigned_card: "New comment",
+    reply_to_comment: "New reply",
+    card_moved: "Assigned card moved",
+    card_completed: "Card completed",
+    user_approved: "Account approved",
+    board_access_granted: "Board access granted",
+  };
+  return titles[notification.type] || notification.title || (normalizeLanguage(language) === "uk" ? "Сповіщення VeeBoard" : "VeeBoard notification");
 }
 
 function commentsChangeAllowed(oldComments = [], newComments = [], currentUser = {}, options = {}) {
@@ -366,6 +429,9 @@ async function ensureSchema(env) {
     await env.DB.prepare(
       "CREATE TABLE IF NOT EXISTS board_notifications (id TEXT PRIMARY KEY, board_id TEXT NOT NULL, recipient_email TEXT NOT NULL, actor_email TEXT DEFAULT '', type TEXT NOT NULL, card_id TEXT DEFAULT '', comment_id TEXT DEFAULT '', title TEXT DEFAULT '', body TEXT DEFAULT '', metadata_json TEXT DEFAULT '{}', created_at TEXT NOT NULL, read_at TEXT DEFAULT '')"
     ).run();
+    await env.DB.prepare(
+      "CREATE TABLE IF NOT EXISTS user_telegram_settings (email TEXT PRIMARY KEY, chat_id TEXT DEFAULT '', telegram_username TEXT DEFAULT '', enabled INTEGER DEFAULT 0, language TEXT DEFAULT 'en', link_token TEXT DEFAULT '', link_expires_at TEXT DEFAULT '', linked_at TEXT DEFAULT '', updated_at TEXT)"
+    ).run();
     await ensureColumn(env, "boards", "updated_at", "TEXT");
     await ensureColumn(env, "boards", "name", "TEXT DEFAULT ''");
     await ensureColumn(env, "boards", "created_by", "TEXT DEFAULT ''");
@@ -400,12 +466,23 @@ async function ensureSchema(env) {
     await ensureColumn(env, "board_notifications", "metadata_json", "TEXT DEFAULT '{}'");
     await ensureColumn(env, "board_notifications", "created_at", "TEXT");
     await ensureColumn(env, "board_notifications", "read_at", "TEXT DEFAULT ''");
+    await ensureColumn(env, "user_telegram_settings", "email", "TEXT DEFAULT ''");
+    await ensureColumn(env, "user_telegram_settings", "chat_id", "TEXT DEFAULT ''");
+    await ensureColumn(env, "user_telegram_settings", "telegram_username", "TEXT DEFAULT ''");
+    await ensureColumn(env, "user_telegram_settings", "enabled", "INTEGER DEFAULT 0");
+    await ensureColumn(env, "user_telegram_settings", "language", "TEXT DEFAULT 'en'");
+    await ensureColumn(env, "user_telegram_settings", "link_token", "TEXT DEFAULT ''");
+    await ensureColumn(env, "user_telegram_settings", "link_expires_at", "TEXT DEFAULT ''");
+    await ensureColumn(env, "user_telegram_settings", "linked_at", "TEXT DEFAULT ''");
+    await ensureColumn(env, "user_telegram_settings", "updated_at", "TEXT");
     await migrateBoardSessionsTable(env);
     await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_board_users_board_id ON board_users(board_id)").run();
     await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_board_user_credentials_board_id ON board_user_credentials(board_id)").run();
     await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_board_sessions_board_id ON board_sessions(board_id)").run();
     await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_board_notifications_recipient ON board_notifications(board_id, recipient_email, created_at)").run();
     await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_board_notifications_unread ON board_notifications(board_id, recipient_email, read_at)").run();
+    await env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_telegram_chat_id ON user_telegram_settings(chat_id) WHERE chat_id <> ''").run();
+    await env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_telegram_link_token ON user_telegram_settings(link_token) WHERE link_token <> ''").run();
   })();
   return schemaReady;
 }
@@ -605,6 +682,175 @@ async function persistBoardState(env, boardId, state) {
   ).bind(boardId, data, new Date().toISOString()).run();
 }
 
+function telegramAvailable(env) {
+  return !!String(env.TELEGRAM_BOT_TOKEN || "").trim()
+    && !!String(env.TELEGRAM_BOT_USERNAME || "").trim()
+    && !!String(env.TELEGRAM_WEBHOOK_SECRET || "").trim();
+}
+
+async function telegramApi(env, method, payload) {
+  const token = String(env.TELEGRAM_BOT_TOKEN || "").trim();
+  if (!token) throw new Error("Telegram bot token is not configured");
+  const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    const error = new Error(data.description || `Telegram ${method} failed`);
+    error.status = response.status;
+    throw error;
+  }
+  return data.result;
+}
+
+async function getTelegramSettings(env, email) {
+  return env.DB.prepare(
+    `SELECT email, chat_id AS chatId, telegram_username AS telegramUsername, enabled, language,
+            link_token AS linkToken, link_expires_at AS linkExpiresAt, linked_at AS linkedAt
+     FROM user_telegram_settings WHERE email = ?`
+  ).bind(normalizeEmail(email)).first();
+}
+
+function telegramSettingsPayload(env, row = {}) {
+  row = row || {};
+  const botUsername = String(env.TELEGRAM_BOT_USERNAME || "").trim().replace(/^@/, "");
+  return {
+    available: telegramAvailable(env),
+    enabled: !!row.enabled,
+    linked: !!row.chatId,
+    telegramUsername: row.telegramUsername || "",
+    linkedAt: row.linkedAt || "",
+    language: normalizeLanguage(row.language),
+    botUsername,
+  };
+}
+
+async function updateTelegramSettings(env, email, settings = {}) {
+  const normalizedEmail = normalizeEmail(email);
+  const now = new Date().toISOString();
+  const existing = await getTelegramSettings(env, normalizedEmail);
+  const enabled = settings.enabled === undefined ? !!existing?.enabled : !!settings.enabled;
+  const language = settings.language === undefined ? normalizeLanguage(existing?.language) : normalizeLanguage(settings.language);
+  await env.DB.prepare(
+    `INSERT INTO user_telegram_settings (email, enabled, language, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(email) DO UPDATE SET enabled = excluded.enabled, language = excluded.language, updated_at = excluded.updated_at`
+  ).bind(normalizedEmail, enabled ? 1 : 0, language, now).run();
+  return getTelegramSettings(env, normalizedEmail);
+}
+
+async function createTelegramLink(env, email, language = "en") {
+  if (!telegramAvailable(env)) throw new Error("Telegram bot is not configured");
+  const normalizedEmail = normalizeEmail(email);
+  const token = crypto.randomUUID().replace(/-/g, "");
+  const now = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + TELEGRAM_LINK_TTL_MS).toISOString();
+  await env.DB.prepare(
+    `INSERT INTO user_telegram_settings (email, language, link_token, link_expires_at, updated_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(email) DO UPDATE SET language = excluded.language, link_token = excluded.link_token, link_expires_at = excluded.link_expires_at, updated_at = excluded.updated_at`
+  ).bind(normalizedEmail, normalizeLanguage(language), token, expiresAt, now).run();
+  const botUsername = String(env.TELEGRAM_BOT_USERNAME || "").trim().replace(/^@/, "");
+  return {
+    ...(telegramSettingsPayload(env, await getTelegramSettings(env, normalizedEmail))),
+    linkUrl: `https://t.me/${encodeURIComponent(botUsername)}?start=${encodeURIComponent(token)}`,
+    linkExpiresAt: expiresAt,
+  };
+}
+
+async function sendTelegramNotification(env, notification = {}) {
+  if (!env.TELEGRAM_BOT_TOKEN) return;
+  try {
+    const settings = await getTelegramSettings(env, notification.recipientEmail);
+    if (!settings?.enabled || !settings.chatId) return;
+    const board = await readBoardRow(env, notification.boardId);
+    const language = normalizeLanguage(settings.language);
+    const title = telegramNotificationTitle(notification, language);
+    const body = telegramNotificationBody(notification, board?.name || notification.boardId || "", language);
+    const boardLine = board?.name || notification.boardId
+      ? `\n\n${language === "uk" ? "Дошка" : "Board"}: ${board?.name || notification.boardId}`
+      : "";
+    const appUrl = notification.appUrl ? new URL(notification.appUrl) : null;
+    if (appUrl) {
+      appUrl.searchParams.set("board", notification.boardId || "default");
+      if (notification.cardId) appUrl.searchParams.set("card", notification.cardId);
+    }
+    await telegramApi(env, "sendMessage", {
+      chat_id: settings.chatId,
+      text: `<b>${escapeTelegramHtml(title)}</b>\n${escapeTelegramHtml(body)}${escapeTelegramHtml(boardLine)}`,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+      ...(appUrl ? {
+        reply_markup: {
+          inline_keyboard: [[{
+            text: language === "uk" ? (notification.cardId ? "Відкрити картку" : "Відкрити дошку") : (notification.cardId ? "Open card" : "Open board"),
+            url: appUrl.toString(),
+          }]],
+        },
+      } : {}),
+    });
+  } catch (error) {
+    console.warn("Failed to send Telegram notification:", error.message);
+  }
+}
+
+async function handleTelegramWebhook(env, request) {
+  const expectedSecret = String(env.TELEGRAM_WEBHOOK_SECRET || "").trim();
+  const suppliedSecret = request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "";
+  if (!expectedSecret || suppliedSecret !== expectedSecret) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+  const update = await parseJson(request);
+  const message = update.message;
+  const chatId = message?.chat?.id;
+  const text = String(message?.text || "").trim();
+  if (!chatId || !text) return new Response("OK");
+
+  const [command, parameter = ""] = text.split(/\s+/, 2);
+  if (command.split("@")[0] === "/start" && parameter) {
+    const row = await env.DB.prepare(
+      `SELECT email, language FROM user_telegram_settings
+       WHERE link_token = ? AND link_expires_at > ?`
+    ).bind(parameter, new Date().toISOString()).first();
+    if (!row?.email) {
+      await telegramApi(env, "sendMessage", { chat_id: chatId, text: "This VeeBoard link has expired. Create a new link in your profile settings." });
+      return new Response("OK");
+    }
+    const username = String(message?.from?.username || "").trim();
+    const now = new Date().toISOString();
+    await env.DB.prepare("UPDATE user_telegram_settings SET chat_id = '', telegram_username = '', linked_at = '' WHERE chat_id = ? AND email <> ?")
+      .bind(String(chatId), row.email).run();
+    await env.DB.prepare(
+      `UPDATE user_telegram_settings
+       SET chat_id = ?, telegram_username = ?, link_token = '', link_expires_at = '', linked_at = ?, updated_at = ?
+       WHERE email = ?`
+    ).bind(String(chatId), username, now, now, row.email).run();
+    await telegramApi(env, "sendMessage", {
+      chat_id: chatId,
+      text: normalizeLanguage(row.language) === "uk"
+        ? "Сповіщення VeeBoard підключено. Доставка залежить від перемикача сповіщень у налаштуваннях профілю."
+        : "VeeBoard notifications are linked. Delivery follows the notification toggle in your profile settings.",
+    });
+    return new Response("OK");
+  }
+
+  if (command.split("@")[0] === "/stop") {
+    const settings = await env.DB.prepare("SELECT language FROM user_telegram_settings WHERE chat_id = ?")
+      .bind(String(chatId)).first();
+    await env.DB.prepare("UPDATE user_telegram_settings SET enabled = 0, updated_at = ? WHERE chat_id = ?")
+      .bind(new Date().toISOString(), String(chatId)).run();
+    await telegramApi(env, "sendMessage", {
+      chat_id: chatId,
+      text: normalizeLanguage(settings?.language) === "uk"
+        ? "Сповіщення VeeBoard у Telegram вимкнено. Ви можете знову ввімкнути їх у налаштуваннях профілю."
+        : "VeeBoard Telegram notifications are disabled. You can enable them again in your profile settings.",
+    });
+  }
+  return new Response("OK");
+}
+
 async function insertNotification(env, notification = {}, { dedupe = false } = {}) {
   const recipientEmail = normalizeEmail(notification.recipientEmail || "");
   const type = String(notification.type || "").trim();
@@ -645,6 +891,18 @@ async function insertNotification(env, notification = {}, { dedupe = false } = {
     metadataJson,
     notification.createdAt || new Date().toISOString()
   ).run();
+  if (actorEmail) {
+    await sendTelegramNotification(env, {
+      ...notification,
+      boardId,
+      recipientEmail,
+      actorEmail,
+      type,
+      cardId,
+      commentId,
+      metadata,
+    });
+  }
   return true;
 }
 
@@ -761,7 +1019,7 @@ async function generateDueNotificationsForUser(env, boardId, user) {
   }
 }
 
-async function generateBoardChangeNotifications(env, boardId, existingState, nextState, actor, approvedUsers = []) {
+async function generateBoardChangeNotifications(env, boardId, existingState, nextState, actor, approvedUsers = [], appUrl = "") {
   const actorEmail = normalizeEmail(actor?.email || "");
   const actorName = userLabel(actor);
   const approvedEmails = new Set((approvedUsers || []).filter((u) => u?.isApproved !== false).map((u) => normalizeEmail(u.email || "")).filter(Boolean));
@@ -780,6 +1038,7 @@ async function generateBoardChangeNotifications(env, boardId, existingState, nex
       type,
       cardId: card.id || extra.cardId || "",
       commentId: extra.commentId || "",
+      appUrl,
       title: extra.title || "",
       body: extra.body || cardLabel(card),
       metadata: {
@@ -903,6 +1162,10 @@ export default {
 
     try {
       await ensureSchema(env);
+
+      if (path === "/telegram/webhook" && method === "POST") {
+        return handleTelegramWebhook(env, request);
+      }
 
       if (path === "/boards" && method === "GET") {
         const currentUserEmail = await getSessionUser(env, boardId, getUserToken(request, url));
@@ -1139,6 +1402,27 @@ export default {
         return jsonResponse({ success: true, ...(await listNotifications(env, currentUserEmail, body.limit || 50)) }, headers);
       }
 
+      if (path === "/telegram/settings" && method === "GET") {
+        const currentUserEmail = await getSessionUser(env, boardId, getUserToken(request, url));
+        if (!currentUserEmail) return jsonResponse({ error: "Unauthorized" }, headers, 401);
+        return jsonResponse(telegramSettingsPayload(env, await getTelegramSettings(env, currentUserEmail)), headers);
+      }
+
+      if (path === "/telegram/settings" && method === "POST") {
+        const currentUserEmail = await getSessionUser(env, boardId, getUserToken(request, url));
+        if (!currentUserEmail) return jsonResponse({ error: "Unauthorized" }, headers, 401);
+        const body = await parseJson(request);
+        const row = await updateTelegramSettings(env, currentUserEmail, body);
+        return jsonResponse(telegramSettingsPayload(env, row), headers);
+      }
+
+      if (path === "/telegram/link" && method === "POST") {
+        const currentUserEmail = await getSessionUser(env, boardId, getUserToken(request, url));
+        if (!currentUserEmail) return jsonResponse({ error: "Unauthorized" }, headers, 401);
+        const body = await parseJson(request);
+        return jsonResponse(await createTelegramLink(env, currentUserEmail, body.language), headers);
+      }
+
       if (path === "/auth" && method === "POST") {
         const body = await parseJson(request);
         const email = normalizeEmail(body.email || "");
@@ -1309,6 +1593,7 @@ export default {
                 boardName: board?.name || targetBoardId,
                 boardId: targetBoardId,
               },
+              appUrl: url.origin,
             }, { dedupe: true });
           }
         } else {
@@ -1369,6 +1654,7 @@ export default {
               actorEmail: currentUserEmail,
               boardId,
             },
+            appUrl: url.origin,
           }, { dedupe: true });
         }
 
@@ -1522,7 +1808,7 @@ export default {
 
         await persistBoardState(env, boardId, body);
         try {
-          await generateBoardChangeNotifications(env, boardId, existingState, body, currentUser, currentUsers);
+          await generateBoardChangeNotifications(env, boardId, existingState, body, currentUser, currentUsers, url.origin);
         } catch (notificationError) {
           console.warn("Failed to generate notifications:", notificationError);
         }

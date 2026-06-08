@@ -51,8 +51,22 @@ CREATE TABLE IF NOT EXISTS board_notifications (
   read_at TEXT DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS user_telegram_settings (
+  email TEXT PRIMARY KEY,
+  chat_id TEXT DEFAULT '',
+  telegram_username TEXT DEFAULT '',
+  enabled INTEGER DEFAULT 0,
+  language TEXT DEFAULT 'en',
+  link_token TEXT DEFAULT '',
+  link_expires_at TEXT DEFAULT '',
+  linked_at TEXT DEFAULT '',
+  updated_at TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_board_users_board_id ON board_users(board_id);
 CREATE INDEX IF NOT EXISTS idx_board_user_credentials_board_id ON board_user_credentials(board_id);
 CREATE INDEX IF NOT EXISTS idx_board_sessions_board_id ON board_sessions(board_id);
 CREATE INDEX IF NOT EXISTS idx_board_notifications_recipient ON board_notifications(board_id, recipient_email, created_at);
 CREATE INDEX IF NOT EXISTS idx_board_notifications_unread ON board_notifications(board_id, recipient_email, read_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_telegram_chat_id ON user_telegram_settings(chat_id) WHERE chat_id <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_telegram_link_token ON user_telegram_settings(link_token) WHERE link_token <> '';

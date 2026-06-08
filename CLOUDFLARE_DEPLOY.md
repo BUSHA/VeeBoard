@@ -5,6 +5,7 @@ The worker expects:
 
 - a D1 database bound as `DB`
 - an R2 bucket bound as `BUCKET`
+- optional Telegram bot secrets and configuration for personal Telegram notifications
 
 ## 1. Prerequisites
 
@@ -77,7 +78,42 @@ npx wrangler deploy
 
 After deploy, open the Worker URL. The frontend uses that same origin for `/load`, `/save`, uploads, auth, and user management.
 
-## 7. Migrating From Pages + Worker
+## 7. Optional Telegram Notifications
+
+VeeBoard uses one Telegram bot for every user. Each user privately links their VeeBoard email to their own Telegram chat from `Profile`, then chooses whether delivery is enabled.
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) and note its token and username.
+2. Add the non-secret bot username to `wrangler.json`:
+
+```json
+"vars": {
+  "TELEGRAM_BOT_USERNAME": "your_bot_username"
+}
+```
+
+3. Store the bot token and a random webhook secret as Worker secrets:
+
+```bash
+cd cloudflare-worker
+npx wrangler secret put TELEGRAM_BOT_TOKEN
+npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
+```
+
+4. Deploy, then register the Worker webhook with Telegram. Replace the placeholders with the deployed Worker URL, bot token, and the same webhook secret entered above:
+
+```bash
+curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://<WORKER_URL>/telegram/webhook","secret_token":"<WEBHOOK_SECRET>","allowed_updates":["message"]}'
+```
+
+5. Open VeeBoard, open `Profile`, enable Telegram notifications, and select `Connect Telegram`.
+
+Telegram delivery is limited to notifications caused by another user's action, such as assignments, comments, card movement, approvals, and board-access changes. Queued due and overdue bell notifications are not sent to Telegram.
+Messages use the language currently selected by each user in VeeBoard.
+Each Telegram message includes an `Open card` or `Open board` button that switches to the relevant board and opens the referenced card after login.
+
+## 8. Migrating From Pages + Worker
 
 To keep your existing board data, reuse the same D1 database and R2 bucket bindings. Do not run `npx wrangler d1 create` for the migration unless you intentionally want an empty board.
 
@@ -90,7 +126,7 @@ To keep your existing board data, reuse the same D1 database and R2 bucket bindi
 
 The migration does not copy or rewrite board cards; it only changes where the static frontend is served from.
 
-## 8. Optional App Settings
+## 9. Optional App Settings
 
 1. Open VeeBoard in the browser.
 2. Open `Settings`.
@@ -98,7 +134,7 @@ The migration does not copy or rewrite board cards; it only changes where the st
 4. Optionally enter a board ID.
 5. Save.
 
-## 9. Create The First User
+## 10. Create The First User
 
 - If the board has no users yet, the first signup becomes the approved admin.
 - After that, new signups require admin approval before they can log in.
