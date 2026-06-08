@@ -1,5 +1,6 @@
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 const LEGACY_PBKDF2_ITERATIONS = 20000;
+const RESEND_MIN_INTERVAL_MS = 225;
 
 function normalizeEmail(value = "") {
   return String(value || "").trim().toLowerCase();
@@ -117,6 +118,15 @@ function truncateText(value = "", max = 120) {
   const text = String(value || "").trim();
   if (text.length <= max) return text;
   return `${text.slice(0, max - 1).trim()}…`;
+}
+
+function escapeHtml(value = "") {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function userLabel(user = {}) {
@@ -605,7 +615,90 @@ async function persistBoardState(env, boardId, state) {
   ).bind(boardId, data, new Date().toISOString()).run();
 }
 
-async function insertNotification(env, notification = {}, { dedupe = false } = {}) {
+function buildAppUrl(appUrl = "") {
+  const normalized = String(appUrl || "").trim();
+  return normalized ? normalized.replace(/\/+$/, "") : "";
+}
+
+async function sendNotificationEmail(env, notification = {}) {
+  if (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL) return;
+
+  const recipientEmail = normalizeEmail(notification.recipientEmail || "");
+  if (!recipientEmail) return;
+
+  const board = await readBoardRow(env, notification.boardId || "default");
+  const metadata = notification.metadata && typeof notification.metadata === "object" ? notification.metadata : {};
+  const boardName = board?.name || metadata.boardName || notification.boardId || "VeeBoard";
+  const title = notification.title || "New notification";
+  const body = notification.body || "";
+  const actorName = metadata.actorName || notification.actorEmail || "";
+  const appUrl = buildAppUrl(env.APP_URL);
+  const subject = `[VeeBoard] ${title}`;
+  const details = [
+    `Board: ${boardName}`,
+    metadata.cardTitle ? `Card: ${metadata.cardTitle}` : "",
+    actorName ? `By: ${actorName}` : "",
+    body ? `Details: ${body}` : "",
+  ].filter(Boolean);
+  const text = `${title}\n\n${details.join("\n")}${appUrl ? `\n\nOpen VeeBoard: ${appUrl}` : ""}`;
+  const actionHtml = appUrl
+    ? `<p style="margin:24px 0 0"><a href="${escapeHtml(appUrl)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:600">Open VeeBoard</a></p>`
+    : "";
+  const html = `<!doctype html>
+<html>
+  <body style="margin:0;padding:24px;background:#f4f5f7;color:#172b4d;font-family:Arial,sans-serif">
+    <div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #dfe1e6;border-radius:12px;padding:24px">
+      <p style="margin:0 0 8px;color:#6b778c;font-size:13px">VeeBoard · ${escapeHtml(boardName)}</p>
+      <h1 style="margin:0 0 16px;font-size:22px;line-height:1.3">${escapeHtml(title)}</h1>
+      ${metadata.cardTitle ? `<p style="margin:0 0 10px"><strong>Card:</strong> ${escapeHtml(metadata.cardTitle)}</p>` : ""}
+      ${actorName ? `<p style="margin:0 0 10px"><strong>By:</strong> ${escapeHtml(actorName)}</p>` : ""}
+      ${body ? `<p style="margin:0;color:#44546f;line-height:1.5">${escapeHtml(body)}</p>` : ""}
+      ${actionHtml}
+    </div>
+  </body>
+</html>`;
+  const payload = {
+    from: env.RESEND_FROM_EMAIL,
+    to: [recipientEmail],
+    subject,
+    text,
+    html,
+    tags: [
+      { name: "notification_type", value: String(notification.type || "notification").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 256) },
+      { name: "board_id", value: String(notification.boardId || "default").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 256) },
+    ],
+  };
+  if (env.RESEND_REPLY_TO) payload.reply_to = env.RESEND_REPLY_TO;
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": `veeboard-notification-${notification.id}`,
+      "User-Agent": "VeeBoard-Worker/1.0",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const message = await response.text().catch(() => "");
+    throw new Error(`Resend email failed (${response.status}): ${truncateText(message, 300)}`);
+  }
+}
+
+function createEmailDelivery(env, ctx) {
+  let pending = Promise.resolve();
+  return (notification) => {
+    if (!ctx || !env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL) return;
+    pending = pending
+      .then(() => sendNotificationEmail(env, notification))
+      .catch((error) => console.warn("Failed to send notification email:", error))
+      .then(() => new Promise((resolve) => setTimeout(resolve, RESEND_MIN_INTERVAL_MS)));
+    ctx.waitUntil(pending);
+  };
+}
+
+async function insertNotification(env, notification = {}, { dedupe = false, deliver = null } = {}) {
   const recipientEmail = normalizeEmail(notification.recipientEmail || "");
   const type = String(notification.type || "").trim();
   const boardId = normalizeBoardId(notification.boardId || "") || "default";
@@ -628,12 +721,14 @@ async function insertNotification(env, notification = {}, { dedupe = false } = {
     if (existing) return false;
   }
 
+  const id = crypto.randomUUID();
+  const createdAt = notification.createdAt || new Date().toISOString();
   await env.DB.prepare(
     `INSERT INTO board_notifications
        (id, board_id, recipient_email, actor_email, type, card_id, comment_id, title, body, metadata_json, created_at, read_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')`
   ).bind(
-    crypto.randomUUID(),
+    id,
     boardId,
     recipientEmail,
     actorEmail,
@@ -643,8 +738,22 @@ async function insertNotification(env, notification = {}, { dedupe = false } = {
     truncateText(notification.title || "", 180),
     truncateText(notification.body || "", 280),
     metadataJson,
-    notification.createdAt || new Date().toISOString()
+    createdAt
   ).run();
+  if (typeof deliver === "function") {
+    deliver({
+      ...notification,
+      id,
+      boardId,
+      recipientEmail,
+      actorEmail,
+      type,
+      cardId,
+      commentId,
+      metadata,
+      createdAt,
+    });
+  }
   return true;
 }
 
@@ -728,7 +837,7 @@ function recipientSet(...items) {
   return set;
 }
 
-async function generateDueNotificationsForUser(env, boardId, user) {
+async function generateDueNotificationsForUser(env, boardId, user, deliver = null) {
   const currentUser = normalizePublicUserRecord(user);
   if (!currentUser.email || !currentUser.isApproved) return;
   const state = await loadSanitizedBoard(env, boardId);
@@ -757,11 +866,11 @@ async function generateDueNotificationsForUser(env, boardId, user) {
         columnTitle: entry.colTitle || "",
         notificationKey: `${type}:${card.id || ""}:${due}`,
       },
-    }, { dedupe: true });
+    }, { dedupe: true, deliver });
   }
 }
 
-async function generateBoardChangeNotifications(env, boardId, existingState, nextState, actor, approvedUsers = []) {
+async function generateBoardChangeNotifications(env, boardId, existingState, nextState, actor, approvedUsers = [], deliver = null) {
   const actorEmail = normalizeEmail(actor?.email || "");
   const actorName = userLabel(actor);
   const approvedEmails = new Set((approvedUsers || []).filter((u) => u?.isApproved !== false).map((u) => normalizeEmail(u.email || "")).filter(Boolean));
@@ -793,7 +902,7 @@ async function generateBoardChangeNotifications(env, boardId, existingState, nex
         due: card.due || "",
         ...(extra.metadata || {}),
       },
-    }, extra.dedupe ? { dedupe: true } : {});
+    }, { dedupe: !!extra.dedupe, deliver });
   };
 
   for (const [cardId, newEntry] of newCards.entries()) {
@@ -884,7 +993,7 @@ function jsonResponse(body, headers, status = 200) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+/g, "/");
     const method = request.method;
@@ -900,6 +1009,7 @@ export default {
     }
 
     const boardId = getBoardId(request, url);
+    const deliverEmail = createEmailDelivery(env, ctx);
 
     try {
       await ensureSchema(env);
@@ -1120,7 +1230,7 @@ export default {
         }
         const userBoardIds = await listUserBoardIds(env, currentUserEmail);
         for (const bid of userBoardIds) {
-          await generateDueNotificationsForUser(env, bid, currentUser);
+          await generateDueNotificationsForUser(env, bid, currentUser, deliverEmail);
         }
         return jsonResponse(await listNotifications(env, currentUser.email, url.searchParams.get("limit") || 50), headers);
       }
@@ -1309,7 +1419,7 @@ export default {
                 boardName: board?.name || targetBoardId,
                 boardId: targetBoardId,
               },
-            }, { dedupe: true });
+            }, { dedupe: true, deliver: deliverEmail });
           }
         } else {
           if (await isUserAdmin(env, targetBoardId, email)) {
@@ -1369,7 +1479,7 @@ export default {
               actorEmail: currentUserEmail,
               boardId,
             },
-          }, { dedupe: true });
+          }, { dedupe: true, deliver: deliverEmail });
         }
 
         return jsonResponse({ success: true, ...(await adminUsersPayload(env, boardId, currentUserEmail)) }, headers);
@@ -1522,7 +1632,7 @@ export default {
 
         await persistBoardState(env, boardId, body);
         try {
-          await generateBoardChangeNotifications(env, boardId, existingState, body, currentUser, currentUsers);
+          await generateBoardChangeNotifications(env, boardId, existingState, body, currentUser, currentUsers, deliverEmail);
         } catch (notificationError) {
           console.warn("Failed to generate notifications:", notificationError);
         }

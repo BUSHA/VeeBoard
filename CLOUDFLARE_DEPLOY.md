@@ -5,6 +5,7 @@ The worker expects:
 
 - a D1 database bound as `DB`
 - an R2 bucket bound as `BUCKET`
+- optional Resend settings for email notifications
 
 ## 1. Prerequisites
 
@@ -77,7 +78,30 @@ npx wrangler deploy
 
 After deploy, open the Worker URL. The frontend uses that same origin for `/load`, `/save`, uploads, auth, and user management.
 
-## 7. Migrating From Pages + Worker
+## 7. Configure Email Notifications With Resend
+
+VeeBoard can email the same transactional notifications that appear in the in-app notification panel. Email delivery is optional and is enabled when both `RESEND_API_KEY` and `RESEND_FROM_EMAIL` are configured.
+
+1. Create a free [Resend](https://resend.com/) account.
+2. Add and verify your sending domain in Resend.
+3. Create a Resend API key.
+4. Store the API key and sender settings as Worker secrets:
+
+```bash
+cd cloudflare-worker
+npx wrangler secret put RESEND_API_KEY
+npx wrangler secret put RESEND_FROM_EMAIL
+npx wrangler secret put RESEND_REPLY_TO
+npx wrangler secret put APP_URL
+```
+
+Use a verified-domain sender such as `VeeBoard <notifications@example.com>` for `RESEND_FROM_EMAIL`. `RESEND_REPLY_TO` is optional. Set `APP_URL` to the deployed VeeBoard URL used by recipients.
+
+For local development, copy `.dev.vars.example` to `.dev.vars` and replace the placeholder values. Do not commit `.dev.vars` or a real API key.
+
+Email failures are logged but do not block board saves or in-app notifications. Resend's free plan currently includes 3,000 emails per month with a 100-email daily limit, so monitor usage in the Resend dashboard.
+
+## 8. Migrating From Pages + Worker
 
 To keep your existing board data, reuse the same D1 database and R2 bucket bindings. Do not run `npx wrangler d1 create` for the migration unless you intentionally want an empty board.
 
@@ -90,7 +114,7 @@ To keep your existing board data, reuse the same D1 database and R2 bucket bindi
 
 The migration does not copy or rewrite board cards; it only changes where the static frontend is served from.
 
-## 8. Optional App Settings
+## 9. Optional App Settings
 
 1. Open VeeBoard in the browser.
 2. Open `Settings`.
@@ -98,7 +122,7 @@ The migration does not copy or rewrite board cards; it only changes where the st
 4. Optionally enter a board ID.
 5. Save.
 
-## 9. Create The First User
+## 10. Create The First User
 
 - If the board has no users yet, the first signup becomes the approved admin.
 - After that, new signups require admin approval before they can log in.
